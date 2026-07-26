@@ -6,7 +6,7 @@ Base del monorepo de NFCompra. El cimiento actual contiene los workspaces de la 
 
 - Node.js LTS y npm.
 - Wrangler instalado para ejecutar la API local de Cloudflare Workers. La autenticacion solo sera necesaria cuando se realicen operaciones remotas autorizadas.
-- Android Studio y JDK 17 para el futuro proyecto Android.
+- Android Studio y JDK 21 para el proyecto Android Compose.
 
 ## Comandos
 
@@ -39,9 +39,17 @@ Al iniciar la API local con `npm run api:dev`, `GET /health` responde `200` con 
 
 La PWA local tiene pruebas, chequeo de tipos y compilacion. Incluye manifest, iconos y service worker generados durante la compilacion; su pantalla usa fixtures locales y no se conecta a la API ni incluye autenticacion. Los comandos de desarrollo no despliegan servicios.
 
+Para verificar la logica de lista y generar el APK Android de depuracion, desde `apps/android`:
+
+```sh
+gradle :feature:shoppinglist:testDebugUnitTest :app:assembleDebug
+```
+
+El APK generado queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`. La prueba instrumentada de Compose requiere un dispositivo o emulador ADB conectado; no se ejecuto aqui porque no habia ninguno conectado.
+
 ## Estructura inicial
 
 - `apps/api`: Worker local de Cloudflare, esquema y migraciones D1, y prueba de salud.
 - `apps/web`: PWA local con Vite y React, pantalla de lista de demostracion y fixtures sin backend.
-- `apps/android`: estructura de modulos reservada para la futura app Compose; Gradle aun no esta configurado.
+- `apps/android`: aplicacion Compose configurada, modulos de diseno y lista de demostracion con fixtures locales.
 - `docs`: diseno, plan de implementacion y documentos de arquitectura.
