@@ -42,7 +42,7 @@ La PWA local tiene pruebas, chequeo de tipos y compilacion. Incluye manifest, ic
 Para verificar la logica de lista y generar el APK Android de depuracion, desde `apps/android`:
 
 ```sh
-gradle :feature:shoppinglist:testDebugUnitTest :app:assembleDebug
+./gradlew :feature:shoppinglist:testDebugUnitTest :app:assembleDebug
 ```
 
 El APK generado queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`. La prueba instrumentada de Compose requiere un dispositivo o emulador ADB conectado; no se ejecuto aqui porque no habia ninguno conectado.
