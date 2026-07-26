@@ -1,0 +1,14 @@
+{
+  "name": "nfcompra",
+  "private": true,
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "api:test": "npm --workspace @nfcompra/api run test",
+    "web:test": "npm --workspace @nfcompra/web run test",
+    "api:dev": "npm --workspace @nfcompra/api run dev",
+    "web:dev": "npm --workspace @nfcompra/web run dev"
+  }
+}

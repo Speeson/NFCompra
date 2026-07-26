@@ -1,0 +1,14 @@
+{
+  "name": "@nfcompra/api",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250726.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.30.0"
+  }
+}
