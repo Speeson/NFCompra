@@ -1,5 +1,7 @@
 .worktrees/
 .superpowers/
+.gradle/
+build/
 node_modules/
 dist/
 .wrangler/

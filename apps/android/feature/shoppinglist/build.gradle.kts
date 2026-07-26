@@ -6,12 +6,19 @@ plugins {
 
 android {
     namespace = "dev.esgarpe.nfcompra.feature.shoppinglist"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         minSdk = 24
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+    }
 }
+
+kotlin { jvmToolchain(21) }
 
 dependencies {
     implementation(project(":core:designsystem"))
