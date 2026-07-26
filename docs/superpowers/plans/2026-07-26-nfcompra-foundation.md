@@ -38,13 +38,13 @@
 ### Task 1: Crear la base del monorepo
 
 **Files:**
-- Create: `.editorconfig`, `.gitignore`, `package.json`, `apps/api/package.json`, `apps/api/tsconfig.json`, `apps/api/wrangler.jsonc`, `apps/web/package.json`, `apps/web/tsconfig.json`, `apps/web/vite.config.ts`, `README.md`.
+- Create: `AGENTS.md`, `.editorconfig`, `.gitignore`, `package.json`, `apps/api/package.json`, `apps/api/tsconfig.json`, `apps/api/wrangler.jsonc`, `apps/web/package.json`, `apps/web/tsconfig.json`, `apps/web/vite.config.ts`, `README.md`.
 - Modify: ninguna ruta existente salvo el `README.md` mínimo.
 - Test: `apps/api/test/health.test.ts` y `apps/web/src/app/App.test.tsx` se crearán en tareas posteriores.
 
 **Interfaces:**
 - Produces: los comandos raíz `npm run api:test`, `npm run web:test`, `npm run api:dev` y `npm run web:dev`.
-- Produces: `Env` para el Worker con `DB: D1Database`, `JWT_SECRET`, `RESEND_API_KEY`, `APP_BASE_URL` y `ALLOWED_ORIGINS`.
+- Produces: los manifests y la configuración base que la Tarea 2 usará para declarar `Env` y el binding D1.
 
 - [ ] **Step 1: Crear la estructura de carpetas y los manifests sin dependencias de producción adicionales**
 
