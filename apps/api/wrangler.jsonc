@@ -2,5 +2,17 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "nfcompra-api",
   "main": "src/index.ts",
-  "compatibility_date": "2026-07-26"
+  "compatibility_date": "2026-07-26",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "nfcompra-local",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "APP_BASE_URL": "http://localhost:5173",
+    "ALLOWED_ORIGINS": "http://localhost:5173"
+  }
 }

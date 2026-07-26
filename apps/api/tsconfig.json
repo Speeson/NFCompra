@@ -2,14 +2,17 @@
   "compilerOptions": {
     "target": "ES2022",
     "lib": [
-      "ES2022"
+      "ESNext"
     ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "strict": true,
     "types": [
-      "@cloudflare/workers-types"
+      "@cloudflare/workers-types",
+      "@cloudflare/vitest-pool-workers",
+      "node"
     ],
+    "skipLibCheck": true,
     "noEmit": true
   },
   "include": [
