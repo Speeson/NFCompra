@@ -10,3 +10,7 @@ export function notFound(): Response {
     { status: 404 },
   );
 }
+
+export function errorResponse(code: string, message: string, status: number, details: Record<string, unknown> = {}): Response {
+  return Response.json({ error: { code, message, details } }, { status });
+}
