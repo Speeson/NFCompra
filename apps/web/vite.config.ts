@@ -1,28 +1,29 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-
-const pwaShell = {
-  name: 'nfcompra-pwa-shell',
-  apply: 'build' as const,
-  generateBundle(_options: unknown, bundle: Record<string, { fileName: string; type: string }>) {
-    const shellFiles = Object.values(bundle)
-      .filter((entry) => entry.type === 'asset' || entry.type === 'chunk')
-      .map((entry) => `/${entry.fileName}`);
-
-    this.emitFile({
-      type: 'asset',
-      fileName: 'sw.js',
-      source: `const cacheName = 'nfcompra-shell-v1';
-const shell = ['/', '/index.html', '/manifest.webmanifest', ${shellFiles.map((file) => `'${file}'`).join(', ')}];
-self.addEventListener('install', (event) => event.waitUntil(caches.open(cacheName).then((cache) => cache.addAll(shell))));
-self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
-self.addEventListener('fetch', (event) => event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request))));`
-    });
-  }
-};
+import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  plugins: [react(), pwaShell],
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      manifest: {
+        name: 'NFCompra',
+        short_name: 'NFCompra',
+        start_url: '/',
+        display: 'standalone',
+        background_color: '#f6f7fb',
+        theme_color: '#255bd9',
+        icons: [
+          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' }
+        ]
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,png,webmanifest}']
+      }
+    })
+  ],
   test: {
     environment: 'jsdom'
   }
