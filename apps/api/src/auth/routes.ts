@@ -1,4 +1,4 @@
-import { createAuthToken, createRefreshToken, createUser, consumeAuthToken, consumeRefreshToken, findUserByEmail, revokeRefreshToken, updatePassword, updateUserName, verifyEmail } from './auth-repository';
+import { createAuthToken, createRefreshToken, createUser, consumeAuthToken, consumeRefreshToken, findUserByEmail, invalidateSessions, revokeRefreshToken, updatePassword, updateUserName, verifyEmail } from './auth-repository';
 import { hashPassword, verifyPassword } from './password-hasher';
 import { createAccessToken, createRandomToken, hashToken } from './token-service';
 import type { EmailSender } from '../email/email-sender';
@@ -6,6 +6,10 @@ import type { Env } from '../env';
 import { errorResponse } from '../shared/http';
 
 type ClientType = 'web' | 'android';
+const EMAIL_MAX_LENGTH = 254;
+const NAME_MAX_LENGTH = 100;
+const DEVICE_NAME_MAX_LENGTH = 100;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function readCookie(request: Request, name: string): string | null {
   return request.headers.get('cookie')?.split(';').map((part) => part.trim()).find((part) => part.startsWith(`${name}=`))?.slice(name.length + 1) ?? null;
@@ -23,6 +27,21 @@ function text(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function boundedText(value: unknown, maximumLength: number): string | null {
+  const normalized = text(value);
+  return normalized && normalized.length <= maximumLength ? normalized : null;
+}
+
+function parseEmail(value: unknown): string | null {
+  const normalized = boundedText(value, EMAIL_MAX_LENGTH)?.toLowerCase();
+  return normalized && EMAIL_PATTERN.test(normalized) ? normalized : null;
+}
+
+function deviceName(value: unknown): string | null | undefined {
+  if (value === undefined) return null;
+  return boundedText(value, DEVICE_NAME_MAX_LENGTH) ?? undefined;
+}
+
 function clientType(value: unknown): ClientType | null {
   return value === 'web' || value === 'android' ? value : null;
 }
@@ -31,9 +50,9 @@ function invalidInput(): Response {
   return errorResponse('VALIDATION_ERROR', 'La solicitud no es válida.', 422);
 }
 
-async function issueSession(env: Env, userId: string, client: ClientType, deviceName: string | null): Promise<Response> {
+async function issueSession(env: Env, userId: string, client: ClientType, deviceName: string | null, sessionVersion: number): Promise<Response | null> {
   const refreshToken = createRandomToken();
-  await createRefreshToken(env, userId, await hashToken(refreshToken), deviceName);
+  if (!(await createRefreshToken(env, userId, await hashToken(refreshToken), deviceName, sessionVersion))) return null;
   const body: Record<string, unknown> = { accessToken: await createAccessToken(userId, env) };
   const headers = new Headers({ 'content-type': 'application/json' });
   if (client === 'web') headers.set('set-cookie', refreshCookie(refreshToken));
@@ -49,8 +68,8 @@ export async function handleAuthRoute(request: Request, env: Env, emailSender: E
   if (request.method !== 'POST' || !body) return null;
 
   if (action === 'register') {
-    const name = text(body.name);
-    const email = text(body.email)?.toLowerCase();
+    const name = boundedText(body.name, NAME_MAX_LENGTH);
+    const email = parseEmail(body.email);
     const password = text(body.password);
     if (!name || !email || !password || password.length < 8) return invalidInput();
     if (await findUserByEmail(env, email)) return errorResponse('EMAIL_ALREADY_REGISTERED', 'El correo ya está registrado.', 409);
@@ -72,23 +91,26 @@ export async function handleAuthRoute(request: Request, env: Env, emailSender: E
   }
 
   if (action === 'login') {
-    const email = text(body.email)?.toLowerCase();
+    const email = parseEmail(body.email);
     const password = text(body.password);
     const client = clientType(body.clientType);
-    if (!email || !password || !client) return invalidInput();
+    const sessionDeviceName = deviceName(body.deviceName);
+    if (!email || !password || !client || sessionDeviceName === undefined) return invalidInput();
     const user = await findUserByEmail(env, email);
     if (!user || !(await verifyPassword(password, user.passwordHash))) return errorResponse('INVALID_CREDENTIALS', 'Las credenciales no son válidas.', 401);
     if (!user.emailVerifiedAt) return errorResponse('EMAIL_NOT_VERIFIED', 'Debes verificar tu correo antes de iniciar sesión.', 403);
-    return issueSession(env, user.id, client, text(body.deviceName));
+    return (await issueSession(env, user.id, client, sessionDeviceName, user.sessionVersion)) ?? errorResponse('UNAUTHORIZED', 'La sesión no es válida.', 401);
   }
 
   if (action === 'refresh') {
     const client = clientType(body.clientType);
     const refreshToken = client === 'web' ? readCookie(request, 'refresh_token') : text(body.refreshToken);
+    const sessionDeviceName = deviceName(body.deviceName);
     if (!client || !refreshToken) return errorResponse('UNAUTHORIZED', 'La sesión no es válida.', 401);
-    const userId = await consumeRefreshToken(env, await hashToken(refreshToken));
-    if (!userId) return errorResponse('UNAUTHORIZED', 'La sesión no es válida.', 401);
-    return issueSession(env, userId, client, text(body.deviceName));
+    if (sessionDeviceName === undefined) return invalidInput();
+    const session = await consumeRefreshToken(env, await hashToken(refreshToken));
+    if (!session) return errorResponse('UNAUTHORIZED', 'La sesión no es válida.', 401);
+    return (await issueSession(env, session.userId, client, sessionDeviceName, session.sessionVersion)) ?? errorResponse('UNAUTHORIZED', 'La sesión no es válida.', 401);
   }
 
   if (action === 'logout') {
@@ -101,7 +123,7 @@ export async function handleAuthRoute(request: Request, env: Env, emailSender: E
   }
 
   if (action === 'forgot-password') {
-    const email = text(body.email)?.toLowerCase();
+    const email = parseEmail(body.email);
     if (!email) return invalidInput();
     const user = await findUserByEmail(env, email);
     if (user) {
@@ -120,6 +142,7 @@ export async function handleAuthRoute(request: Request, env: Env, emailSender: E
     const userId = await consumeAuthToken(env, 'password_reset', await hashToken(token));
     if (!userId) return errorResponse('INVALID_OR_EXPIRED_TOKEN', 'El enlace no es válido o ha caducado.', 400);
     await updatePassword(env, userId, await hashPassword(password));
+    await invalidateSessions(env, userId);
     return Response.json({ status: 'password_reset' });
   }
 
@@ -132,7 +155,7 @@ export async function handleMeRoute(request: Request, env: Env, user: { id: stri
   if (request.method === 'GET') return Response.json({ user });
   if (request.method !== 'PATCH') return null;
   const body = await json(request);
-  const name = body ? text(body.name) : null;
+  const name = body ? boundedText(body.name, NAME_MAX_LENGTH) : null;
   if (!name) return invalidInput();
   const updated = await updateUserName(env, user.id, name);
   return Response.json({ user: updated });

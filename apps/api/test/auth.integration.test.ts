@@ -21,9 +21,9 @@ const testEnv: WorkerEnv = { ...env, JWT_SECRET: 'test-jwt-secret', APP_BASE_URL
 
 beforeEach(async () => {
   await env.DB.exec(`
-    CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE COLLATE NOCASE, password_hash TEXT NOT NULL, email_verified_at TEXT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE COLLATE NOCASE, password_hash TEXT NOT NULL, email_verified_at TEXT NULL, session_version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS auth_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, type TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL, used_at TEXT NULL, created_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS refresh_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, device_name TEXT NULL, expires_at TEXT NOT NULL, revoked_at TEXT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS refresh_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, device_name TEXT NULL, session_version INTEGER NOT NULL DEFAULT 0, expires_at TEXT NOT NULL, revoked_at TEXT NULL, created_at TEXT NOT NULL);
     DELETE FROM refresh_tokens;
     DELETE FROM auth_tokens;
     DELETE FROM users;
@@ -56,8 +56,7 @@ it('sends a verifiable email and creates a web session for a verified user', asy
 
   const loginResponse = await dispatch('/v1/auth/login', { email, password: 'a secure password', clientType: 'web' });
   expect(loginResponse.status).toBe(200);
-  expect(loginResponse.headers.get('set-cookie')).toContain('refresh_token=');
-  expect(loginResponse.headers.get('set-cookie')).toContain('HttpOnly');
+  expect(loginResponse.headers.get('set-cookie')).toMatch(/^refresh_token=[^;]+; HttpOnly; Secure; SameSite=Lax; Path=\/v1\/auth; Max-Age=2592000$/);
   const { accessToken } = await loginResponse.json<{ accessToken: string }>();
 
   const meResponse = await dispatch('/v1/me', undefined, { authorization: `Bearer ${accessToken}` }, 'GET');
@@ -104,9 +103,21 @@ it('consumes a refresh token only once when requests race', async () => {
   expect(responses.map((response) => response.status).sort()).toEqual([200, 401]);
 });
 
+it('does not refresh a session invalidated during password reset', async () => {
+  const email = `invalidated-${crypto.randomUUID()}@example.test`;
+  await registerAndVerify(email);
+  const login = await (await dispatch('/v1/auth/login', { email, password: 'a secure password', clientType: 'android' })).json<{ refreshToken: string }>();
+  await env.DB.prepare('UPDATE users SET session_version = session_version + 1 WHERE email = ?').bind(email).run();
+
+  const response = await dispatch('/v1/auth/refresh', { clientType: 'android', refreshToken: login.refreshToken });
+  expect(response.status).toBe(401);
+});
+
 it('sends a reset link and accepts the replacement password once', async () => {
   const email = `reset-${crypto.randomUUID()}@example.test`;
   await registerAndVerify(email);
+  const previousSession = await (await dispatch('/v1/auth/login', { email, password: 'a secure password', clientType: 'android' })).json<{ refreshToken: string }>();
+  const secondPreviousSession = await (await dispatch('/v1/auth/login', { email, password: 'a secure password', clientType: 'android', deviceName: 'Tablet' })).json<{ refreshToken: string }>();
   const forgottenResponse = await dispatch('/v1/auth/forgot-password', { email });
   expect(forgottenResponse.status).toBe(202);
   expect(fakeEmailSender.messages).toHaveLength(2);
@@ -115,6 +126,10 @@ it('sends a reset link and accepts the replacement password once', async () => {
 
   const resetResponse = await dispatch('/v1/auth/reset-password', { token: tokenFrom(fakeEmailSender.messages[1]), password: 'a replacement password' });
   expect(resetResponse.status).toBe(200);
+  const previousRefreshResponse = await dispatch('/v1/auth/refresh', { clientType: 'android', refreshToken: previousSession.refreshToken });
+  expect(previousRefreshResponse.status).toBe(401);
+  const secondPreviousRefreshResponse = await dispatch('/v1/auth/refresh', { clientType: 'android', refreshToken: secondPreviousSession.refreshToken });
+  expect(secondPreviousRefreshResponse.status).toBe(401);
   const reusedResponse = await dispatch('/v1/auth/reset-password', { token: tokenFrom(fakeEmailSender.messages[1]), password: 'another replacement password' });
   expect(reusedResponse.status).toBe(400);
 
@@ -143,6 +158,27 @@ it('allows credentialed requests only from configured web origins', async () => 
   expect(response.status).toBe(204);
   expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
   expect(response.headers.get('access-control-allow-credentials')).toBe('true');
+});
+
+it('does not expose CORS credentials to an unconfigured origin', async () => {
+  const response = await dispatch('/v1/auth/login', undefined, { origin: 'https://untrusted.example' }, 'OPTIONS');
+  expect(response.status).toBe(204);
+  expect(response.headers.get('access-control-allow-origin')).toBeNull();
+  expect(response.headers.get('access-control-allow-credentials')).toBeNull();
+});
+
+it('rejects malformed or oversized registration details', async () => {
+  const malformedEmail = await dispatch('/v1/auth/register', { name: 'Ana', email: 'not-an-email', password: 'a secure password' });
+  expect(malformedEmail.status).toBe(422);
+  const oversizedName = await dispatch('/v1/auth/register', { name: 'n'.repeat(101), email: `name-${crypto.randomUUID()}@example.test`, password: 'a secure password' });
+  expect(oversizedName.status).toBe(422);
+});
+
+it('rejects an oversized device name when issuing an Android session', async () => {
+  const email = `device-${crypto.randomUUID()}@example.test`;
+  await registerAndVerify(email);
+  const response = await dispatch('/v1/auth/login', { email, password: 'a secure password', clientType: 'android', deviceName: 'd'.repeat(101) });
+  expect(response.status).toBe(422);
 });
 
 async function registerAndVerify(email: string): Promise<void> {
