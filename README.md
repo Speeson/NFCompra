@@ -20,6 +20,14 @@ npm run api:test
 npm run web:test
 ```
 
+Para verificar y compilar la PWA local:
+
+```sh
+npm run web:test
+npm --workspace @nfcompra/web run typecheck
+npm --workspace @nfcompra/web run build
+```
+
 Para aplicar el esquema a D1 local y ejecutar las pruebas de la API:
 
 ```sh
@@ -29,11 +37,11 @@ npm run api:test
 
 Al iniciar la API local con `npm run api:dev`, `GET /health` responde `200` con `{ "status": "ok" }`. El Worker y D1 se ejecutan unicamente en local: no hay ningun entorno desplegado.
 
-El comando de pruebas web ya esta configurado en el workspace, pero su suite se incorporara en una tarea posterior. Los comandos de desarrollo no despliegan servicios.
+La PWA local tiene pruebas, chequeo de tipos y compilacion. Incluye manifest, iconos y service worker generados durante la compilacion; su pantalla usa fixtures locales y no se conecta a la API ni incluye autenticacion. Los comandos de desarrollo no despliegan servicios.
 
 ## Estructura inicial
 
 - `apps/api`: Worker local de Cloudflare, esquema y migraciones D1, y prueba de salud.
-- `apps/web`: configuracion inicial de la aplicacion web con Vite y React.
+- `apps/web`: PWA local con Vite y React, pantalla de lista de demostracion y fixtures sin backend.
 - `apps/android`: estructura de modulos reservada para la futura app Compose; Gradle aun no esta configurado.
 - `docs`: diseno, plan de implementacion y documentos de arquitectura.
