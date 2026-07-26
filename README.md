@@ -43,7 +43,7 @@ npm --workspace @nfcompra/api run test
 
 Al iniciar la API local con `npm run api:dev`, `GET /health` responde `200` con `{ "status": "ok" }`. El Worker y D1 se ejecutan unicamente en local: no hay ningun entorno desplegado.
 
-La API local incluye registro, verificacion de correo, inicio de sesion, renovacion y cierre de sesion, solicitud y restablecimiento de contrasena, y consulta y actualizacion de perfil. Las pruebas usan un remitente de correo falso: Resend no esta configurado y no se envian correos reales.
+La API local incluye registro, verificacion de correo, inicio de sesion, renovacion y cierre de sesion, solicitud y restablecimiento de contrasena, y consulta y actualizacion de perfil. Tambien permite crear hogares personales con una lista predeterminada, anadir listas y gestionar productos autenticados, incluida la busqueda normalizada y el control de versiones de cada producto. Las pruebas usan un remitente de correo falso: Resend no esta configurado y no se envian correos reales.
 
 La PWA local tiene pruebas, chequeo de tipos y compilacion. Incluye manifest, iconos y service worker generados durante la compilacion; su pantalla usa fixtures locales y no se conecta a la API ni incluye autenticacion. Los comandos de desarrollo no despliegan servicios.
 
