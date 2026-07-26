@@ -1,0 +1,13 @@
+.worktrees/
+.superpowers/
+.gradle/
+build/
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+.env*
+!.env.example
+local.properties
+*.jks
+*.keystore
