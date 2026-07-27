@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { ApiError } from '../../api/client';
 import { apiClient, type User } from '../../api/session';
+import { activateOfflineLists, clearOfflineLists } from '../shopping-list/offline-cache';
 
 type AuthStatus = 'loading' | 'anonymous' | 'authenticated';
 
@@ -34,6 +35,7 @@ export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
 
   const loadUser = useCallback(async (): Promise<void> => {
     const response = await apiClient.request<{ user: User }>('/me', { retryOnUnauthorized: false });
+    activateOfflineLists(response.user.id);
     setUser(response.user);
     setStatus('authenticated');
   }, []);
@@ -83,12 +85,14 @@ export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
       await apiClient.request('/auth/reset-password', { method: 'POST', body: { token, password }, retryOnUnauthorized: false });
     },
     async logout() {
+      const userId = user?.id;
       try {
         await apiClient.request('/auth/logout', { method: 'POST', body: { clientType: 'web' }, retryOnUnauthorized: false });
         return true;
       } catch {
         return false;
       } finally {
+        if (userId) await clearOfflineLists(userId).catch(() => undefined);
         apiClient.clearAccessToken();
         setUser(null);
         setStatus('anonymous');

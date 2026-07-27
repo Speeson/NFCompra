@@ -62,6 +62,7 @@ El APK queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`.
 - Los propietarios de un hogar pueden crear, renovar, listar y revocar invitaciones en `/v1/households/:householdId/invitations`, y eliminar miembros. Cualquier miembro del hogar puede consultar `/v1/households/:householdId/members`. Las invitaciones se aceptan mediante `POST /v1/invitations/accept` o, desde una notificación, `POST /v1/invitations/:invitationId/accept`; ambas rutas requieren la cuenta verificada destinataria. Caducan a los siete dias y los tokens se guardan solo como hashes.
 - Hito 3A: la API persiste notificaciones internas en `/v1/notifications`: lista reciente, contador de no leídas, marcado individual y marcado total. Las invitaciones, altas y bajas de miembros y cambios remotos de productos notifican solo a las otras personas afectadas; la actividad de una lista se agrupa por destinatario, autor, lista y tipo durante cinco minutos. No incluye notificaciones push.
 - La PWA tiene rutas de registro, acceso, verificacion, reenvio, recuperacion, restablecimiento y cierre de sesion. Conserva el token de acceso en memoria y la API gestiona la cookie de renovacion. Permite seleccionar hogares y listas, crear hogares/listas y gestionar productos; consulta la lista visible cada 15 segundos y aplica mutaciones optimistas con reintento ante conflictos.
+- Hito 3B (PWA): guarda en IndexedDB la ultima respuesta correcta de cada lista por usuario autenticado. Si falla la consulta sin conexion, muestra solo esa instantanea de usuario y lista en modo lectura; respuestas tardias de otra fuente no cambian ese estado. Deshabilita las mutaciones y borra las instantaneas del usuario al cerrar sesion. No almacena tokens ni datos de invitaciones, ni encola mutaciones offline.
 - Los propietarios administran miembros e invitaciones desde el hogar seleccionado. La ruta `/invitations/accept?token=...` conserva su continuación de inicio de sesión en `sessionStorage`, muestra errores de aceptación sin datos ajenos y abre el hogar aceptado. La cabecera autenticada incluye notificaciones con contador, lectura individual o total y navegación al hogar o lista relacionada; consulta actualizaciones solo mientras el documento está visible.
 - La PWA conserva un aviso de error de lectura de notificaciones tras una navegacion contextual y permite cerrarlo; una solicitud de hogar/lista en URL se aplica una sola vez para no bloquear la seleccion manual posterior.
 - Android ofrece las pantallas de autenticacion y conserva los tokens de sesion y renovacion mediante Android Keystore. La pantalla autenticada permite seleccionar y gestionar hogares, listas y productos, con estados de carga, error y datos, y reintento ante conflictos.
@@ -71,7 +72,7 @@ El APK queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`.
 ## Limites del MVP
 
 - No hay despliegue ni operaciones remotas incluidas.
-- La sincronizacion offline queda fuera del hito 3A y pertenece al hito 3B: no hay persistencia ni cola de mutaciones offline, Room, NFC, WorkManager ni WebSockets.
+- La PWA no encola ni sincroniza mutaciones offline. La sincronizacion offline de Android, Room, NFC, WorkManager y WebSockets quedan fuera de este alcance.
 
 ## Estructura
 

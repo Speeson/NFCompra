@@ -5,9 +5,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiClient } from '../../api/client';
 import { App } from '../../app/App';
-import { AuthProvider } from './AuthProvider';
+import { AuthProvider, useSession } from './AuthProvider';
 import { LoginPage } from './LoginPage';
 import { RegisterPage } from './RegisterPage';
+import { clearOfflineLists } from '../shopping-list/offline-cache';
+
+vi.mock('../shopping-list/offline-cache', () => ({
+  activateOfflineLists: vi.fn(),
+  clearOfflineLists: vi.fn().mockResolvedValue(undefined),
+  loadOfflineList: vi.fn().mockResolvedValue(null),
+  saveOfflineList: vi.fn().mockResolvedValue(undefined),
+}));
 
 afterEach(() => {
   cleanup();
@@ -185,6 +193,21 @@ describe('ApiClient', () => {
 });
 
 describe('logout', () => {
+  it('clears only the current user offline snapshots during local logout', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/auth/refresh')) return Promise.resolve(Response.json({ accessToken: 'access-token' }));
+      if (url.endsWith('/me')) return Promise.resolve(Response.json({ user: { id: 'user-1', name: 'Persona', email: 'persona@example.com', emailVerifiedAt: '2026-07-27T00:00:00.000Z', createdAt: '2026-07-27T00:00:00.000Z', updatedAt: '2026-07-27T00:00:00.000Z' } }));
+      if (url.endsWith('/auth/logout')) return Promise.resolve(Response.json({ ok: true }));
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+
+    render(<AuthProvider><LogoutButton /></AuthProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'logout' }));
+
+    await waitFor(() => expect(clearOfflineLists).toHaveBeenCalledWith('user-1'));
+  });
+
   it('clears the local session and shows non-blocking feedback when the API logout fails', async () => {
     window.history.pushState({}, '', '/');
     vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
@@ -249,3 +272,8 @@ describe('logout', () => {
     expect(await screen.findByRole('heading', { name: 'Crea tu hogar' })).toBeVisible();
   });
 });
+
+function LogoutButton() {
+  const { status, logout } = useSession();
+  return status === 'authenticated' ? <button type="button" onClick={() => void logout()}>logout</button> : <p>waiting</p>;
+}
