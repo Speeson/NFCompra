@@ -1,13 +1,14 @@
 import { useEffect, useState, type JSX } from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
 
-import { demoShoppingItems } from '../features/shopping-list/fixtures';
-import { ShoppingListScreen } from '../features/shopping-list/ShoppingListScreen';
+import { createWebQueryClient, ShoppingListRoute } from '../features/shopping-list/ShoppingListRoute';
 import { useSession } from '../features/auth/AuthProvider';
 import { ForgotPasswordPage, LoginPage } from '../features/auth/LoginPage';
 import { RegisterPage, ResetPasswordPage, VerifyEmailPage } from '../features/auth/RegisterPage';
 
 export function App(): JSX.Element {
-  return <AppRoute />;
+  const [queryClient] = useState(createWebQueryClient);
+  return <QueryClientProvider client={queryClient}><AppRoute /></QueryClientProvider>;
 }
 
 function AppRoute(): JSX.Element {
@@ -46,6 +47,6 @@ function AppRoute(): JSX.Element {
       <p>Sesión iniciada como {user?.name}</p>
       <button type="button" onClick={() => void handleLogout()}>Cerrar sesión</button>
     </header>
-    <ShoppingListScreen title="Mercadona" items={demoShoppingItems} isOffline={false} />
+    <ShoppingListRoute />
   </>;
 }

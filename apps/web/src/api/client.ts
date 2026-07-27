@@ -11,12 +11,14 @@ export interface ApiErrorPayload {
 export class ApiError extends Error {
   readonly code: string;
   readonly status: number;
+  readonly details: Record<string, unknown>;
 
   constructor(status: number, payload: ApiErrorPayload) {
     super(payload.error?.message ?? 'No se pudo completar la solicitud.');
     this.name = 'ApiError';
     this.status = status;
     this.code = payload.error?.code ?? 'REQUEST_FAILED';
+    this.details = payload.error?.details ?? {};
   }
 }
 
