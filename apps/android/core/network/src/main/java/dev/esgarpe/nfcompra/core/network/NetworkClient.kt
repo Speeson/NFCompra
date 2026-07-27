@@ -9,6 +9,9 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 object NetworkClient {
     fun authApi(baseUrl: String): AuthApi = retrofit(baseUrl, OkHttpClient()).create(AuthApi::class.java)
 
+    fun <T> authenticatedApi(baseUrl: String, tokenStore: TokenStore, api: Class<T>): T =
+        retrofit(baseUrl, authenticatedClient(baseUrl, tokenStore)).create(api)
+
     fun authenticatedClient(baseUrl: String, tokenStore: TokenStore): OkHttpClient =
         OkHttpClient.Builder()
             .addInterceptor(BearerInterceptor(tokenStore))

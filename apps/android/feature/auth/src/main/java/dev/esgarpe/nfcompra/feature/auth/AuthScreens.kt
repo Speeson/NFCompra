@@ -11,6 +11,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -23,9 +24,10 @@ import androidx.compose.ui.unit.dp
 private enum class AuthRoute { LOGIN, REGISTER, VERIFY, FORGOT, RESET }
 
 @Composable
-fun AuthApp(viewModel: AuthViewModel) {
+fun AuthApp(viewModel: AuthViewModel, onSignedIn: () -> Unit = {}) {
     var route by remember { mutableStateOf(AuthRoute.LOGIN) }
     val state by viewModel.state.collectAsState()
+    LaunchedEffect(state.isSignedIn) { if (state.isSignedIn) onSignedIn() }
     when (route) {
         AuthRoute.LOGIN -> LoginScreen(
             state = state,

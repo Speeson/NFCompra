@@ -5,6 +5,7 @@ data class ShoppingListItemUiModel(
     val name: String,
     val quantity: String,
     val checked: Boolean,
+    val version: Int = 1,
 )
 
 data class ShoppingListUiState(
@@ -16,8 +17,29 @@ data class ShoppingListUiState(
 
 sealed interface ShoppingListAction {
     data class ToggleItem(val id: String) : ShoppingListAction
-    data object AddItem : ShoppingListAction
-    data object SelectList : ShoppingListAction
+    data class AddItem(val name: String) : ShoppingListAction
+    data class EditItem(val id: String, val name: String) : ShoppingListAction
+    data class DeleteItem(val id: String) : ShoppingListAction
+    data class SelectHousehold(val id: String) : ShoppingListAction
+    data class SelectList(val id: String) : ShoppingListAction
+    data class CreateHousehold(val name: String) : ShoppingListAction
+    data class CreateList(val name: String) : ShoppingListAction
+    data object RetryConflict : ShoppingListAction
+}
+
+sealed interface ShoppingListViewState {
+    data object Loading : ShoppingListViewState
+    data class Error(val message: String) : ShoppingListViewState
+    data class Data(
+        val content: ShoppingListUiState,
+        val households: List<HouseholdUiModel>,
+        val lists: List<ShoppingListSummaryUiModel>,
+        val selectedHouseholdId: String,
+        val selectedListId: String,
+        val message: String? = null,
+        val conflict: ShoppingListItemUiModel? = null,
+        val retryAction: ShoppingListAction? = null,
+    ) : ShoppingListViewState
 }
 
 fun demoShoppingListUiState(isOffline: Boolean = false) = ShoppingListUiState(
