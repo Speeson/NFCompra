@@ -5,6 +5,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createWebQueryClient, ShoppingListRoute } from './ShoppingListRoute';
+import { NotificationBell } from '../notifications/NotificationBell';
 
 afterEach(() => {
   cleanup();
@@ -12,6 +13,27 @@ afterEach(() => {
 });
 
 describe('ShoppingListRoute', () => {
+  it('refreshes notification queries after a local product mutation', async () => {
+    let notificationReads = 0;
+    vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000008' });
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'household-1', name: 'Casa' }] }));
+      if (url.endsWith('/households/household-1/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-1', householdId: 'household-1', name: 'Compra', isDefault: true, version: 1, createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' }] }));
+      if (url.endsWith('/lists/list-1/items') && init?.method === 'POST') return Promise.resolve(Response.json({ item: { id: 'item-2', listId: 'list-1', name: 'Pan', normalizedName: 'pan', quantity: 1, unit: null, category: null, note: null, isChecked: false, position: 0, version: 1, createdBy: 'user-1', updatedBy: 'user-1', createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' } }));
+      if (url.endsWith('/lists/list-1/items')) return Promise.resolve(Response.json({ items: [] }));
+      if (url.endsWith('/notifications') || url.endsWith('/notifications/unread-count')) { notificationReads += 1; return Promise.resolve(Response.json(url.endsWith('/unread-count') ? { count: 0 } : { notifications: [] })); }
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+    const client = createWebQueryClient();
+    render(<QueryClientProvider client={client}><ShoppingListRoute /><NotificationBell onNavigate={vi.fn()} /></QueryClientProvider>);
+    await screen.findByRole('heading', { name: 'Compra' });
+    await waitFor(() => expect(notificationReads).toBe(2));
+    fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'Pan' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir' }));
+    await waitFor(() => expect(notificationReads).toBe(4));
+  });
+
   it('restores the previous checked state and shows feedback when a toggle fails', async () => {
     vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000001' });
     let rejectToggle: (error: Error) => void = () => undefined;
