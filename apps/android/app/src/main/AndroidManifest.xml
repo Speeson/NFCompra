@@ -12,6 +12,12 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="nfcompra" android:host="app" android:path="/invitations/accept" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="nfcompra.esgarpe.dev" android:path="/invitations/accept" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>

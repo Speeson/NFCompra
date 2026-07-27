@@ -2,11 +2,14 @@ package dev.esgarpe.nfcompra.feature.sharing
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -78,6 +81,51 @@ class SharingViewModelTest {
         assertEquals(SharingNavigation.ListContext("home-1", "list-1"), viewModel.navigation.value)
     }
 
+    @Test fun `notification polling refreshes while its authenticated lifecycle is active`() = runTest {
+        val repository = FakeSharingRepository()
+        val viewModel = SharingViewModel(repository, null, "owner")
+
+        val polling = backgroundScope.launch { viewModel.pollNotifications(1_000) }
+        runCurrent()
+        advanceTimeBy(2_000)
+        runCurrent()
+
+        assertEquals(3, repository.notificationRequests)
+        polling.cancel()
+    }
+
+    @Test fun `notification click navigates and exposes a dismissible global error when marking read fails`() = runTest {
+        val repository = FakeSharingRepository().apply { failMarkRead = true }
+        val viewModel = SharingViewModel(repository, null, "owner")
+        viewModel.refreshNotifications()
+        advanceUntilIdle()
+
+        viewModel.onAction(SharingAction.OpenNotification("notice-1"))
+        advanceUntilIdle()
+
+        assertEquals(SharingNavigation.ListContext("home-1", "list-1"), viewModel.navigation.value)
+        assertEquals("No se pudo conectar con el servidor.", viewModel.notificationActionError.value)
+        viewModel.refreshNotifications()
+        advanceUntilIdle()
+        assertEquals("No se pudo conectar con el servidor.", viewModel.notificationActionError.value)
+        viewModel.dismissNotificationActionError()
+        assertEquals(null, viewModel.notificationActionError.value)
+    }
+
+    @Test fun `successful notification click refreshes notification list and unread count`() = runTest {
+        val repository = FakeSharingRepository()
+        val viewModel = SharingViewModel(repository, null, "owner")
+        viewModel.refreshNotifications()
+        advanceUntilIdle()
+
+        viewModel.onAction(SharingAction.OpenNotification("notice-1"))
+        advanceUntilIdle()
+
+        assertEquals(2, repository.notificationRequests)
+        assertEquals(2, repository.unreadCountRequests)
+        assertEquals(0, (viewModel.notifications.value as NotificationUiState.Ready).unreadCount)
+    }
+
     @Test fun `accepting exposes loading and ignores a second acceptance until completion`() = runTest {
         val deferred = CompletableDeferred<InvitationAcceptance>()
         val repository = FakeSharingRepository().apply { acceptResult = deferred }
@@ -114,8 +162,11 @@ private class FakeSharingRepository(private val member: Boolean = true) : Sharin
     var readAll = 0
     var accepts = 0
     var notificationRequests = 0
+    var unreadCountRequests = 0
     var memberRequests = 0
     var failMembers = false
+    var failMarkRead = false
+    private var unreadCount = 1
     var acceptResult: CompletableDeferred<InvitationAcceptance>? = null
     override suspend fun members(householdId: String): List<MemberUiModel> { memberRequests++; if (failMembers) throw IllegalStateException(); return listOf(MemberUiModel(if (member) "owner" else "other", "Ana", "ana@example.com", if (member) "owner" else "member")) }
     override suspend fun invitations(householdId: String) = emptyList<InvitationUiModel>()
@@ -125,7 +176,10 @@ private class FakeSharingRepository(private val member: Boolean = true) : Sharin
     override suspend fun accept(token: String): InvitationAcceptance { accepts++; return acceptResult?.await() ?: InvitationAcceptance("home-1") }
     override suspend fun acceptById(invitationId: String) = InvitationAcceptance("home-1")
     override suspend fun notifications(): List<NotificationUiModel> { notificationRequests++; return listOf(NotificationUiModel("notice-1", "Producto", "Leche", false, "home-1", "list-1", null)) }
-    override suspend fun unreadCount() = 1
-    override suspend fun markRead(notificationId: String) = Unit
+    override suspend fun unreadCount(): Int { unreadCountRequests++; return unreadCount }
+    override suspend fun markRead(notificationId: String) {
+        if (failMarkRead) throw IllegalStateException()
+        unreadCount = 0
+    }
     override suspend fun markAllRead() { readAll++ }
 }

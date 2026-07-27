@@ -33,7 +33,7 @@ class FakeEmailSender implements EmailSender {
 
 const fakeEmailSender = new FakeEmailSender();
 const worker = createWorker(fakeEmailSender);
-const testEnv: WorkerEnv = { ...env, JWT_SECRET: 'test-jwt-secret', APP_BASE_URL: 'http://app.test' };
+const testEnv: WorkerEnv = { ...env, JWT_SECRET: 'test-jwt-secret', APP_BASE_URL: 'https://nfcompra.esgarpe.dev' };
 let notificationsSchemaInstalled = false;
 
 beforeEach(async () => {
@@ -85,7 +85,7 @@ it('manages the invitation lifecycle without persisting raw tokens or exposing o
   expect(firstInvitation.invitation).toMatchObject({ email: invited.email, status: 'pending' });
   expect(fakeEmailSender.invitations).toHaveLength(1);
   expect(fakeEmailSender.invitations[0]).toMatchObject({ to: invited.email, subject: 'Invitacion a un hogar de NFCompra' });
-  expect(fakeEmailSender.invitations[0].url).toContain('http://app.test/invitations/accept?token=');
+  expect(fakeEmailSender.invitations[0].url).toContain('https://nfcompra.esgarpe.dev/invitations/accept?token=');
   const firstToken = tokenFromUrl(fakeEmailSender.invitations[0].url);
   expect(await env.DB.prepare('SELECT token_hash FROM invitations WHERE id = ?').bind(firstInvitation.invitation.id).first<{ token_hash: string }>())
     .not.toEqual({ token_hash: firstToken });

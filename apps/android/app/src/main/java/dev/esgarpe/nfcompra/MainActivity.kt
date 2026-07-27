@@ -11,6 +11,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import dev.esgarpe.nfcompra.core.designsystem.NFCompraTheme
 import dev.esgarpe.nfcompra.core.network.KeystoreTokenStore
 import dev.esgarpe.nfcompra.core.network.NetworkClient
@@ -24,6 +26,7 @@ import dev.esgarpe.nfcompra.feature.shoppinglist.ShoppingListViewModel
 import dev.esgarpe.nfcompra.feature.sharing.AcceptInvitationScreen
 import dev.esgarpe.nfcompra.feature.sharing.AuthenticatedRefreshGate
 import dev.esgarpe.nfcompra.feature.sharing.InvitationTokenHandoff
+import dev.esgarpe.nfcompra.feature.sharing.NotificationActionErrorBanner
 import dev.esgarpe.nfcompra.feature.sharing.NotificationBell
 import dev.esgarpe.nfcompra.feature.sharing.SharingAction
 import dev.esgarpe.nfcompra.feature.sharing.SharingApi
@@ -34,7 +37,7 @@ import dev.esgarpe.nfcompra.feature.sharing.SharingUiState
 import dev.esgarpe.nfcompra.feature.sharing.SharingViewModel
 
 class MainActivity : ComponentActivity() {
-    private val invitationHandoff = InvitationTokenHandoff()
+    private lateinit var invitationHandoff: InvitationTokenHandoff
     private var pendingInvitationToken by mutableStateOf<String?>(null)
     private var notificationViewModel: SharingViewModel? = null
     private var membersViewModel: SharingViewModel? = null
@@ -42,6 +45,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        invitationHandoff = InvitationTokenHandoff(savedInstanceState?.getString(PENDING_INVITATION_TOKEN))
+        pendingInvitationToken = invitationHandoff.token
         receiveInvitationIntent(intent)
         val tokenStore = KeystoreTokenStore(applicationContext)
         foregroundRefreshGate = AuthenticatedRefreshGate { tokenStore.current() != null }
@@ -55,11 +60,17 @@ class MainActivity : ComponentActivity() {
             val globalNotifications = remember { SharingViewModel(sharingRepository, null, null) }
             notificationViewModel = globalNotifications
             val notificationState by globalNotifications.notifications.collectAsState()
+            val notificationActionError by globalNotifications.notificationActionError.collectAsState()
             val globalNavigation by globalNotifications.navigation.collectAsState()
             var selectedHouseholdId by remember { mutableStateOf<String?>(null) }
             var notificationInvitationId by remember { mutableStateOf<String?>(null) }
             var globalBellOpen by remember { mutableStateOf(false) }
-            LaunchedEffect(session) { if (session != null) globalNotifications.refreshNotifications() }
+            var contextualNotificationError by remember { mutableStateOf<String?>(null) }
+            LaunchedEffect(session) {
+                if (session != null) lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                    globalNotifications.pollNotifications()
+                }
+            }
             LaunchedEffect(globalNavigation) {
                 when (val event = globalNavigation) {
                     is SharingNavigation.Invitation -> notificationInvitationId = event.invitationId
@@ -71,39 +82,48 @@ class MainActivity : ComponentActivity() {
             }
             NFCompraTheme {
                 if (session == null) AuthApp(authViewModel)
-                else when {
-                    pendingInvitationToken != null -> {
-                        membersViewModel = null
-                        val token = pendingInvitationToken!!
-                        val model = remember(token) { SharingViewModel(sharingRepository, null, userIdFromJwt(session!!.accessToken)) }
-                        val state by model.state.collectAsState(); val navigation by model.navigation.collectAsState(); val accepting by model.isAccepting.collectAsState()
-                        if (navigation is SharingNavigation.HouseholdContext) { shoppingViewModel.openContext((navigation as SharingNavigation.HouseholdContext).householdId); clearInvitation(); model.consumeNavigation() }
-                        AcceptInvitationScreen(token, accepting, (state as? SharingUiState.Error)?.message, { model.onAction(SharingAction.AcceptInvitation(token)) }, ::clearInvitation)
+                else Column {
+                    val visibleNotificationError = contextualNotificationError ?: notificationActionError
+                    visibleNotificationError?.let {
+                        NotificationActionErrorBanner(it) {
+                            contextualNotificationError = null
+                            globalNotifications.dismissNotificationActionError()
+                        }
                     }
-                    notificationInvitationId != null -> {
-                        membersViewModel = null
-                        val invitationId = notificationInvitationId!!
-                        val model = remember(invitationId) { SharingViewModel(sharingRepository, null, userIdFromJwt(session!!.accessToken)) }
-                        val state by model.state.collectAsState(); val navigation by model.navigation.collectAsState(); val accepting by model.isAccepting.collectAsState()
-                        if (navigation is SharingNavigation.HouseholdContext) { shoppingViewModel.openContext((navigation as SharingNavigation.HouseholdContext).householdId); notificationInvitationId = null; model.consumeNavigation() }
-                        AcceptInvitationScreen("", accepting, (state as? SharingUiState.Error)?.message, { model.acceptInvitationById(invitationId) }, { notificationInvitationId = null })
-                    }
-                    selectedHouseholdId != null -> {
-                        val householdId = selectedHouseholdId!!
-                        val model = remember(householdId) { SharingViewModel(sharingRepository, householdId, userIdFromJwt(session!!.accessToken)) }
-                        membersViewModel = model
-                        SharingRoute(model, { event ->
-                            when (event) {
-                                is SharingNavigation.Invitation -> notificationInvitationId = event.invitationId
-                                is SharingNavigation.HouseholdContext -> { shoppingViewModel.openContext(event.householdId); selectedHouseholdId = null }
-                                is SharingNavigation.ListContext -> { shoppingViewModel.openContext(event.householdId, event.listId); selectedHouseholdId = null }
-                            }
-                        }, { selectedHouseholdId = null })
-                    }
-                    else -> Column {
-                        membersViewModel = null
-                        NotificationBell(notificationState, globalBellOpen, { globalBellOpen = !globalBellOpen }, globalNotifications::onAction)
-                        ShoppingListApp(shoppingViewModel, authViewModel::logout, { selectedHouseholdId = it })
+                    when {
+                        pendingInvitationToken != null -> {
+                            membersViewModel = null
+                            val token = pendingInvitationToken!!
+                            val model = remember(token) { SharingViewModel(sharingRepository, null, userIdFromJwt(session!!.accessToken)) }
+                            val state by model.state.collectAsState(); val navigation by model.navigation.collectAsState(); val accepting by model.isAccepting.collectAsState()
+                            if (navigation is SharingNavigation.HouseholdContext) { shoppingViewModel.openContext((navigation as SharingNavigation.HouseholdContext).householdId); clearInvitation(); model.consumeNavigation() }
+                            AcceptInvitationScreen(token, accepting, (state as? SharingUiState.Error)?.message, { model.onAction(SharingAction.AcceptInvitation(token)) }, ::clearInvitation)
+                        }
+                        notificationInvitationId != null -> {
+                            membersViewModel = null
+                            val invitationId = notificationInvitationId!!
+                            val model = remember(invitationId) { SharingViewModel(sharingRepository, null, userIdFromJwt(session!!.accessToken)) }
+                            val state by model.state.collectAsState(); val navigation by model.navigation.collectAsState(); val accepting by model.isAccepting.collectAsState()
+                            if (navigation is SharingNavigation.HouseholdContext) { shoppingViewModel.openContext((navigation as SharingNavigation.HouseholdContext).householdId); notificationInvitationId = null; model.consumeNavigation() }
+                            AcceptInvitationScreen("", accepting, (state as? SharingUiState.Error)?.message, { model.acceptInvitationById(invitationId) }, { notificationInvitationId = null })
+                        }
+                        selectedHouseholdId != null -> {
+                            val householdId = selectedHouseholdId!!
+                            val model = remember(householdId) { SharingViewModel(sharingRepository, householdId, userIdFromJwt(session!!.accessToken)) }
+                            membersViewModel = model
+                            SharingRoute(model, { event ->
+                                when (event) {
+                                    is SharingNavigation.Invitation -> notificationInvitationId = event.invitationId
+                                    is SharingNavigation.HouseholdContext -> { shoppingViewModel.openContext(event.householdId); selectedHouseholdId = null }
+                                    is SharingNavigation.ListContext -> { shoppingViewModel.openContext(event.householdId, event.listId); selectedHouseholdId = null }
+                                }
+                            }, { selectedHouseholdId = null }, { contextualNotificationError = it })
+                        }
+                        else -> {
+                            membersViewModel = null
+                            NotificationBell(notificationState, globalBellOpen, { globalBellOpen = !globalBellOpen }, globalNotifications::onAction)
+                            ShoppingListApp(shoppingViewModel, authViewModel::logout, { selectedHouseholdId = it })
+                        }
                     }
                 }
             }
@@ -112,14 +132,21 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); receiveInvitationIntent(intent) }
     override fun onResume() { super.onResume(); foregroundRefreshGate?.onForeground { notificationViewModel?.onForeground(); membersViewModel?.onForeground() } }
+    override fun onSaveInstanceState(outState: Bundle) {
+        invitationHandoff.savedStateToken()?.let { outState.putString(PENDING_INVITATION_TOKEN, it) }
+        super.onSaveInstanceState(outState)
+    }
 
     private fun receiveInvitationIntent(intent: Intent?) {
-        invitationHandoff.receive(invitationToken(intent))
+        invitationHandoff.receiveLink(intent?.dataString)
         pendingInvitationToken = invitationHandoff.token
         intent?.data = null
     }
     private fun clearInvitation() { invitationHandoff.clear(); pendingInvitationToken = null; intent?.data = null }
-    private fun invitationToken(intent: Intent?) = intent?.data?.takeIf { it.path == "/invitations/accept" }?.getQueryParameter("token")?.takeIf(String::isNotBlank)
+
+    private companion object {
+        const val PENDING_INVITATION_TOKEN = "pending_invitation_token"
+    }
 }
 
 private fun userIdFromJwt(token: String): String? = runCatching {

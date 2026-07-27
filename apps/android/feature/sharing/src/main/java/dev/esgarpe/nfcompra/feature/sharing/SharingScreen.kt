@@ -27,11 +27,23 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun SharingRoute(viewModel: SharingViewModel, onNavigation: (SharingNavigation) -> Unit, onBack: () -> Unit) {
+fun SharingRoute(
+    viewModel: SharingViewModel,
+    onNavigation: (SharingNavigation) -> Unit,
+    onBack: () -> Unit,
+    onNotificationActionError: (String) -> Unit = {},
+) {
     val state by viewModel.state.collectAsState()
     val navigation by viewModel.navigation.collectAsState()
+    val notificationActionError by viewModel.notificationActionError.collectAsState()
     LaunchedEffect(viewModel) { viewModel.refresh() }
     navigation?.let { event -> LaunchedEffect(event) { onNavigation(event); viewModel.consumeNavigation() } }
+    notificationActionError?.let { error ->
+        LaunchedEffect(error) {
+            onNotificationActionError(error)
+            viewModel.dismissNotificationActionError()
+        }
+    }
     SharingScreen(state, viewModel::onAction, onBack)
 }
 
@@ -96,6 +108,19 @@ fun NotificationBell(state: NotificationUiState, open: Boolean, onToggle: () -> 
             else ready.notifications.forEach { notice -> TextButton(onClick = { onAction(SharingAction.OpenNotification(notice.id)) }) { Text(notice.title) } }
             if (unread > 0) TextButton(onClick = { onAction(SharingAction.MarkAllRead) }) { Text("Marcar todo como leído") }
         } }
+    }
+}
+
+@Composable
+fun NotificationActionErrorBanner(message: String, onDismiss: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(message, color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
+            TextButton(onClick = onDismiss) { Text("Cerrar aviso") }
+        }
     }
 }
 

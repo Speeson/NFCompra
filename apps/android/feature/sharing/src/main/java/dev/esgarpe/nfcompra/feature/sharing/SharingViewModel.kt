@@ -2,9 +2,12 @@ package dev.esgarpe.nfcompra.feature.sharing
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 sealed interface SharingUiState {
@@ -40,11 +43,21 @@ class SharingViewModel(
     val isAccepting: StateFlow<Boolean> = mutableIsAccepting.asStateFlow()
     private val mutableNotifications = MutableStateFlow<NotificationUiState>(NotificationUiState.Loading)
     val notifications: StateFlow<NotificationUiState> = mutableNotifications.asStateFlow()
+    private val mutableNotificationActionError = MutableStateFlow<String?>(null)
+    val notificationActionError: StateFlow<String?> = mutableNotificationActionError.asStateFlow()
 
     fun refresh() = viewModelScope.launch { householdId?.let { load(it) } ?: refreshNotifications() }
     fun refreshNotifications() = viewModelScope.launch { loadNotifications() }
+    suspend fun pollNotifications(intervalMillis: Long = NOTIFICATION_POLL_INTERVAL_MILLIS) {
+        require(intervalMillis > 0)
+        while (currentCoroutineContext().isActive) {
+            loadNotifications(showLoading = false)
+            delay(intervalMillis)
+        }
+    }
     fun onForeground() { refreshNotifications(); householdId?.let { refresh() } }
     fun consumeNavigation() { mutableNavigation.value = null }
+    fun dismissNotificationActionError() { mutableNotificationActionError.value = null }
     fun acceptInvitationById(invitationId: String) = viewModelScope.launch {
         if (mutableIsAccepting.value) return@launch
         mutableIsAccepting.value = true
@@ -95,24 +108,42 @@ class SharingViewModel(
         } catch (error: SharingApiException) { mutableState.value = SharingUiState.Error(error.message) }
         catch (_: Exception) { mutableState.value = SharingUiState.Error("No se pudo conectar con el servidor.") }
     }
-    private suspend fun loadNotifications() {
-        mutableNotifications.value = NotificationUiState.Loading
-        try { mutableNotifications.value = NotificationUiState.Ready(repository.notifications(), repository.unreadCount()) }
+    private suspend fun loadNotifications(showLoading: Boolean = true) {
+        if (showLoading) mutableNotifications.value = NotificationUiState.Loading
+        try { refreshNotificationSnapshot() }
         catch (error: SharingApiException) { mutableNotifications.value = NotificationUiState.Error(error.message) }
         catch (_: Exception) { mutableNotifications.value = NotificationUiState.Error("No se pudo conectar con el servidor.") }
     }
     private suspend fun openNotification(ready: SharingUiState.Ready?, notificationId: String) {
         val notifications = ready?.notifications ?: (mutableNotifications.value as? NotificationUiState.Ready)?.notifications.orEmpty()
         val notification = notifications.firstOrNull { it.id == notificationId } ?: return
-        repository.markRead(notificationId)
         mutableNavigation.value = when {
             notification.invitationId != null -> SharingNavigation.Invitation(notification.invitationId)
             notification.listId != null && notification.householdId != null -> SharingNavigation.ListContext(notification.householdId, notification.listId)
             notification.householdId != null -> SharingNavigation.HouseholdContext(notification.householdId)
             else -> null
         }
+        try {
+            repository.markRead(notificationId)
+            refreshNotificationSnapshot()
+        } catch (error: SharingApiException) {
+            mutableNotificationActionError.value = error.message
+        } catch (_: Exception) {
+            mutableNotificationActionError.value = "No se pudo conectar con el servidor."
+        }
     }
-    private companion object { val EMAIL = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$") }
+    private suspend fun refreshNotificationSnapshot() {
+        val notifications = repository.notifications()
+        val unreadCount = repository.unreadCount()
+        mutableNotifications.value = NotificationUiState.Ready(notifications, unreadCount)
+        (mutableState.value as? SharingUiState.Ready)?.let {
+            mutableState.value = it.copy(notifications = notifications, unreadCount = unreadCount)
+        }
+    }
+    private companion object {
+        const val NOTIFICATION_POLL_INTERVAL_MILLIS = 15_000L
+        val EMAIL = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
+    }
 }
 
 sealed interface NotificationUiState {
