@@ -65,6 +65,19 @@ class ShoppingListViewModel(private val repository: ShoppingListRepository) : Vi
         }
     }
 
+    fun openContext(householdId: String, listId: String? = null) = viewModelScope.launch {
+        try {
+            val lists = repository.lists(householdId)
+            val selected = listId?.let { wanted -> lists.firstOrNull { it.id == wanted } } ?: lists.firstOrNull()
+                ?: throw IllegalStateException("El hogar no tiene listas.")
+            publish(emptyList(), lists, householdId, selected.id)
+        } catch (error: ShoppingListApiException) {
+            mutableState.value = ShoppingListViewState.Error(error.message)
+        } catch (_: Exception) {
+            mutableState.value = ShoppingListViewState.Error("No se pudo conectar con el servidor.")
+        }
+    }
+
     private suspend fun selectHousehold(data: ShoppingListViewState.Data, householdId: String) {
         val lists = repository.lists(householdId)
         val list = lists.firstOrNull() ?: throw IllegalStateException("El hogar no tiene listas.")

@@ -208,6 +208,19 @@ class ShoppingListViewModelTest {
         assertEquals("{\"name\":\"Ferretería\"}", create?.body?.readUtf8())
     }
 
+    @Test fun `notification context selects its exact household and list`() = runTest {
+        server.enqueue(json("{\"lists\":[{\"id\":\"list-9\",\"householdId\":\"home-9\",\"name\":\"Ferretería\",\"isDefault\":false,\"version\":1,\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}"))
+        server.enqueue(json("{\"items\":[]}"))
+        val viewModel = ShoppingListViewModel(ShoppingListRepository(NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java)))
+        viewModel.openContext("home-9", "list-9")
+        viewModel.state.test {
+            assertEquals(ShoppingListViewState.Loading, awaitItem())
+            val data = awaitItem() as ShoppingListViewState.Data
+            assertEquals("home-9", data.selectedHouseholdId)
+            assertEquals("list-9", data.selectedListId)
+        }
+    }
+
     private fun enqueueInitialList() {
         server.enqueue(json("{\"households\":[{\"id\":\"home-1\",\"name\":\"Casa\",\"ownerId\":\"user-1\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}"))
         server.enqueue(json("{\"lists\":[{\"id\":\"list-1\",\"householdId\":\"home-1\",\"name\":\"Compra\",\"isDefault\":true,\"version\":1,\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}"))

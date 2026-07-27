@@ -29,24 +29,32 @@ sealed interface SharingNavigation {
 
 class SharingViewModel(
     private val repository: SharingDataSource,
-    private val householdId: String,
+    private val householdId: String?,
     private val currentUserId: String? = null,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow<SharingUiState>(SharingUiState.Loading)
     val state: StateFlow<SharingUiState> = mutableState.asStateFlow()
     private val mutableNavigation = MutableStateFlow<SharingNavigation?>(null)
     val navigation: StateFlow<SharingNavigation?> = mutableNavigation.asStateFlow()
+    private val mutableIsAccepting = MutableStateFlow(false)
+    val isAccepting: StateFlow<Boolean> = mutableIsAccepting.asStateFlow()
+    private val mutableNotifications = MutableStateFlow<NotificationUiState>(NotificationUiState.Loading)
+    val notifications: StateFlow<NotificationUiState> = mutableNotifications.asStateFlow()
 
-    fun refresh() = viewModelScope.launch { load() }
-    fun onForeground() = refresh()
+    fun refresh() = viewModelScope.launch { householdId?.let { load(it) } ?: refreshNotifications() }
+    fun refreshNotifications() = viewModelScope.launch { loadNotifications() }
+    fun onForeground() { refreshNotifications(); householdId?.let { refresh() } }
     fun consumeNavigation() { mutableNavigation.value = null }
     fun acceptInvitationById(invitationId: String) = viewModelScope.launch {
+        if (mutableIsAccepting.value) return@launch
+        mutableIsAccepting.value = true
         try { mutableNavigation.value = SharingNavigation.HouseholdContext(repository.acceptById(invitationId).householdId) }
         catch (error: SharingApiException) { mutableState.value = SharingUiState.Error(error.message) }
         catch (_: Exception) { mutableState.value = SharingUiState.Error("No se pudo conectar con el servidor.") }
+        finally { mutableIsAccepting.value = false }
     }
     fun onAction(action: SharingAction) = viewModelScope.launch {
-        if (action is SharingAction.Retry) { load(); return@launch }
+        if (action is SharingAction.Retry) { householdId?.let { load(it) } ?: loadNotifications(); return@launch }
         if (action is SharingAction.Invite && !EMAIL.matches(action.email.trim())) { mutableState.value = SharingUiState.Error("Introduce un correo válido."); return@launch }
         val ready = mutableState.value as? SharingUiState.Ready
         if (action is SharingAction.Invite || action is SharingAction.Revoke || action is SharingAction.RemoveMember) {
@@ -54,31 +62,48 @@ class SharingViewModel(
         }
         try {
             when (action) {
-                is SharingAction.Invite -> repository.invite(householdId, action.email.trim().lowercase())
-                is SharingAction.Revoke -> repository.revoke(householdId, action.invitationId)
-                is SharingAction.RemoveMember -> repository.removeMember(householdId, action.userId)
-                is SharingAction.AcceptInvitation -> mutableNavigation.value = SharingNavigation.HouseholdContext(repository.accept(action.token).householdId)
+                is SharingAction.Invite -> repository.invite(householdId ?: return@launch, action.email.trim().lowercase())
+                is SharingAction.Revoke -> repository.revoke(householdId ?: return@launch, action.invitationId)
+                is SharingAction.RemoveMember -> repository.removeMember(householdId ?: return@launch, action.userId)
+                is SharingAction.AcceptInvitation -> accept(action.token)
                 is SharingAction.OpenNotification -> openNotification(ready, action.notificationId)
-                SharingAction.MarkAllRead -> { repository.markAllRead(); load() }
+                SharingAction.MarkAllRead -> { repository.markAllRead(); householdId?.let { load(it) } ?: loadNotifications() }
                 SharingAction.Retry -> Unit
             }
-            if (action !is SharingAction.AcceptInvitation && action !is SharingAction.OpenNotification && action !== SharingAction.MarkAllRead) load()
+            if (action !is SharingAction.AcceptInvitation && action !is SharingAction.OpenNotification && action !== SharingAction.MarkAllRead) householdId?.let { load(it) } ?: loadNotifications()
         } catch (error: SharingApiException) { mutableState.value = SharingUiState.Error(error.message) }
         catch (_: Exception) { mutableState.value = SharingUiState.Error("No se pudo conectar con el servidor.") }
     }
 
-    private suspend fun load() {
+    private suspend fun accept(token: String) {
+        if (mutableIsAccepting.value) return
+        mutableIsAccepting.value = true
+        try { mutableNavigation.value = SharingNavigation.HouseholdContext(repository.accept(token).householdId) }
+        finally { mutableIsAccepting.value = false }
+    }
+
+    private suspend fun load(householdId: String) {
         mutableState.value = SharingUiState.Loading
         try {
             val members = repository.members(householdId)
             val isOwner = members.any { it.userId == currentUserId && it.role == "owner" }
             val invitations = if (isOwner) repository.invitations(householdId) else emptyList()
-            mutableState.value = SharingUiState.Ready(members, invitations, repository.notifications(), repository.unreadCount(), isOwner)
+            val notifications = repository.notifications()
+            val unreadCount = repository.unreadCount()
+            mutableNotifications.value = NotificationUiState.Ready(notifications, unreadCount)
+            mutableState.value = SharingUiState.Ready(members, invitations, notifications, unreadCount, isOwner)
         } catch (error: SharingApiException) { mutableState.value = SharingUiState.Error(error.message) }
         catch (_: Exception) { mutableState.value = SharingUiState.Error("No se pudo conectar con el servidor.") }
     }
+    private suspend fun loadNotifications() {
+        mutableNotifications.value = NotificationUiState.Loading
+        try { mutableNotifications.value = NotificationUiState.Ready(repository.notifications(), repository.unreadCount()) }
+        catch (error: SharingApiException) { mutableNotifications.value = NotificationUiState.Error(error.message) }
+        catch (_: Exception) { mutableNotifications.value = NotificationUiState.Error("No se pudo conectar con el servidor.") }
+    }
     private suspend fun openNotification(ready: SharingUiState.Ready?, notificationId: String) {
-        val notification = ready?.notifications?.firstOrNull { it.id == notificationId } ?: return
+        val notifications = ready?.notifications ?: (mutableNotifications.value as? NotificationUiState.Ready)?.notifications.orEmpty()
+        val notification = notifications.firstOrNull { it.id == notificationId } ?: return
         repository.markRead(notificationId)
         mutableNavigation.value = when {
             notification.invitationId != null -> SharingNavigation.Invitation(notification.invitationId)
@@ -88,4 +113,10 @@ class SharingViewModel(
         }
     }
     private companion object { val EMAIL = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$") }
+}
+
+sealed interface NotificationUiState {
+    data object Loading : NotificationUiState
+    data class Ready(val notifications: List<NotificationUiModel>, val unreadCount: Int) : NotificationUiState
+    data class Error(val message: String) : NotificationUiState
 }

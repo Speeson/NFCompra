@@ -43,7 +43,12 @@ fun SharingScreen(state: SharingUiState, onAction: (SharingAction) -> Unit, onBa
     Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = onBack) { Text("Volver a la lista") }
-            NotificationBell(state, bellOpen, { bellOpen = !bellOpen }, onAction)
+            val notificationState = when (state) {
+                is SharingUiState.Ready -> NotificationUiState.Ready(state.notifications, state.unreadCount)
+                SharingUiState.Loading -> NotificationUiState.Loading
+                is SharingUiState.Error -> NotificationUiState.Error(state.message)
+            }
+            NotificationBell(notificationState, bellOpen, { bellOpen = !bellOpen }, onAction)
         }
         when (state) {
             SharingUiState.Loading -> Text("Cargando miembros…")
@@ -80,8 +85,8 @@ fun SharingScreen(state: SharingUiState, onAction: (SharingAction) -> Unit, onBa
 }
 
 @Composable
-private fun NotificationBell(state: SharingUiState, open: Boolean, onToggle: () -> Unit, onAction: (SharingAction) -> Unit) {
-    val ready = state as? SharingUiState.Ready
+fun NotificationBell(state: NotificationUiState, open: Boolean, onToggle: () -> Unit, onAction: (SharingAction) -> Unit) {
+    val ready = state as? NotificationUiState.Ready
     val unread = ready?.unreadCount ?: 0
     Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
         IconButton(onClick = onToggle, modifier = Modifier.semantics { contentDescription = "Notificaciones: $unread sin leer" }) { Text("🔔") }

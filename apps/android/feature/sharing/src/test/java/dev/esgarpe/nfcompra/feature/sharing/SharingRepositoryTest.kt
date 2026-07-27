@@ -50,6 +50,19 @@ class SharingRepositoryTest {
         assertEquals("/v1/notifications/read-all", requests[2]!!.path)
     }
 
+    @Test fun `maps member and notification GET responses`() = runTest {
+        server.enqueue(json("{\"members\":[{\"userId\":\"owner\",\"name\":\"Ana\",\"email\":\"ana@example.com\",\"role\":\"owner\",\"createdAt\":\"2026-07-27T00:00:00Z\"}]}"))
+        server.enqueue(json("{\"notifications\":[{\"id\":\"notice-1\",\"type\":\"item_updated\",\"title\":\"Producto\",\"body\":\"Leche\",\"householdId\":\"home-1\",\"listId\":\"list-1\",\"invitationId\":null,\"readAt\":null,\"createdAt\":\"2026-07-27T00:00:00Z\"}]}"))
+        server.enqueue(json("{\"count\":1}"))
+        val repo = SharingRepository(NetworkClient.authenticatedApi(server.url("/").toString(), TestTokenStore(), SharingApi::class.java))
+        assertEquals("Ana", repo.members("home-1").single().name)
+        assertEquals("list-1", repo.notifications().single().listId)
+        assertEquals(1, repo.unreadCount())
+        assertEquals("/v1/households/home-1/members", server.takeRequest(1, TimeUnit.SECONDS)!!.path)
+        assertEquals("/v1/notifications", server.takeRequest(1, TimeUnit.SECONDS)!!.path)
+        assertEquals("/v1/notifications/unread-count", server.takeRequest(1, TimeUnit.SECONDS)!!.path)
+    }
+
     private fun json(body: String, status: Int = 200) = MockResponse().setResponseCode(status).setHeader("content-type", "application/json").setBody(body)
 }
 
