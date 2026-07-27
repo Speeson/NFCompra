@@ -5,12 +5,13 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class InvitationTokenHandoffTest {
-    @Test fun `consumes a raw intent token once and cannot revive it after clear`() {
-        val handoff = InvitationTokenHandoff()
-        handoff.receive("raw-token")
-        assertEquals("raw-token", handoff.token)
-        handoff.clear()
-        handoff.receive(null)
-        assertNull(handoff.token)
+    @Test fun `consumed intent token is absent after clear and Activity recreation`() {
+        val initialActivity = InvitationTokenHandoff()
+        initialActivity.receive("raw-token")
+        assertEquals("raw-token", initialActivity.token)
+        initialActivity.clear()
+        val recreatedActivity = InvitationTokenHandoff()
+        recreatedActivity.receive(null)
+        assertNull(recreatedActivity.token)
     }
 }

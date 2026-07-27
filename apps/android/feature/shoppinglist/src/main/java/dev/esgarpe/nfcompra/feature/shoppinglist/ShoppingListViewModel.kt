@@ -11,6 +11,8 @@ import kotlinx.coroutines.launch
 class ShoppingListViewModel(private val repository: ShoppingListRepository) : ViewModel() {
     private val mutableState = MutableStateFlow<ShoppingListViewState>(ShoppingListViewState.Loading)
     val state: StateFlow<ShoppingListViewState> = mutableState.asStateFlow()
+    private var pendingContext: ShoppingContext? = null
+    private var loadGeneration = 0
 
     fun onAction(action: ShoppingListAction) {
         viewModelScope.launch {
@@ -47,36 +49,47 @@ class ShoppingListViewModel(private val repository: ShoppingListRepository) : Vi
         }
     }
 
-    fun load() = viewModelScope.launch {
+    fun load() = loadForCurrentIntent()
+
+    fun openContext(householdId: String, listId: String? = null) {
+        pendingContext = ShoppingContext(householdId, listId)
+        loadForCurrentIntent()
+    }
+
+    private fun loadForCurrentIntent() {
+        val generation = ++loadGeneration
+        val context = pendingContext
+        viewModelScope.launch {
         try {
             val households = repository.households()
             if (households.isEmpty()) {
                 mutableState.value = ShoppingListViewState.NoHouseholds
                 return@launch
             }
-            val household = households.first()
+            val household = context?.let { requested -> households.firstOrNull { it.id == requested.householdId } }
+                ?: households.first()
             val lists = repository.lists(household.id)
-            val list = lists.firstOrNull() ?: throw IllegalStateException("El hogar no tiene listas.")
-            publish(households, lists, household.id, list.id)
+            val list = context?.listId?.let { requested -> lists.firstOrNull { it.id == requested } }
+                ?: lists.firstOrNull() ?: throw IllegalStateException("El hogar no tiene listas.")
+            val items = repository.observeItems(list.id).first()
+            if (generation != loadGeneration) return@launch
+            mutableState.value = ShoppingListViewState.Data(
+                content = ShoppingListUiState(list.name, items.filterNot { it.checked }, items.filter { it.checked }, false),
+                households = households,
+                lists = lists,
+                selectedHouseholdId = household.id,
+                selectedListId = list.id,
+            )
+            if (pendingContext == context) pendingContext = null
         } catch (error: ShoppingListApiException) {
-            mutableState.value = ShoppingListViewState.Error(error.message)
+            if (generation == loadGeneration) mutableState.value = ShoppingListViewState.Error(error.message)
         } catch (_: Exception) {
-            mutableState.value = ShoppingListViewState.Error("No se pudo conectar con el servidor.")
+            if (generation == loadGeneration) mutableState.value = ShoppingListViewState.Error("No se pudo conectar con el servidor.")
+        }
         }
     }
 
-    fun openContext(householdId: String, listId: String? = null) = viewModelScope.launch {
-        try {
-            val lists = repository.lists(householdId)
-            val selected = listId?.let { wanted -> lists.firstOrNull { it.id == wanted } } ?: lists.firstOrNull()
-                ?: throw IllegalStateException("El hogar no tiene listas.")
-            publish(emptyList(), lists, householdId, selected.id)
-        } catch (error: ShoppingListApiException) {
-            mutableState.value = ShoppingListViewState.Error(error.message)
-        } catch (_: Exception) {
-            mutableState.value = ShoppingListViewState.Error("No se pudo conectar con el servidor.")
-        }
-    }
+    private data class ShoppingContext(val householdId: String, val listId: String?)
 
     private suspend fun selectHousehold(data: ShoppingListViewState.Data, householdId: String) {
         val lists = repository.lists(householdId)

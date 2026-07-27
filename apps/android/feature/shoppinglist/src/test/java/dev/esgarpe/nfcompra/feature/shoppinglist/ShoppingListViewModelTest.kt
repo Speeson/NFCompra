@@ -8,12 +8,15 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -209,6 +212,7 @@ class ShoppingListViewModelTest {
     }
 
     @Test fun `notification context selects its exact household and list`() = runTest {
+        server.enqueue(json("{\"households\":[{\"id\":\"home-9\",\"name\":\"Taller\",\"ownerId\":\"owner\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}"))
         server.enqueue(json("{\"lists\":[{\"id\":\"list-9\",\"householdId\":\"home-9\",\"name\":\"Ferretería\",\"isDefault\":false,\"version\":1,\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}"))
         server.enqueue(json("{\"items\":[]}"))
         val viewModel = ShoppingListViewModel(ShoppingListRepository(NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java)))
@@ -218,6 +222,27 @@ class ShoppingListViewModelTest {
             val data = awaitItem() as ShoppingListViewState.Data
             assertEquals("home-9", data.selectedHouseholdId)
             assertEquals("list-9", data.selectedListId)
+        }
+    }
+
+    @Test fun `context requested during initial load wins and retains household selectors`() = runTest {
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest) = when (request.path) {
+                "/v1/households" -> json("{\"households\":[{\"id\":\"home-1\",\"name\":\"Casa\",\"ownerId\":\"owner\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"},{\"id\":\"home-9\",\"name\":\"Taller\",\"ownerId\":\"owner\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}")
+                "/v1/households/home-9/lists" -> json("{\"lists\":[{\"id\":\"list-9\",\"householdId\":\"home-9\",\"name\":\"Ferretería\",\"isDefault\":false,\"version\":1,\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}")
+                "/v1/lists/list-9/items" -> json("{\"items\":[]}")
+                else -> MockResponse().setResponseCode(404)
+            }
+        }
+        val viewModel = ShoppingListViewModel(ShoppingListRepository(NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java)))
+        viewModel.state.test {
+            assertEquals(ShoppingListViewState.Loading, awaitItem())
+            viewModel.openContext("home-9", "list-9")
+            viewModel.load()
+            val data = awaitItem() as ShoppingListViewState.Data
+            assertEquals("home-9", data.selectedHouseholdId)
+            assertEquals("list-9", data.selectedListId)
+            assertEquals(listOf("Casa", "Taller"), data.households.map { it.name })
         }
     }
 
