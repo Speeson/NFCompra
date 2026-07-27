@@ -3,7 +3,7 @@ import type { EmailSender } from '../email/email-sender';
 import { isHouseholdMember, isHouseholdOwner } from '../households/repository';
 import type { AuthUser } from '../middleware/auth';
 import { errorResponse, notFound } from '../shared/http';
-import { acceptInvitation, createOrRenewInvitation, InvitationAcceptanceError, listHouseholdMembers, listInvitations, removeHouseholdMember, revokeInvitation } from './repository';
+import { acceptInvitation, acceptInvitationById, createOrRenewInvitation, InvitationAcceptanceError, listHouseholdMembers, listInvitations, removeHouseholdMember, revokeInvitation } from './repository';
 
 const EMAIL_MAX_LENGTH = 254;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -50,6 +50,18 @@ export async function handleInvitationRoute(request: Request, env: Env, user: Au
     }
   }
 
+  const notificationInvitationMatch = path.match(/^\/v1\/invitations\/([^/]+)\/accept$/);
+  if (notificationInvitationMatch) {
+    if (request.method !== 'POST') return null;
+    if (!user.emailVerifiedAt) return errorResponse('EMAIL_NOT_VERIFIED', 'Debes verificar tu correo antes de aceptar una invitacion.', 403);
+    try {
+      return Response.json(await acceptInvitationById(env, { invitationId: notificationInvitationMatch[1], userId: user.id, userEmail: user.email.trim().toLowerCase() }));
+    } catch (error) {
+      if (error instanceof InvitationAcceptanceError) return invitationError(error.code);
+      throw error;
+    }
+  }
+
   const invitationMatch = path.match(/^\/v1\/households\/([^/]+)\/invitations(?:\/([^/]+))?$/);
   if (invitationMatch) {
     const [, householdId, invitationId] = invitationMatch;
@@ -83,8 +95,11 @@ export async function handleInvitationRoute(request: Request, env: Env, user: Au
   const memberMatch = path.match(/^\/v1\/households\/([^/]+)\/members(?:\/([^/]+))?$/);
   if (!memberMatch) return null;
   const [, householdId, memberUserId] = memberMatch;
+  if (!memberUserId && request.method === 'GET') {
+    if (!(await isHouseholdMember(env, householdId, user.id))) return errorResponse('FORBIDDEN', 'No tienes permisos para consultar este hogar.', 403);
+    return Response.json({ members: await listHouseholdMembers(env, householdId) });
+  }
   if (!(await isHouseholdOwner(env, householdId, user.id))) return errorResponse('FORBIDDEN', 'No tienes permisos para gestionar este hogar.', 403);
-  if (!memberUserId && request.method === 'GET') return Response.json({ members: await listHouseholdMembers(env, householdId) });
   if (!memberUserId || request.method !== 'DELETE') return null;
   const result = await removeHouseholdMember(env, { householdId, requesterId: user.id, memberUserId });
   if (result === 'self') return errorResponse('CANNOT_REMOVE_SELF', 'No puedes eliminarte del hogar.', 409);

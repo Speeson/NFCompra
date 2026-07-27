@@ -73,6 +73,19 @@ export async function acceptInvitation(env: Env, input: { rawToken: string; user
     FROM invitations WHERE token_hash = ?
   `).bind(tokenHash).first<InvitationRow>();
   if (!row) throw new InvitationAcceptanceError('INVALID_INVITATION_TOKEN');
+  return completeInvitation(env, row, input);
+}
+
+export async function acceptInvitationById(env: Env, input: { invitationId: string; userId: string; userEmail: string }): Promise<{ invitation: Invitation; householdId: string }> {
+  const row = await env.DB.prepare(`
+    SELECT id, household_id, invited_email, status, expires_at, invited_by, created_at
+    FROM invitations WHERE id = ?
+  `).bind(input.invitationId).first<InvitationRow>();
+  if (!row) throw new InvitationAcceptanceError('INVALID_INVITATION_TOKEN');
+  return completeInvitation(env, row, input);
+}
+
+async function completeInvitation(env: Env, row: InvitationRow, input: { userId: string; userEmail: string }): Promise<{ invitation: Invitation; householdId: string }> {
   if (row.status === 'accepted') throw new InvitationAcceptanceError('INVITATION_ALREADY_ACCEPTED');
   if (row.status === 'revoked') throw new InvitationAcceptanceError('INVITATION_REVOKED');
   if (row.status === 'expired' || row.expires_at <= new Date().toISOString()) {

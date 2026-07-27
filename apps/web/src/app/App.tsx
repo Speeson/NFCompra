@@ -38,7 +38,7 @@ function AppRoute(): JSX.Element {
 
   useEffect(() => {
     const continuation = sessionStorage.getItem('nfcompra.invitation-continuation');
-    if (status === 'authenticated' && location.pathname === '/login' && continuation?.startsWith('/invitations/accept?token=')) navigate(continuation);
+    if (status === 'authenticated' && location.pathname === '/login' && continuation?.startsWith('/invitations/')) navigate(continuation);
   }, [location.pathname, status]);
 
   async function handleLogout(): Promise<void> {
@@ -49,6 +49,8 @@ function AppRoute(): JSX.Element {
 
   if (status === 'loading') return <main><p role="status">Comprobando tu sesión…</p></main>;
   if (location.pathname === '/invitations/accept') return <AcceptInvitationPage token={location.searchParams.get('token')} onNavigate={navigate} />;
+  const notificationInvitation = location.pathname.match(/^\/invitations\/([^/]+)\/accept$/);
+  if (notificationInvitation) return <AcceptInvitationPage token={null} invitationId={notificationInvitation[1]} onNavigate={navigate} />;
   if (location.pathname === '/register') return <RegisterPage onNavigate={navigate} />;
   if (location.pathname === '/auth/verify') return <VerifyEmailPage token={location.searchParams.get('token')} onNavigate={navigate} />;
   if (location.pathname === '/auth/reset-password') return <ResetPasswordPage token={location.searchParams.get('token')} onNavigate={navigate} />;
@@ -65,6 +67,6 @@ function AppRoute(): JSX.Element {
       <p>Sesión iniciada como {user?.name}</p>
       <button type="button" onClick={() => void handleLogout()}>Cerrar sesión</button>
     </header>
-    <ShoppingListRoute currentUserId={user?.id ?? ''} />
+    <ShoppingListRoute currentUserId={user?.id ?? ''} requestedHouseholdId={location.searchParams.get('household')} requestedListId={location.searchParams.get('list')} />
   </>;
 }

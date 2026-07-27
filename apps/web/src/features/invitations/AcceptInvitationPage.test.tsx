@@ -63,4 +63,26 @@ describe('invitation acceptance', () => {
     expect(window.location.search).toBe('?household=home-2');
     expect(sessionStorage.getItem('nfcompra.invitation-continuation')).toBeNull();
   });
+
+  it('accepts an invitation notification route by invitation id without a token', async () => {
+    window.history.replaceState({}, '', '/invitations/invite-1/accept');
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/auth/refresh')) return Promise.resolve(Response.json({ accessToken: 'access' }));
+      if (url.endsWith('/me')) return Promise.resolve(Response.json({ user: { id: 'user-1', name: 'Ana', email: 'ana@example.test', emailVerifiedAt: '2026-07-27T00:00:00.000Z', createdAt: '2026-07-27T00:00:00.000Z', updatedAt: '2026-07-27T00:00:00.000Z' } }));
+      if (url.endsWith('/invitations/invite-1/accept')) return Promise.resolve(Response.json({ householdId: 'home-2', invitation: { id: 'invite-1' } }));
+      if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'home-2', name: 'Piso' }] }));
+      if (url.endsWith('/households/home-2/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-2', householdId: 'home-2', name: 'Compra', isDefault: true, version: 1, createdAt: '2026-07-27T00:00:00.000Z', updatedAt: '2026-07-27T00:00:00.000Z' }] }));
+      if (url.endsWith('/lists/list-2/items')) return Promise.resolve(Response.json({ items: [] }));
+      if (url.endsWith('/households/home-2/members')) return Promise.resolve(Response.json({ members: [] }));
+      if (url.endsWith('/notifications')) return Promise.resolve(Response.json({ notifications: [] }));
+      if (url.endsWith('/notifications/unread-count')) return Promise.resolve(Response.json({ count: 0 }));
+      throw new Error(`Solicitud inesperada: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<AuthProvider><App /></AuthProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Aceptar invitación' }));
+    expect(await screen.findByRole('heading', { name: 'Compra' })).toBeVisible();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/invitations/invite-1/accept'))).toBe(true);
+  });
 });

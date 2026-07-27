@@ -113,6 +113,9 @@ it('manages the invitation lifecycle without persisting raw tokens or exposing o
 
   const memberCannotListInvitations = await dispatch(`/v1/households/${household.household.id}/invitations`, undefined, invited.headers, 'GET');
   expect(memberCannotListInvitations.status).toBe(403);
+  const memberReadMembers = await dispatch(`/v1/households/${household.household.id}/members`, undefined, invited.headers, 'GET');
+  expect(memberReadMembers.status).toBe(200);
+  expect(await memberReadMembers.json()).toMatchObject({ members: [{ userId: owner.id, role: 'owner' }, { userId: invited.id, role: 'member' }] });
   const members = await dispatch(`/v1/households/${household.household.id}/members`, undefined, owner.headers, 'GET');
   expect(await members.json()).toMatchObject({ members: [{ userId: owner.id, role: 'owner' }, { userId: invited.id, role: 'member' }] });
 
@@ -141,6 +144,22 @@ it('manages the invitation lifecycle without persisting raw tokens or exposing o
   const removed = await dispatch(`/v1/households/${household.household.id}/members/${invited.id}`, undefined, owner.headers, 'DELETE');
   expect(removed.status).toBe(200);
   expect(await removed.json()).toEqual({ status: 'removed' });
+});
+
+it('accepts a notification-linked invitation by id only for its verified recipient', async () => {
+  const owner = await verifiedUser('Ana');
+  const invited = await verifiedUser('Bea');
+  const other = await verifiedUser('Cora');
+  const household = await (await dispatch('/v1/households', { name: 'Casa' }, owner.headers)).json<{ household: { id: string } }>();
+  const created = await dispatch(`/v1/households/${household.household.id}/invitations`, { email: invited.email }, owner.headers);
+  const { invitation } = await created.json<{ invitation: { id: string } }>();
+
+  const wrongRecipient = await dispatch(`/v1/invitations/${invitation.id}/accept`, {}, other.headers);
+  expect(wrongRecipient.status).toBe(403);
+  expect(await wrongRecipient.json()).toMatchObject({ error: { code: 'INVITATION_EMAIL_MISMATCH' } });
+  const accepted = await dispatch(`/v1/invitations/${invitation.id}/accept`, {}, invited.headers);
+  expect(accepted.status).toBe(200);
+  expect(await accepted.json()).toMatchObject({ householdId: household.household.id, invitation: { id: invitation.id, status: 'accepted' } });
 });
 
 it('notifies only relevant users about sharing and grouped remote list activity', async () => {

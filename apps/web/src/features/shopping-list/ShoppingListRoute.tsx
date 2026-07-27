@@ -20,10 +20,10 @@ export function createWebQueryClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
 }
 
-export function ShoppingListRoute({ currentUserId = '' }: { currentUserId?: string }): JSX.Element {
+export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, requestedListId }: { currentUserId?: string; requestedHouseholdId?: string | null; requestedListId?: string | null }): JSX.Element {
   const queryClient = useQueryClient();
-  const [householdId, setHouseholdId] = useState<string | undefined>(() => new URL(window.location.href).searchParams.get('household') ?? undefined);
-  const [listId, setListId] = useState<string | undefined>(() => new URL(window.location.href).searchParams.get('list') ?? undefined);
+  const [householdId, setHouseholdId] = useState<string | undefined>(() => requestedHouseholdId ?? new URL(window.location.href).searchParams.get('household') ?? undefined);
+  const [listId, setListId] = useState<string | undefined>(() => requestedListId ?? new URL(window.location.href).searchParams.get('list') ?? undefined);
   const [message, setMessage] = useState<string>();
   const [conflict, setConflict] = useState<{ current: ApiShoppingItem; retry: () => void }>();
   const nextRevision = useRef(0);
@@ -35,6 +35,10 @@ export function ShoppingListRoute({ currentUserId = '' }: { currentUserId?: stri
     refetchInterval: 15_000, refetchIntervalInBackground: false,
   });
 
+  useEffect(() => {
+    if (requestedHouseholdId && requestedHouseholdId !== householdId) { setHouseholdId(requestedHouseholdId); setListId(requestedListId ?? undefined); }
+    else if (requestedHouseholdId && requestedListId && requestedListId !== listId) setListId(requestedListId);
+  }, [householdId, listId, requestedHouseholdId, requestedListId]);
   useEffect(() => {
     const households = householdsQuery.data ?? [];
     const first = households[0];

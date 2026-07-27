@@ -50,6 +50,7 @@ export function createWorker(emailSender?: EmailSender): ExportedHandler<Env> {
 function isShoppingRoute(path: string): boolean {
   return path === '/v1/households'
     || path === '/v1/invitations/accept'
+    || /^\/v1\/invitations\/[^/]+\/accept$/.test(path)
     || path === '/v1/notifications'
     || path === '/v1/notifications/unread-count'
     || path === '/v1/notifications/read-all'
