@@ -1,8 +1,61 @@
-import type { JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
+import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 
-import { demoShoppingItems } from '../features/shopping-list/fixtures';
-import { ShoppingListScreen } from '../features/shopping-list/ShoppingListScreen';
+import { createWebQueryClient, ShoppingListRoute } from '../features/shopping-list/ShoppingListRoute';
+import { useSession } from '../features/auth/AuthProvider';
+import { ForgotPasswordPage, LoginPage, ResendVerificationPage } from '../features/auth/LoginPage';
+import { RegisterPage, ResetPasswordPage, VerifyEmailPage } from '../features/auth/RegisterPage';
 
 export function App(): JSX.Element {
-  return <ShoppingListScreen title="Mercadona" items={demoShoppingItems} isOffline={false} />;
+  const { user } = useSession();
+  const clientScope = useRef<{ userId: string | null; client: ReturnType<typeof createWebQueryClient> } | null>(null);
+  const userId = user?.id ?? null;
+  if (!clientScope.current || clientScope.current.userId !== userId) {
+    clientScope.current?.client.clear();
+    clientScope.current = { userId, client: createWebQueryClient() };
+  }
+  return <QueryClientProvider client={clientScope.current.client}><AppRoute /></QueryClientProvider>;
+}
+
+function AppRoute(): JSX.Element {
+  const [location, setLocation] = useState(() => new URL(window.location.href));
+  const [logoutError, setLogoutError] = useState(false);
+  const { status, user, logout } = useSession();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const updateLocation = () => setLocation(new URL(window.location.href));
+    window.addEventListener('popstate', updateLocation);
+    return () => window.removeEventListener('popstate', updateLocation);
+  }, []);
+
+  function navigate(path: string): void {
+    window.history.pushState({}, '', path);
+    setLocation(new URL(window.location.href));
+  }
+
+  async function handleLogout(): Promise<void> {
+    setLogoutError(false);
+    queryClient.clear();
+    if (!await logout()) setLogoutError(true);
+  }
+
+  if (status === 'loading') return <main><p role="status">Comprobando tu sesión…</p></main>;
+  if (location.pathname === '/register') return <RegisterPage onNavigate={navigate} />;
+  if (location.pathname === '/auth/verify') return <VerifyEmailPage token={location.searchParams.get('token')} onNavigate={navigate} />;
+  if (location.pathname === '/auth/reset-password') return <ResetPasswordPage token={location.searchParams.get('token')} onNavigate={navigate} />;
+  if (location.pathname === '/auth/forgot-password') return <ForgotPasswordPage onNavigate={navigate} />;
+  if (location.pathname === '/auth/resend-verification') return <ResendVerificationPage onNavigate={navigate} />;
+  if (status === 'anonymous') return <>
+    {logoutError && <p role="alert">No se pudo cerrar sesión en el servidor. La sesión local se ha cerrado.</p>}
+    <LoginPage onNavigate={navigate} />
+  </>;
+
+  return <>
+    <header>
+      <p>Sesión iniciada como {user?.name}</p>
+      <button type="button" onClick={() => void handleLogout()}>Cerrar sesión</button>
+    </header>
+    <ShoppingListRoute />
+  </>;
 }

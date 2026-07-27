@@ -1,55 +1,77 @@
 # NFCompra
 
-Base del monorepo de NFCompra. El cimiento actual contiene los workspaces de la API y la web, junto con la estructura inicial de Android. La API incluye un Worker local, las migraciones D1 iniciales y su prueba de salud; todavia no hay funcionalidades de compra ni servicios desplegados.
+NFCompra es un MVP online para una persona. Incluye una API local con Worker/D1, una PWA y una aplicacion Android; los tres clientes usan el contrato `/v1`. No hay servicios desplegados.
 
-## Prerrequisitos
+## Requisitos
 
 - Node.js LTS y npm.
-- Wrangler instalado para ejecutar la API local de Cloudflare Workers. La autenticacion solo sera necesaria cuando se realicen operaciones remotas autorizadas.
-- Android Studio y JDK 21 para el proyecto Android Compose.
+- Android Studio, JDK 21 y Android SDK disponible mediante `ANDROID_HOME` para compilar Android.
 
-## Comandos
+## Desarrollo local
 
-Desde la raiz del repositorio:
+Instala las dependencias desde la raiz:
 
 ```sh
 npm install
-npm run api:dev
-npm run web:dev
-npm run api:test
-npm run web:test
 ```
 
-Para verificar y compilar la PWA local:
+Inicia la API local en un terminal:
 
 ```sh
-npm run web:test
+npm run api:dev
+```
+
+Inicia la PWA en otro terminal:
+
+```sh
+npm run web:dev
+```
+
+El servidor de desarrollo de la PWA reenvia `/v1` a `http://localhost:8787`, por lo que las rutas autenticadas y las listas usan la API local. `GET /health` responde `200` con `{ "status": "ok" }` en la API local.
+
+La variante `debug` de Android usa `http://10.0.2.2:8787/` como base de API para el emulador. Se puede sustituir mediante la propiedad de Gradle `NFCompraApiBaseUrl` o la variable de entorno `NFCOMPRA_API_BASE_URL`.
+
+## Verificacion
+
+Desde la raiz, para la API:
+
+```sh
+npm --workspace @nfcompra/api run test
+npx tsc --project apps/api/tsconfig.json
+```
+
+Para la PWA:
+
+```sh
+npm --workspace @nfcompra/web run test
 npm --workspace @nfcompra/web run typecheck
 npm --workspace @nfcompra/web run build
 ```
 
-Para aplicar el esquema a D1 local y ejecutar las pruebas de la API:
+Desde `apps/android`, para las pruebas unitarias de autenticacion y listas, y el APK de depuracion:
 
 ```sh
-npm --workspace @nfcompra/api run db:migrate:local
-npm run api:test
+.\gradlew.bat :feature:auth:testDebugUnitTest :feature:shoppinglist:testDebugUnitTest :app:assembleDebug
 ```
 
-Al iniciar la API local con `npm run api:dev`, `GET /health` responde `200` con `{ "status": "ok" }`. El Worker y D1 se ejecutan unicamente en local: no hay ningun entorno desplegado.
+El APK queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`.
 
-La PWA local tiene pruebas, chequeo de tipos y compilacion. Incluye manifest, iconos y service worker generados durante la compilacion; su pantalla usa fixtures locales y no se conecta a la API ni incluye autenticacion. Los comandos de desarrollo no despliegan servicios.
+## Funcionalidad actual
 
-Para verificar la logica de lista y generar el APK Android de depuracion, desde `apps/android`:
+- La API permite registro, verificacion y reenvio de verificacion de correo, inicio y cierre de sesion, renovacion, recuperacion y restablecimiento de contrasena, y consulta y edicion de perfil. Las pruebas usan un remitente falso; no se documentan claves ni se verifica el envio de correo real.
+- Una persona puede crear varios hogares manualmente; cada hogar obtiene una lista predeterminada y puede tener listas adicionales. Las mutaciones de productos requieren autenticacion y cubren alta, edicion, marcado, borrado, purga, busqueda normalizada y conflictos de version. Un `operationId` completado reproduce su respuesta y una operacion pendiente devuelve `409 OPERATION_IN_PROGRESS`.
+- La PWA tiene rutas de registro, acceso, verificacion, reenvio, recuperacion, restablecimiento y cierre de sesion. Conserva el token de acceso en memoria y la API gestiona la cookie de renovacion. Permite seleccionar hogares y listas, crear hogares/listas y gestionar productos; consulta la lista visible cada 15 segundos y aplica mutaciones optimistas con reintento ante conflictos.
+- Android ofrece las pantallas de autenticacion y conserva los tokens de sesion y renovacion mediante Android Keystore. La pantalla autenticada permite seleccionar y gestionar hogares, listas y productos, con estados de carga, error y datos, y reintento ante conflictos.
 
-```sh
-./gradlew :feature:shoppinglist:testDebugUnitTest :app:assembleDebug
-```
+## Limites del MVP
 
-El APK generado queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`. La prueba instrumentada de Compose requiere un dispositivo o emulador ADB conectado; no se ejecuto aqui porque no habia ninguno conectado.
+- No hay despliegue ni operaciones remotas incluidas.
+- No hay miembros compartidos ni invitaciones.
+- No hay persistencia ni cola de mutaciones offline, Room, NFC, WorkManager ni WebSockets.
 
-## Estructura inicial
+## Estructura
 
-- `apps/api`: Worker local de Cloudflare, esquema y migraciones D1, y prueba de salud.
-- `apps/web`: PWA local con Vite y React, pantalla de lista de demostracion y fixtures sin backend.
-- `apps/android`: aplicacion Compose configurada, modulos de diseno y lista de demostracion con fixtures locales.
-- `docs`: diseno, plan de implementacion y documentos de arquitectura.
+- `apps/api`: Worker local, migraciones D1 y contrato `/v1`.
+- `apps/web`: PWA React con autenticacion y listas conectadas a la API local.
+- `apps/android`: aplicacion Compose con autenticacion y listas conectadas a la API configurada para `debug`.
+- `docs`: diseno, arquitectura y plan del MVP.
