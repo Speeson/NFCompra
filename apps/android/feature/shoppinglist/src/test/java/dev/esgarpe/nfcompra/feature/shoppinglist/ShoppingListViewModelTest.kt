@@ -157,6 +157,33 @@ class ShoppingListViewModelTest {
         assertEquals("{\"name\":\"Casa\"}", retriedCreate?.body?.readUtf8())
     }
 
+    @Test fun `retry after first household was created only reloads its list`() = runTest {
+        server.enqueue(json("{\"households\":[]}"))
+        server.enqueue(json("{\"household\":{\"id\":\"home-1\",\"name\":\"Casa\",\"ownerId\":\"user-1\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"},\"defaultList\":{\"id\":\"list-1\",\"householdId\":\"home-1\",\"name\":\"Compra\",\"isDefault\":true,\"version\":1,\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}}", 201))
+        server.enqueue(json("{\"error\":{\"code\":\"REQUEST_FAILED\",\"message\":\"No se pudo cargar la lista.\",\"details\":{}}}", 503))
+        server.enqueue(json("{\"items\":[]}"))
+        val viewModel = ShoppingListViewModel(
+            ShoppingListRepository(NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java)),
+        )
+        viewModel.load()
+
+        viewModel.state.test {
+            assertEquals(ShoppingListViewState.Loading, awaitItem())
+            assertEquals(ShoppingListViewState.NoHouseholds, awaitItem())
+            viewModel.onAction(ShoppingListAction.CreateHousehold("Casa"))
+            val failed = awaitItem() as ShoppingListViewState.InitialHouseholdLoadError
+            assertEquals("No se pudo cargar la lista.", failed.message)
+            viewModel.onAction(failed.retryAction)
+            val data = awaitItem() as ShoppingListViewState.Data
+            assertEquals("home-1", data.selectedHouseholdId)
+            assertEquals("list-1", data.selectedListId)
+        }
+
+        val requests = List(4) { server.takeRequest(1, TimeUnit.SECONDS) }
+        assertEquals(1, requests.count { it?.method == "POST" && it.path == "/v1/households" })
+        assertEquals(2, requests.count { it?.method == "GET" && it.path == "/v1/lists/list-1/items" })
+    }
+
     @Test fun `the household selector can create and select another list`() = runTest {
         enqueueInitialList()
         server.enqueue(json("{\"list\":{\"id\":\"list-2\",\"householdId\":\"home-1\",\"name\":\"Ferretería\",\"isDefault\":false,\"version\":1,\"createdAt\":\"2026-07-27T00:01:00Z\",\"updatedAt\":\"2026-07-27T00:01:00Z\"}}", 201))

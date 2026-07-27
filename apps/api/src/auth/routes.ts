@@ -111,7 +111,7 @@ export async function handleAuthRoute(request: Request, env: Env, emailSender: E
       try {
         await sendVerificationEmail(env, emailSender, user);
       } catch {
-        return emailDeliveryFailed('verification');
+        // The public response stays identical for pending, verified, and unknown accounts.
       }
     }
     return Response.json({ status: 'accepted' }, { status: 202 });

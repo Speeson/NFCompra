@@ -19,6 +19,10 @@ class ShoppingListViewModel(private val repository: ShoppingListRepository) : Vi
                 if (action is ShoppingListAction.CreateHousehold) createInitialHousehold(action.name)
                 return@launch
             }
+            if (current is ShoppingListViewState.InitialHouseholdLoadError) {
+                if (action is ShoppingListAction.RetryInitialHouseholdLoad) loadCreatedInitialHousehold(action.household, action.list)
+                return@launch
+            }
             val data = current as? ShoppingListViewState.Data ?: return@launch
             try {
                 when (action) {
@@ -26,6 +30,7 @@ class ShoppingListViewModel(private val repository: ShoppingListRepository) : Vi
                     is ShoppingListAction.SelectList -> refresh(data, action.id)
                     is ShoppingListAction.CreateHousehold -> createHousehold(data, action.name)
                     is ShoppingListAction.CreateList -> createList(data, action.name)
+                    is ShoppingListAction.RetryInitialHouseholdLoad -> Unit
                     is ShoppingListAction.AddItem -> mutateAfter(data) { repository.createItem(data.selectedListId, action.name) }
                     is ShoppingListAction.EditItem -> mutateAfter(data) { repository.updateItem(data.item(action.id), name = action.name) }
                     is ShoppingListAction.ToggleItem -> mutateItem(data, action.id) { repository.updateItem(it, checked = !it.checked) }
@@ -72,18 +77,36 @@ class ShoppingListViewModel(private val repository: ShoppingListRepository) : Vi
     }
 
     private suspend fun createInitialHousehold(name: String) {
-        try {
-            val (household, list) = repository.createHousehold(name)
-            publish(listOf(household), listOf(list), household.id, list.id)
+        val created = try {
+            repository.createHousehold(name)
         } catch (error: ShoppingListApiException) {
             mutableState.value = ShoppingListViewState.InitialHouseholdError(
                 message = error.message,
                 retryAction = ShoppingListAction.CreateHousehold(name),
             )
+            return
         } catch (_: Exception) {
             mutableState.value = ShoppingListViewState.InitialHouseholdError(
                 message = "No se pudo conectar con el servidor.",
                 retryAction = ShoppingListAction.CreateHousehold(name),
+            )
+            return
+        }
+        loadCreatedInitialHousehold(created.first, created.second)
+    }
+
+    private suspend fun loadCreatedInitialHousehold(household: HouseholdUiModel, list: ShoppingListSummaryUiModel) {
+        try {
+            publish(listOf(household), listOf(list), household.id, list.id)
+        } catch (error: ShoppingListApiException) {
+            mutableState.value = ShoppingListViewState.InitialHouseholdLoadError(
+                message = error.message,
+                retryAction = ShoppingListAction.RetryInitialHouseholdLoad(household, list),
+            )
+        } catch (_: Exception) {
+            mutableState.value = ShoppingListViewState.InitialHouseholdLoadError(
+                message = "No se pudo conectar con el servidor.",
+                retryAction = ShoppingListAction.RetryInitialHouseholdLoad(household, list),
             )
         }
     }

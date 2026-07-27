@@ -100,6 +100,32 @@ it('returns a recoverable JSON error when registration email fails and supports 
   expect(verified.status).toBe(200);
 });
 
+it('does not reveal account state when resending verification and email delivery fails', async () => {
+  const pendingEmail = `pending-${crypto.randomUUID()}@example.test`;
+  const verifiedEmail = `verified-${crypto.randomUUID()}@example.test`;
+  await registerAndVerify(verifiedEmail);
+  await dispatch('/v1/auth/register', { name: 'Pendiente', email: pendingEmail, password: 'a secure password' });
+  fakeEmailSender.failure = new Error('provider unavailable');
+
+  const responses = await Promise.all([
+    dispatch('/v1/auth/resend-verification', { email: pendingEmail }),
+    dispatch('/v1/auth/resend-verification', { email: verifiedEmail }),
+    dispatch('/v1/auth/resend-verification', { email: `missing-${crypto.randomUUID()}@example.test` }),
+  ]);
+
+  expect(responses.map((response) => response.status)).toEqual([202, 202, 202]);
+  expect(await Promise.all(responses.map((response) => response.json()))).toEqual([
+    { status: 'accepted' },
+    { status: 'accepted' },
+    { status: 'accepted' },
+  ]);
+
+  fakeEmailSender.failure = null;
+  const retry = await dispatch('/v1/auth/resend-verification', { email: pendingEmail });
+  expect(retry.status).toBe(202);
+  expect(fakeEmailSender.messages.at(-1)).toMatchObject({ to: pendingEmail });
+});
+
 it('rotates and revokes Android refresh tokens', async () => {
   const email = `android-${crypto.randomUUID()}@example.test`;
   await registerAndVerify(email);

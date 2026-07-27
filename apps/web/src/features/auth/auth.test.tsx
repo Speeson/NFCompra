@@ -101,17 +101,12 @@ describe('RegisterPage', () => {
     expect(JSON.parse(String(resendCall?.[1]?.body))).toEqual({ email: 'ana@example.test' });
   });
 
-  it('recovers after reload from an already registered account through the resend route', async () => {
-    window.history.pushState({}, '', '/register');
+  it('mounts the persistent resend route directly after a reload', async () => {
+    window.history.pushState({}, '', '/auth/resend-verification');
     const fetchMock = vi.fn((input: string | URL | Request) => {
       const url = String(input);
       if (url.endsWith('/auth/refresh')) {
         return Promise.resolve(Response.json({ error: { code: 'UNAUTHORIZED', message: 'No hay sesión.', details: {} } }, { status: 401 }));
-      }
-      if (url.endsWith('/auth/register')) {
-        return Promise.resolve(Response.json({
-          error: { code: 'EMAIL_ALREADY_REGISTERED', message: 'Ese correo ya está registrado.', details: {} },
-        }, { status: 409 }));
       }
       if (url.endsWith('/auth/resend-verification')) {
         return Promise.resolve(Response.json({ status: 'accepted' }, { status: 202 }));
@@ -121,13 +116,6 @@ describe('RegisterPage', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(<AuthProvider><App /></AuthProvider>);
-    fireEvent.change(await screen.findByLabelText('Nombre'), { target: { value: 'Ana' } });
-    fireEvent.change(screen.getByLabelText('Correo electrónico'), { target: { value: 'ana@example.test' } });
-    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'a secure password' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('Ese correo ya está registrado.');
-    fireEvent.click(screen.getByRole('button', { name: /Reenviar correo/ }));
     expect(await screen.findByRole('heading', { name: /Reenviar correo/ })).toBeVisible();
     fireEvent.change(screen.getByLabelText('Correo electrónico'), { target: { value: 'ana@example.test' } });
     fireEvent.click(screen.getByRole('button', { name: 'Enviar verificación' }));
@@ -135,6 +123,7 @@ describe('RegisterPage', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(
       'Si existe una cuenta pendiente de verificar con ese correo, recibirás un nuevo mensaje.',
     );
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/auth/resend-verification'))).toBe(true);
   });
 });
 

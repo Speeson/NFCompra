@@ -56,6 +56,14 @@ fun ShoppingListApp(viewModel: ShoppingListViewModel, onLogout: () -> Unit = {})
                 onLogout = onLogout,
             )
         }
+        is ShoppingListViewState.InitialHouseholdLoadError -> {
+            val error = state as ShoppingListViewState.InitialHouseholdLoadError
+            InitialHouseholdLoadRecovery(
+                errorMessage = error.message,
+                onRetry = { viewModel.onAction(error.retryAction) },
+                onLogout = onLogout,
+            )
+        }
         is ShoppingListViewState.Error -> Text((state as ShoppingListViewState.Error).message, color = MaterialTheme.colorScheme.error)
         is ShoppingListViewState.Data -> {
             val data = state as ShoppingListViewState.Data
@@ -89,6 +97,16 @@ fun ShoppingListApp(viewModel: ShoppingListViewModel, onLogout: () -> Unit = {})
                 creatingList = false
             }) { creatingList = false }
         }
+    }
+}
+
+@Composable
+private fun InitialHouseholdLoadRecovery(errorMessage: String, onRetry: () -> Unit, onLogout: () -> Unit) {
+    Column(modifier = Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        TextButton(onClick = onLogout) { Text("Cerrar sesión") }
+        Text("El hogar se ha creado", style = MaterialTheme.typography.headlineSmall)
+        Text(errorMessage, color = MaterialTheme.colorScheme.error)
+        Button(onClick = onRetry) { Text("Reintentar carga") }
     }
 }
 
