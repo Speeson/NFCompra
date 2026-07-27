@@ -3,7 +3,7 @@ import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 
 import { createWebQueryClient, ShoppingListRoute } from '../features/shopping-list/ShoppingListRoute';
 import { useSession } from '../features/auth/AuthProvider';
-import { ForgotPasswordPage, LoginPage } from '../features/auth/LoginPage';
+import { ForgotPasswordPage, LoginPage, ResendVerificationPage } from '../features/auth/LoginPage';
 import { RegisterPage, ResetPasswordPage, VerifyEmailPage } from '../features/auth/RegisterPage';
 
 export function App(): JSX.Element {
@@ -45,6 +45,7 @@ function AppRoute(): JSX.Element {
   if (location.pathname === '/auth/verify') return <VerifyEmailPage token={location.searchParams.get('token')} onNavigate={navigate} />;
   if (location.pathname === '/auth/reset-password') return <ResetPasswordPage token={location.searchParams.get('token')} onNavigate={navigate} />;
   if (location.pathname === '/auth/forgot-password') return <ForgotPasswordPage onNavigate={navigate} />;
+  if (location.pathname === '/auth/resend-verification') return <ResendVerificationPage onNavigate={navigate} />;
   if (status === 'anonymous') return <>
     {logoutError && <p role="alert">No se pudo cerrar sesión en el servidor. La sesión local se ha cerrado.</p>}
     <LoginPage onNavigate={navigate} />

@@ -56,6 +56,7 @@ export function RegisterPage({ onNavigate }: AuthPageProps): JSX.Element {
       {retryEmail && <button type="button" onClick={() => void resend()}>Reenviar verificación</button>}
       <button type="submit">Crear cuenta</button>
     </form>
+    <button type="button" onClick={() => onNavigate?.('/auth/resend-verification')}>Reenviar correo de verificación</button>
     <p>¿Ya tienes cuenta? <button type="button" onClick={() => onNavigate?.('/login')}>Inicia sesión</button></p>
   </AuthLayout>;
 }

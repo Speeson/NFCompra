@@ -14,11 +14,12 @@ class ShoppingListViewModel(private val repository: ShoppingListRepository) : Vi
 
     fun onAction(action: ShoppingListAction) {
         viewModelScope.launch {
-            if (mutableState.value === ShoppingListViewState.NoHouseholds) {
+            val current = mutableState.value
+            if (current === ShoppingListViewState.NoHouseholds || current is ShoppingListViewState.InitialHouseholdError) {
                 if (action is ShoppingListAction.CreateHousehold) createInitialHousehold(action.name)
                 return@launch
             }
-            val data = mutableState.value as? ShoppingListViewState.Data ?: return@launch
+            val data = current as? ShoppingListViewState.Data ?: return@launch
             try {
                 when (action) {
                     is ShoppingListAction.SelectHousehold -> selectHousehold(data, action.id)
@@ -75,9 +76,15 @@ class ShoppingListViewModel(private val repository: ShoppingListRepository) : Vi
             val (household, list) = repository.createHousehold(name)
             publish(listOf(household), listOf(list), household.id, list.id)
         } catch (error: ShoppingListApiException) {
-            mutableState.value = ShoppingListViewState.Error(error.message)
+            mutableState.value = ShoppingListViewState.InitialHouseholdError(
+                message = error.message,
+                retryAction = ShoppingListAction.CreateHousehold(name),
+            )
         } catch (_: Exception) {
-            mutableState.value = ShoppingListViewState.Error("No se pudo conectar con el servidor.")
+            mutableState.value = ShoppingListViewState.InitialHouseholdError(
+                message = "No se pudo conectar con el servidor.",
+                retryAction = ShoppingListAction.CreateHousehold(name),
+            )
         }
     }
 

@@ -39,6 +39,31 @@ describe('LoginPage', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('Las credenciales no son válidas.');
     });
   });
+
+  it('offers the persistent resend route when login reports an unverified email', async () => {
+    const navigate = vi.fn();
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/auth/refresh')) {
+        return Promise.resolve(Response.json({ error: { code: 'UNAUTHORIZED', message: 'No hay sesión.', details: {} } }, { status: 401 }));
+      }
+      if (url.endsWith('/auth/login')) {
+        return Promise.resolve(Response.json({
+          error: { code: 'EMAIL_NOT_VERIFIED', message: 'Debes verificar tu correo.', details: {} },
+        }, { status: 403 }));
+      }
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+
+    render(<AuthProvider><LoginPage onNavigate={navigate} /></AuthProvider>);
+    fireEvent.change(screen.getByLabelText('Correo electrónico'), { target: { value: 'ana@example.test' } });
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'a secure password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Debes verificar tu correo.');
+    fireEvent.click(screen.getByRole('button', { name: /Reenviar correo/ }));
+    expect(navigate).toHaveBeenCalledWith('/auth/resend-verification');
+  });
 });
 
 describe('RegisterPage', () => {
@@ -74,6 +99,42 @@ describe('RegisterPage', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Hemos vuelto a enviar el correo de verificación.');
     const resendCall = fetchMock.mock.calls.find(([input]) => String(input).endsWith('/auth/resend-verification'));
     expect(JSON.parse(String(resendCall?.[1]?.body))).toEqual({ email: 'ana@example.test' });
+  });
+
+  it('recovers after reload from an already registered account through the resend route', async () => {
+    window.history.pushState({}, '', '/register');
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/auth/refresh')) {
+        return Promise.resolve(Response.json({ error: { code: 'UNAUTHORIZED', message: 'No hay sesión.', details: {} } }, { status: 401 }));
+      }
+      if (url.endsWith('/auth/register')) {
+        return Promise.resolve(Response.json({
+          error: { code: 'EMAIL_ALREADY_REGISTERED', message: 'Ese correo ya está registrado.', details: {} },
+        }, { status: 409 }));
+      }
+      if (url.endsWith('/auth/resend-verification')) {
+        return Promise.resolve(Response.json({ status: 'accepted' }, { status: 202 }));
+      }
+      throw new Error(`Solicitud inesperada: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<AuthProvider><App /></AuthProvider>);
+    fireEvent.change(await screen.findByLabelText('Nombre'), { target: { value: 'Ana' } });
+    fireEvent.change(screen.getByLabelText('Correo electrónico'), { target: { value: 'ana@example.test' } });
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'a secure password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ese correo ya está registrado.');
+    fireEvent.click(screen.getByRole('button', { name: /Reenviar correo/ }));
+    expect(await screen.findByRole('heading', { name: /Reenviar correo/ })).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Correo electrónico'), { target: { value: 'ana@example.test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar verificación' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Si existe una cuenta pendiente de verificar con ese correo, recibirás un nuevo mensaje.',
+    );
   });
 });
 

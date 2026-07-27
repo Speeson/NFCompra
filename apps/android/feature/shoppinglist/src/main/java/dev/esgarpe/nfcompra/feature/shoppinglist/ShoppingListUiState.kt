@@ -30,6 +30,10 @@ sealed interface ShoppingListAction {
 sealed interface ShoppingListViewState {
     data object Loading : ShoppingListViewState
     data object NoHouseholds : ShoppingListViewState
+    data class InitialHouseholdError(
+        val message: String,
+        val retryAction: ShoppingListAction.CreateHousehold,
+    ) : ShoppingListViewState
     data class Error(val message: String) : ShoppingListViewState
     data class Data(
         val content: ShoppingListUiState,

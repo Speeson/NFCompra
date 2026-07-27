@@ -42,9 +42,20 @@ fun ShoppingListApp(viewModel: ShoppingListViewModel, onLogout: () -> Unit = {})
     when (state) {
         ShoppingListViewState.Loading -> Text("Cargando lista…")
         ShoppingListViewState.NoHouseholds -> FirstHouseholdSetup(
+            initialName = "",
+            errorMessage = null,
             onCreate = { viewModel.onAction(ShoppingListAction.CreateHousehold(it)) },
             onLogout = onLogout,
         )
+        is ShoppingListViewState.InitialHouseholdError -> {
+            val error = state as ShoppingListViewState.InitialHouseholdError
+            FirstHouseholdSetup(
+                initialName = error.retryAction.name,
+                errorMessage = error.message,
+                onCreate = { viewModel.onAction(ShoppingListAction.CreateHousehold(it)) },
+                onLogout = onLogout,
+            )
+        }
         is ShoppingListViewState.Error -> Text((state as ShoppingListViewState.Error).message, color = MaterialTheme.colorScheme.error)
         is ShoppingListViewState.Data -> {
             val data = state as ShoppingListViewState.Data
@@ -100,19 +111,27 @@ private fun Selector(
 }
 
 @Composable
-private fun FirstHouseholdSetup(onCreate: (String) -> Unit, onLogout: () -> Unit) {
-    var name by remember { mutableStateOf("") }
+internal fun FirstHouseholdSetup(
+    initialName: String,
+    errorMessage: String?,
+    onCreate: (String) -> Unit,
+    onLogout: () -> Unit,
+) {
+    var name by remember(initialName) { mutableStateOf(initialName) }
     Column(modifier = Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         TextButton(onClick = onLogout) { Text("Cerrar sesión") }
         Text("Crea tu hogar", style = MaterialTheme.typography.headlineSmall)
         Text("Necesitas un hogar para organizar tus listas.")
+        errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Nombre del hogar") },
         )
-        Button(onClick = { onCreate(name.trim()) }, enabled = name.isNotBlank()) { Text("Crear hogar") }
+        Button(onClick = { onCreate(name.trim()) }, enabled = name.isNotBlank()) {
+            Text(if (errorMessage == null) "Crear hogar" else "Reintentar")
+        }
     }
 }
 
