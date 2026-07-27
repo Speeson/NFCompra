@@ -98,12 +98,6 @@ export async function claimOperation(env: Env, operation: string, userId: string
   const inserted = await env.DB.prepare('INSERT OR IGNORE INTO sync_operations (operation_id, user_id, lease_token, created_at, response_status, response_body) VALUES (?, ?, ?, ?, 102, NULL)')
     .bind(operation, userId, leaseToken, now).run();
   if (inserted.meta.changes === 1) return { state: 'claimed', leaseToken };
-  const current = await existingOperation(env, operation);
-  if (current && !current.body && Date.parse(current.createdAt) < Date.now() - 60_000) {
-    const reclaimed = await env.DB.prepare('UPDATE sync_operations SET lease_token = ?, created_at = ? WHERE operation_id = ? AND user_id = ? AND response_body IS NULL AND created_at = ?')
-      .bind(leaseToken, now, operation, userId, current.createdAt).run();
-    if (reclaimed.meta.changes === 1) return { state: 'claimed', leaseToken };
-  }
   return resolveExistingOperation(env, operation, userId);
 }
 

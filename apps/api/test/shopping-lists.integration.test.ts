@@ -3,7 +3,6 @@ import { beforeEach, expect, it } from 'vitest';
 import { createWorker } from '../src';
 import { createAccessToken } from '../src/auth/token-service';
 import type { Env as WorkerEnv } from '../src/env';
-import { claimOperation, completeOperation, createShoppingItem, replayOperation } from '../src/lists/repository';
 
 declare global {
   namespace Cloudflare {
@@ -103,9 +102,13 @@ it('deletes an item only at its expected version', async () => {
   const household = await (await dispatch('/v1/households', { name: 'Casa' }, authorization)).json<{ defaultList: { id: string } }>();
   const created = await (await dispatch(`/v1/lists/${household.defaultList.id}/items`, { name: 'Huevos', operationId: crypto.randomUUID() }, authorization)).json<{ item: { id: string } }>();
 
-  const deletedResponse = await dispatch(`/v1/items/${created.item.id}`, { expectedVersion: 1, operationId: crypto.randomUUID() }, authorization, 'DELETE');
+  const operationId = crypto.randomUUID();
+  const deletedResponse = await dispatch(`/v1/items/${created.item.id}`, { expectedVersion: 1, operationId }, authorization, 'DELETE');
   expect(deletedResponse.status).toBe(200);
   expect(await deletedResponse.json()).toEqual({ status: 'deleted' });
+  const repeatedResponse = await dispatch(`/v1/items/${created.item.id}`, { expectedVersion: 1, operationId }, authorization, 'DELETE');
+  expect(repeatedResponse.status).toBe(200);
+  expect(await repeatedResponse.json()).toEqual({ status: 'deleted' });
 
   const itemsResponse = await dispatch(`/v1/lists/${household.defaultList.id}/items`, undefined, authorization, 'GET');
   expect(await itemsResponse.json()).toEqual({ items: [] });
@@ -118,9 +121,13 @@ it('purges only checked items from a list', async () => {
   await dispatch(`/v1/lists/${household.defaultList.id}/items`, { name: 'Arroz', operationId: crypto.randomUUID() }, authorization);
   await dispatch(`/v1/items/${checked.item.id}`, { isChecked: true, expectedVersion: 1, operationId: crypto.randomUUID() }, authorization, 'PATCH');
 
-  const purgeResponse = await dispatch(`/v1/lists/${household.defaultList.id}/items/checked`, { operationId: crypto.randomUUID() }, authorization, 'DELETE');
+  const operationId = crypto.randomUUID();
+  const purgeResponse = await dispatch(`/v1/lists/${household.defaultList.id}/items/checked`, { operationId }, authorization, 'DELETE');
   expect(purgeResponse.status).toBe(200);
   expect(await purgeResponse.json()).toEqual({ removed: 1 });
+  const repeatedResponse = await dispatch(`/v1/lists/${household.defaultList.id}/items/checked`, { operationId }, authorization, 'DELETE');
+  expect(repeatedResponse.status).toBe(200);
+  expect(await repeatedResponse.json()).toEqual({ removed: 1 });
 
   const itemsResponse = await dispatch(`/v1/lists/${household.defaultList.id}/items`, undefined, authorization, 'GET');
   expect(await itemsResponse.json()).toMatchObject({ items: [{ name: 'Arroz', isChecked: false }] });
@@ -162,7 +169,7 @@ it('does not reserve an operation identifier when a foreign user cannot edit an 
   expect(ownerResponse.status).toBe(200);
 });
 
-it('recovers an expired unfinished operation reservation', async () => {
+it('returns OPERATION_IN_PROGRESS for an unfinished item creation', async () => {
   const authorization = await authorizationFor('Ana');
   const household = await (await dispatch('/v1/households', { name: 'Casa' }, authorization)).json<{ defaultList: { id: string } }>();
   const operationId = crypto.randomUUID();
@@ -171,34 +178,29 @@ it('recovers an expired unfinished operation reservation', async () => {
     .bind(operationId, user!.id, new Date(Date.now() - 61_000).toISOString()).run();
 
   const response = await dispatch(`/v1/lists/${household.defaultList.id}/items`, { name: 'Sal', operationId }, authorization);
-  expect(response.status).toBe(201);
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({ error: { code: 'OPERATION_IN_PROGRESS' } });
 });
 
-it('fences a paused owner after an expired lease is reclaimed', async () => {
+it('returns OPERATION_IN_PROGRESS for unfinished PATCH, DELETE and purge operations', async () => {
   const authorization = await authorizationFor('Ana');
   const household = await (await dispatch('/v1/households', { name: 'Casa' }, authorization)).json<{ defaultList: { id: string } }>();
   const user = await env.DB.prepare('SELECT id FROM users ORDER BY created_at DESC LIMIT 1').first<{ id: string }>();
-  const operationId = crypto.randomUUID();
-  const ownerA = await claimOperation(testEnv, operationId, user!.id);
-  expect(ownerA.state).toBe('claimed');
-  if (ownerA.state !== 'claimed') throw new Error('El dueño A no obtuvo lease.');
-  await env.DB.prepare('UPDATE sync_operations SET created_at = ? WHERE operation_id = ?').bind(new Date(Date.now() - 61_000).toISOString(), operationId).run();
-  const ownerB = await claimOperation(testEnv, operationId, user!.id);
-  expect(ownerB.state).toBe('claimed');
-  if (ownerB.state !== 'claimed') throw new Error('El dueño B no recuperó lease.');
-  expect(ownerB.leaseToken).not.toBe(ownerA.leaseToken);
-
-  const input = { listId: household.defaultList.id, name: 'Lentejas', normalizedName: 'lentejas', quantity: 1, unit: null, category: null, note: null, isChecked: false, position: 0, createdBy: user!.id, updatedBy: user!.id };
-  expect(await createShoppingItem(testEnv, input, ownerA.leaseToken)).toBeNull();
-  expect(await completeOperation(testEnv, operationId, user!.id, ownerA.leaseToken, 201, JSON.stringify({ item: { id: 'owner-a' } }))).toBe(false);
-
-  const itemB = await createShoppingItem(testEnv, input, ownerB.leaseToken);
-  expect(itemB).not.toBeNull();
-  const bodyB = JSON.stringify({ item: itemB });
-  expect(await completeOperation(testEnv, operationId, user!.id, ownerB.leaseToken, 201, bodyB)).toBe(true);
-  const replay = await replayOperation(testEnv, operationId, user!.id);
-  expect(replay).toEqual({ state: 'replay', status: 201, body: bodyB });
-  expect((await env.DB.prepare('SELECT COUNT(*) AS count FROM shopping_items WHERE name = ?').bind('Lentejas').first<{ count: number }>())?.count).toBe(1);
+  const item = await (await dispatch(`/v1/lists/${household.defaultList.id}/items`, { name: 'Sal', operationId: crypto.randomUUID() }, authorization)).json<{ item: { id: string } }>();
+  for (const operationId of [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()]) {
+    await env.DB.prepare('INSERT INTO sync_operations (operation_id, user_id, lease_token, created_at, response_status, response_body) VALUES (?, ?, ?, ?, 102, NULL)')
+      .bind(operationId, user!.id, crypto.randomUUID(), new Date().toISOString()).run();
+  }
+  const pending = await env.DB.prepare('SELECT operation_id FROM sync_operations WHERE response_status = 102 ORDER BY created_at ASC').all<{ operation_id: string }>();
+  const responses = await Promise.all([
+    dispatch(`/v1/items/${item.item.id}`, { isChecked: true, expectedVersion: 1, operationId: pending.results[0].operation_id }, authorization, 'PATCH'),
+    dispatch(`/v1/items/${item.item.id}`, { expectedVersion: 1, operationId: pending.results[1].operation_id }, authorization, 'DELETE'),
+    dispatch(`/v1/lists/${household.defaultList.id}/items/checked`, { operationId: pending.results[2].operation_id }, authorization, 'DELETE'),
+  ]);
+  for (const response of responses) {
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { code: 'OPERATION_IN_PROGRESS' } });
+  }
 });
 
 async function authorizationFor(name: string): Promise<Record<string, string>> {
