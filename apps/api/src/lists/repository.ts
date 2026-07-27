@@ -27,6 +27,11 @@ export async function listShoppingLists(env: Env, householdId: string): Promise<
   return rows.results.map(mapList);
 }
 
+export async function findListHouseholdId(env: Env, listId: string): Promise<string | null> {
+  const row = await env.DB.prepare('SELECT household_id FROM shopping_lists WHERE id = ?').bind(listId).first<{ household_id: string }>();
+  return row?.household_id ?? null;
+}
+
 export interface ShoppingItem {
   id: string;
   listId: string;
@@ -103,13 +108,13 @@ export async function claimOperation(env: Env, operation: string, userId: string
 
 export async function completeOperation(env: Env, operation: string, userId: string, leaseToken: string, status: number, body: string): Promise<boolean> {
   const result = await env.DB.prepare('UPDATE sync_operations SET response_status = ?, response_body = ? WHERE operation_id = ? AND user_id = ? AND lease_token = ? AND response_body IS NULL').bind(status, body, operation, userId, leaseToken).run();
-  return result.meta.changes === 1;
+  return result.meta.changes >= 1;
 }
 
 export async function completeMissingItemOperation(env: Env, operation: string, userId: string, leaseToken: string, body: string): Promise<boolean> {
   const result = await env.DB.prepare('UPDATE sync_operations SET response_status = 404, response_body = ? WHERE operation_id = ? AND user_id = ? AND lease_token = ? AND response_body IS NULL')
     .bind(body, operation, userId, leaseToken).run();
-  return result.meta.changes === 1;
+  return result.meta.changes >= 1;
 }
 
 export async function createShoppingItem(env: Env, input: Omit<ShoppingItem, 'id' | 'version' | 'createdAt' | 'updatedAt'>, leaseToken: string): Promise<ShoppingItem | null> {
@@ -121,7 +126,7 @@ export async function createShoppingItem(env: Env, input: Omit<ShoppingItem, 'id
     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?
     WHERE EXISTS (SELECT 1 FROM sync_operations WHERE lease_token = ? AND response_body IS NULL)
   `).bind(item.id, item.listId, item.name, item.normalizedName, item.quantity, item.unit, item.category, item.note, item.isChecked ? 1 : 0, item.position, item.createdBy, item.updatedBy, now, now, leaseToken).run();
-  return result.meta.changes === 1 ? item : null;
+  return result.meta.changes >= 1 ? item : null;
 }
 
 export async function findShoppingItem(env: Env, itemId: string): Promise<ShoppingItem | null> {
@@ -142,14 +147,20 @@ export async function updateShoppingItem(env: Env, itemId: string, expectedVersi
   return row ? mapItem(row) : null;
 }
 
-export async function deleteShoppingItem(env: Env, itemId: string, expectedVersion: number, leaseToken: string): Promise<boolean> {
-  const result = await env.DB.prepare('DELETE FROM shopping_items WHERE id = ? AND version = ? AND EXISTS (SELECT 1 FROM sync_operations WHERE lease_token = ? AND response_body IS NULL)').bind(itemId, expectedVersion, leaseToken).run();
-  return result.meta.changes === 1;
+export async function deleteShoppingItem(env: Env, itemId: string, expectedVersion: number, userId: string, leaseToken: string): Promise<boolean> {
+  const results = await env.DB.batch([
+    env.DB.prepare('UPDATE shopping_items SET updated_by = ? WHERE id = ? AND version = ? AND EXISTS (SELECT 1 FROM sync_operations WHERE lease_token = ? AND response_body IS NULL)').bind(userId, itemId, expectedVersion, leaseToken),
+    env.DB.prepare('DELETE FROM shopping_items WHERE id = ? AND version = ? AND EXISTS (SELECT 1 FROM sync_operations WHERE lease_token = ? AND response_body IS NULL)').bind(itemId, expectedVersion, leaseToken),
+  ]);
+  return results[1].meta.changes >= 1;
 }
 
-export async function deleteCheckedShoppingItems(env: Env, listId: string, leaseToken: string): Promise<number | null> {
+export async function deleteCheckedShoppingItems(env: Env, listId: string, userId: string, leaseToken: string): Promise<number | null> {
   const lease = await env.DB.prepare('SELECT 1 FROM sync_operations WHERE lease_token = ? AND response_body IS NULL').bind(leaseToken).first();
   if (!lease) return null;
-  const result = await env.DB.prepare('DELETE FROM shopping_items WHERE list_id = ? AND is_checked = 1 AND EXISTS (SELECT 1 FROM sync_operations WHERE lease_token = ? AND response_body IS NULL)').bind(listId, leaseToken).run();
-  return result.meta.changes;
+  const results = await env.DB.batch([
+    env.DB.prepare('UPDATE shopping_items SET updated_by = ? WHERE list_id = ? AND is_checked = 1 AND EXISTS (SELECT 1 FROM sync_operations WHERE lease_token = ? AND response_body IS NULL)').bind(userId, listId, leaseToken),
+    env.DB.prepare('DELETE FROM shopping_items WHERE list_id = ? AND is_checked = 1 AND EXISTS (SELECT 1 FROM sync_operations WHERE lease_token = ? AND response_body IS NULL)').bind(listId, leaseToken),
+  ]);
+  return results[1].meta.changes;
 }

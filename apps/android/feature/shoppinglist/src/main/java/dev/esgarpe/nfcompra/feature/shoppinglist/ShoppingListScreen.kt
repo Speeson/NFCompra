@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.dp
 import dev.esgarpe.nfcompra.core.designsystem.NFCompraTheme
 
 @Composable
-fun ShoppingListApp(viewModel: ShoppingListViewModel, onLogout: () -> Unit = {}) {
+fun ShoppingListApp(viewModel: ShoppingListViewModel, onLogout: () -> Unit = {}, onMembers: (String) -> Unit = {}) {
     val state by viewModel.state.collectAsState()
     LaunchedEffect(viewModel) { viewModel.load() }
     when (state) {
@@ -71,6 +71,7 @@ fun ShoppingListApp(viewModel: ShoppingListViewModel, onLogout: () -> Unit = {})
             var creatingList by remember { mutableStateOf(false) }
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { onMembers(data.selectedHouseholdId) }) { Text("Miembros") }
                     TextButton(onClick = onLogout) { Text("Cerrar sesión") }
                 }
                 Selector("Hogar", data.households.map { it.id to it.name }, data.selectedHouseholdId, { creatingHousehold = true }) {

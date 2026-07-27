@@ -3,6 +3,8 @@ import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/re
 
 import { ApiError } from '../../api/client';
 import { HouseholdSetup } from '../households/HouseholdSetup';
+import { MembersPanel } from '../households/MembersPanel';
+import { notificationsQueryKey, unreadNotificationsQueryKey } from '../notifications/notification-api';
 import { ShoppingListScreen } from './ShoppingListScreen';
 import { createHousehold, createItem, createList, deleteItem, fetchHouseholds, fetchItems, fetchLists, householdQueryKey, itemQueryKey, listQueryKey, updateItem, type ApiShoppingItem } from './queries';
 
@@ -18,10 +20,11 @@ export function createWebQueryClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
 }
 
-export function ShoppingListRoute(): JSX.Element {
+export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, requestedListId }: { currentUserId?: string; requestedHouseholdId?: string | null; requestedListId?: string | null }): JSX.Element {
   const queryClient = useQueryClient();
-  const [householdId, setHouseholdId] = useState<string>();
-  const [listId, setListId] = useState<string>();
+  const [householdId, setHouseholdId] = useState<string | undefined>(() => requestedHouseholdId ?? new URL(window.location.href).searchParams.get('household') ?? undefined);
+  const [listId, setListId] = useState<string | undefined>(() => requestedListId ?? new URL(window.location.href).searchParams.get('list') ?? undefined);
+  const appliedRouteRequest = useRef<string | undefined>(undefined);
   const [message, setMessage] = useState<string>();
   const [conflict, setConflict] = useState<{ current: ApiShoppingItem; retry: () => void }>();
   const nextRevision = useRef(0);
@@ -34,6 +37,14 @@ export function ShoppingListRoute(): JSX.Element {
   });
 
   useEffect(() => {
+    if (!requestedHouseholdId) return;
+    const routeRequest = `${requestedHouseholdId}:${requestedListId ?? ''}`;
+    if (appliedRouteRequest.current === routeRequest) return;
+    appliedRouteRequest.current = routeRequest;
+    setHouseholdId(requestedHouseholdId);
+    setListId(requestedListId ?? undefined);
+  }, [requestedHouseholdId, requestedListId]);
+  useEffect(() => {
     const households = householdsQuery.data ?? [];
     const first = households[0];
     if (first && !households.some((household) => household.id === householdId)) setHouseholdId(first.id);
@@ -45,6 +56,10 @@ export function ShoppingListRoute(): JSX.Element {
   }, [listId, listsQuery.data]);
 
   function resetFeedback(): void { setMessage(undefined); setConflict(undefined); }
+  function invalidateNotifications(): void {
+    void queryClient.invalidateQueries({ queryKey: notificationsQueryKey, exact: true });
+    void queryClient.invalidateQueries({ queryKey: unreadNotificationsQueryKey, exact: true });
+  }
   function keyFor(list: string, item: string): string { return `${list}:${item}`; }
   function replaceCurrentItem(list: string, current: ApiShoppingItem): void {
     queryClient.setQueryData<ApiShoppingItem[]>(itemQueryKey(list), (items) => items?.map((item) => item.id === current.id ? current : item));
@@ -100,7 +115,7 @@ export function ShoppingListRoute(): JSX.Element {
       settleUpdate(context);
       setMessage('No se pudo guardar el cambio.');
     },
-    onSuccess: (item, _variables, context) => { settleUpdate(context, item); },
+    onSuccess: (item, _variables, context) => { settleUpdate(context, item); invalidateNotifications(); },
   });
 
   const createItemMutation = useMutation<ApiShoppingItem, Error, { listId: string; name: string; quantity: number; unit: string | null }, CreateContext>({
@@ -117,7 +132,10 @@ export function ShoppingListRoute(): JSX.Element {
       if (error instanceof ApiError && error.status === 409 && error.code === 'OPERATION_IN_PROGRESS') void queryClient.invalidateQueries({ queryKey: itemQueryKey(variables.listId) });
       setMessage('No se pudo guardar el cambio.');
     },
-    onSuccess: (item, _variables, context) => queryClient.setQueryData<ApiShoppingItem[]>(itemQueryKey(item.listId), (items) => items?.map((candidate) => candidate.id === context?.optimisticId ? item : candidate)),
+    onSuccess: (item, _variables, context) => {
+      queryClient.setQueryData<ApiShoppingItem[]>(itemQueryKey(item.listId), (items) => items?.map((candidate) => candidate.id === context?.optimisticId ? item : candidate));
+      invalidateNotifications();
+    },
   });
 
   const deleteMutation = useMutation<void, Error, ApiShoppingItem, DeleteContext>({
@@ -141,6 +159,7 @@ export function ShoppingListRoute(): JSX.Element {
       } else restoreDeleted(context);
       setMessage('No se pudo guardar el cambio.');
     },
+    onSuccess: () => invalidateNotifications(),
   });
 
   const householdMutation = useMutation({
@@ -182,6 +201,7 @@ export function ShoppingListRoute(): JSX.Element {
       onToggle={(item) => updateMutation.mutate({ item: item as ApiShoppingItem, patch: { isChecked: !item.isChecked } })}
       onUpdate={(item, input) => updateMutation.mutate({ item: item as ApiShoppingItem, patch: input })}
       onDelete={(item) => deleteMutation.mutate(item as ApiShoppingItem)} />
+    {currentUserId ? <MembersPanel householdId={householdId} currentUserId={currentUserId} /> : null}
   </>;
 }
 

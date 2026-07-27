@@ -5,6 +5,8 @@ import { createWebQueryClient, ShoppingListRoute } from '../features/shopping-li
 import { useSession } from '../features/auth/AuthProvider';
 import { ForgotPasswordPage, LoginPage, ResendVerificationPage } from '../features/auth/LoginPage';
 import { RegisterPage, ResetPasswordPage, VerifyEmailPage } from '../features/auth/RegisterPage';
+import { AcceptInvitationPage } from '../features/invitations/AcceptInvitationPage';
+import { NotificationBell } from '../features/notifications/NotificationBell';
 
 export function App(): JSX.Element {
   const { user } = useSession();
@@ -20,6 +22,7 @@ export function App(): JSX.Element {
 function AppRoute(): JSX.Element {
   const [location, setLocation] = useState(() => new URL(window.location.href));
   const [logoutError, setLogoutError] = useState(false);
+  const [notificationActionError, setNotificationActionError] = useState<string>();
   const { status, user, logout } = useSession();
   const queryClient = useQueryClient();
 
@@ -34,6 +37,16 @@ function AppRoute(): JSX.Element {
     setLocation(new URL(window.location.href));
   }
 
+  const notificationActionAlert = notificationActionError ? <p role="alert">
+    {notificationActionError}
+    <button type="button" onClick={() => setNotificationActionError(undefined)}>Cerrar aviso</button>
+  </p> : null;
+
+  useEffect(() => {
+    const continuation = sessionStorage.getItem('nfcompra.invitation-continuation');
+    if (status === 'authenticated' && location.pathname === '/login' && continuation?.startsWith('/invitations/')) navigate(continuation);
+  }, [location.pathname, status]);
+
   async function handleLogout(): Promise<void> {
     setLogoutError(false);
     queryClient.clear();
@@ -41,6 +54,9 @@ function AppRoute(): JSX.Element {
   }
 
   if (status === 'loading') return <main><p role="status">Comprobando tu sesión…</p></main>;
+  if (location.pathname === '/invitations/accept') return <AcceptInvitationPage token={location.searchParams.get('token')} onNavigate={navigate} />;
+  const notificationInvitation = location.pathname.match(/^\/invitations\/([^/]+)\/accept$/);
+  if (notificationInvitation) return <>{notificationActionAlert}<AcceptInvitationPage token={null} invitationId={notificationInvitation[1]} onNavigate={navigate} /></>;
   if (location.pathname === '/register') return <RegisterPage onNavigate={navigate} />;
   if (location.pathname === '/auth/verify') return <VerifyEmailPage token={location.searchParams.get('token')} onNavigate={navigate} />;
   if (location.pathname === '/auth/reset-password') return <ResetPasswordPage token={location.searchParams.get('token')} onNavigate={navigate} />;
@@ -52,10 +68,12 @@ function AppRoute(): JSX.Element {
   </>;
 
   return <>
+    {notificationActionAlert}
     <header>
+      <NotificationBell onNavigate={navigate} onActionError={setNotificationActionError} />
       <p>Sesión iniciada como {user?.name}</p>
       <button type="button" onClick={() => void handleLogout()}>Cerrar sesión</button>
     </header>
-    <ShoppingListRoute />
+    <ShoppingListRoute currentUserId={user?.id ?? ''} requestedHouseholdId={location.searchParams.get('household')} requestedListId={location.searchParams.get('list')} />
   </>;
 }
