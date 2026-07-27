@@ -36,8 +36,7 @@ La variante `debug` de Android usa `http://10.0.2.2:8787/` como base de API para
 Desde la raiz, para la API:
 
 ```sh
-npm --workspace @nfcompra/api run test
-npx tsc --project apps/api/tsconfig.json
+npm run api:test && npx --workspace @nfcompra/api tsc --noEmit
 ```
 
 Para la PWA:
@@ -60,13 +59,13 @@ El APK queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`.
 
 - La API permite registro, verificacion y reenvio de verificacion de correo, inicio y cierre de sesion, renovacion, recuperacion y restablecimiento de contrasena, y consulta y edicion de perfil. Las pruebas usan un remitente falso; no se documentan claves ni se verifica el envio de correo real.
 - Una persona puede crear varios hogares manualmente; cada hogar obtiene una lista predeterminada y puede tener listas adicionales. Las mutaciones de productos requieren autenticacion y cubren alta, edicion, marcado, borrado, purga, busqueda normalizada y conflictos de version. Un `operationId` completado reproduce su respuesta y una operacion pendiente devuelve `409 OPERATION_IN_PROGRESS`.
+- Los propietarios de un hogar pueden crear, renovar, listar y revocar invitaciones en `/v1/households/:householdId/invitations`, y listar o eliminar miembros en `/v1/households/:householdId/members`. Las invitaciones se aceptan mediante `POST /v1/invitations/accept` por la cuenta verificada invitada, caducan a los siete dias y los tokens se guardan solo como hashes.
 - La PWA tiene rutas de registro, acceso, verificacion, reenvio, recuperacion, restablecimiento y cierre de sesion. Conserva el token de acceso en memoria y la API gestiona la cookie de renovacion. Permite seleccionar hogares y listas, crear hogares/listas y gestionar productos; consulta la lista visible cada 15 segundos y aplica mutaciones optimistas con reintento ante conflictos.
 - Android ofrece las pantallas de autenticacion y conserva los tokens de sesion y renovacion mediante Android Keystore. La pantalla autenticada permite seleccionar y gestionar hogares, listas y productos, con estados de carga, error y datos, y reintento ante conflictos.
 
 ## Limites del MVP
 
 - No hay despliegue ni operaciones remotas incluidas.
-- No hay miembros compartidos ni invitaciones.
 - No hay persistencia ni cola de mutaciones offline, Room, NFC, WorkManager ni WebSockets.
 
 ## Estructura

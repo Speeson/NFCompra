@@ -2,7 +2,7 @@ import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:
 import { beforeEach, expect, it } from 'vitest';
 import { createWorker } from '../src';
 import type { Env as WorkerEnv } from '../src/env';
-import type { EmailMessage, EmailSender } from '../src/email/email-sender';
+import type { EmailMessage, EmailSender, InvitationEmailMessage } from '../src/email/email-sender';
 
 declare global {
   namespace Cloudflare {
@@ -16,6 +16,9 @@ class FakeEmailSender implements EmailSender {
   async send(message: EmailMessage): Promise<void> {
     if (this.failure) throw this.failure;
     this.messages.push(message);
+  }
+  async sendInvitation(message: InvitationEmailMessage): Promise<void> {
+    await this.send({ to: message.to, subject: message.subject, text: `Acepta la invitacion: ${message.url}` });
   }
 }
 

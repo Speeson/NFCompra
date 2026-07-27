@@ -1,5 +1,5 @@
 import type { Env } from '../env';
-import type { EmailMessage, EmailSender } from './email-sender';
+import type { EmailMessage, EmailSender, InvitationEmailMessage } from './email-sender';
 
 export class ResendEmailSender implements EmailSender {
   constructor(private readonly env: Env) {}
@@ -11,5 +11,9 @@ export class ResendEmailSender implements EmailSender {
       body: JSON.stringify({ from: 'NFCompra <no-reply@nfcompra.esgarpe.dev>', to: [message.to], subject: message.subject, text: message.text }),
     });
     if (!response.ok) throw new Error('No se pudo enviar el correo.');
+  }
+
+  async sendInvitation(message: InvitationEmailMessage): Promise<void> {
+    await this.send({ to: message.to, subject: message.subject, text: `Acepta la invitacion: ${message.url}` });
   }
 }

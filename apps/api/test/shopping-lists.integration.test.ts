@@ -3,6 +3,7 @@ import { beforeEach, expect, it } from 'vitest';
 import { createWorker } from '../src';
 import { createAccessToken } from '../src/auth/token-service';
 import type { Env as WorkerEnv } from '../src/env';
+import type { EmailMessage, EmailSender } from '../src/email/email-sender';
 import { completeMissingItemOperation, completeOperation } from '../src/lists/repository';
 
 declare global {
@@ -11,7 +12,27 @@ declare global {
   }
 }
 
-const worker = createWorker();
+interface CapturedInvitation {
+  to: string;
+  subject: string;
+  url: string;
+}
+
+class FakeEmailSender implements EmailSender {
+  messages: EmailMessage[] = [];
+  invitations: CapturedInvitation[] = [];
+
+  async send(message: EmailMessage): Promise<void> {
+    this.messages.push(message);
+  }
+
+  async sendInvitation(message: CapturedInvitation): Promise<void> {
+    this.invitations.push(message);
+  }
+}
+
+const fakeEmailSender = new FakeEmailSender();
+const worker = createWorker(fakeEmailSender);
 const testEnv: WorkerEnv = { ...env, JWT_SECRET: 'test-jwt-secret', APP_BASE_URL: 'http://app.test' };
 
 beforeEach(async () => {
@@ -19,6 +40,8 @@ beforeEach(async () => {
     CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE COLLATE NOCASE, password_hash TEXT NOT NULL, email_verified_at TEXT NULL, session_version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS households (id TEXT PRIMARY KEY, name TEXT NOT NULL, owner_id TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS household_members (household_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (household_id, user_id));
+    CREATE TABLE IF NOT EXISTS invitations (id TEXT PRIMARY KEY, household_id TEXT NOT NULL, invited_email TEXT NOT NULL COLLATE NOCASE, token_hash TEXT NOT NULL UNIQUE, status TEXT NOT NULL, expires_at TEXT NOT NULL, accepted_at TEXT NULL, revoked_at TEXT NULL, invited_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_invitations_active_household_email ON invitations(household_id, invited_email) WHERE status = 'pending';
     CREATE TABLE IF NOT EXISTS shopping_lists (id TEXT PRIMARY KEY, household_id TEXT NOT NULL, name TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_shopping_lists_one_default_per_household ON shopping_lists(household_id) WHERE is_default = 1;
     CREATE TABLE IF NOT EXISTS shopping_items (id TEXT PRIMARY KEY, list_id TEXT NOT NULL, name TEXT NOT NULL, normalized_name TEXT NOT NULL, quantity REAL NOT NULL DEFAULT 1, unit TEXT NULL, category TEXT NULL, note TEXT NULL, is_checked INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL DEFAULT 0, version INTEGER NOT NULL DEFAULT 1, created_by TEXT NOT NULL, updated_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
@@ -27,9 +50,88 @@ beforeEach(async () => {
     DELETE FROM shopping_items;
     DELETE FROM shopping_lists;
     DELETE FROM household_members;
+    DELETE FROM invitations;
     DELETE FROM households;
     DELETE FROM users;
   `);
+  fakeEmailSender.messages = [];
+  fakeEmailSender.invitations = [];
+});
+
+it('manages the invitation lifecycle without persisting raw tokens or exposing owner data to members', async () => {
+  const owner = await verifiedUser('Ana');
+  const invited = await verifiedUser('Bea');
+  const household = await (await dispatch('/v1/households', { name: 'Casa' }, owner.headers)).json<{ household: { id: string } }>();
+  const now = new Date().toISOString();
+
+  await env.DB.prepare("INSERT INTO household_members (household_id, user_id, role, created_at) VALUES (?, ?, 'member', ?)")
+    .bind(household.household.id, invited.id, now).run();
+  const memberCannotInvite = await dispatch(`/v1/households/${household.household.id}/invitations`, { email: 'tercera@example.test' }, invited.headers);
+  expect(memberCannotInvite.status).toBe(403);
+  await env.DB.prepare('DELETE FROM household_members WHERE household_id = ? AND user_id = ?').bind(household.household.id, invited.id).run();
+
+  const created = await dispatch(`/v1/households/${household.household.id}/invitations`, { email: ` ${invited.email.toUpperCase()} ` }, owner.headers);
+  expect(created.status).toBe(201);
+  const firstInvitation = await created.json<{ invitation: { id: string; email: string; status: string } }>();
+  expect(firstInvitation.invitation).toMatchObject({ email: invited.email, status: 'pending' });
+  expect(fakeEmailSender.invitations).toHaveLength(1);
+  expect(fakeEmailSender.invitations[0]).toMatchObject({ to: invited.email, subject: 'Invitacion a un hogar de NFCompra' });
+  expect(fakeEmailSender.invitations[0].url).toContain('http://app.test/invitations/accept?token=');
+  const firstToken = tokenFromUrl(fakeEmailSender.invitations[0].url);
+  expect(await env.DB.prepare('SELECT token_hash FROM invitations WHERE id = ?').bind(firstInvitation.invitation.id).first<{ token_hash: string }>())
+    .not.toEqual({ token_hash: firstToken });
+
+  const wrongAccount = await dispatch('/v1/invitations/accept', { token: firstToken }, owner.headers);
+  expect(wrongAccount.status).toBe(403);
+  expect(await wrongAccount.json()).toMatchObject({ error: { code: 'INVITATION_EMAIL_MISMATCH' } });
+
+  const renewed = await dispatch(`/v1/households/${household.household.id}/invitations`, { email: invited.email }, owner.headers);
+  expect(renewed.status).toBe(201);
+  const renewedInvitation = await renewed.json<{ invitation: { id: string; expiresAt: string } }>();
+  expect(renewedInvitation.invitation.id).toBe(firstInvitation.invitation.id);
+  const renewedToken = tokenFromUrl(fakeEmailSender.invitations[1].url);
+  const invalidated = await dispatch('/v1/invitations/accept', { token: firstToken }, invited.headers);
+  expect(invalidated.status).toBe(400);
+  expect(await invalidated.json()).toMatchObject({ error: { code: 'INVALID_INVITATION_TOKEN' } });
+
+  const accepted = await dispatch('/v1/invitations/accept', { token: renewedToken }, invited.headers);
+  expect(accepted.status).toBe(200);
+  expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM household_members WHERE household_id = ? AND user_id = ? AND role = 'member'")
+    .bind(household.household.id, invited.id).first<{ count: number }>()).toEqual({ count: 1 });
+  const consumed = await dispatch('/v1/invitations/accept', { token: renewedToken }, invited.headers);
+  expect(consumed.status).toBe(400);
+  expect(await consumed.json()).toMatchObject({ error: { code: 'INVITATION_ALREADY_ACCEPTED' } });
+
+  const memberCannotListInvitations = await dispatch(`/v1/households/${household.household.id}/invitations`, undefined, invited.headers, 'GET');
+  expect(memberCannotListInvitations.status).toBe(403);
+  const members = await dispatch(`/v1/households/${household.household.id}/members`, undefined, owner.headers, 'GET');
+  expect(await members.json()).toMatchObject({ members: [{ userId: owner.id, role: 'owner' }, { userId: invited.id, role: 'member' }] });
+
+  const revoked = await dispatch(`/v1/households/${household.household.id}/invitations`, { email: 'revoked@example.test' }, owner.headers);
+  const revokedInvitation = await revoked.json<{ invitation: { id: string } }>();
+  const revokedToken = tokenFromUrl(fakeEmailSender.invitations.at(-1)!.url);
+  const revocation = await dispatch(`/v1/households/${household.household.id}/invitations/${revokedInvitation.invitation.id}`, undefined, owner.headers, 'DELETE');
+  expect(revocation.status).toBe(200);
+  const revokedAcceptance = await dispatch('/v1/invitations/accept', { token: revokedToken }, invited.headers);
+  expect(revokedAcceptance.status).toBe(400);
+  expect(await revokedAcceptance.json()).toMatchObject({ error: { code: 'INVITATION_REVOKED' } });
+
+  const expired = await dispatch(`/v1/households/${household.household.id}/invitations`, { email: 'expired@example.test' }, owner.headers);
+  expect(expired.status).toBe(201);
+  const expiredInvitation = await expired.json<{ invitation: { id: string } }>();
+  const expiredToken = tokenFromUrl(fakeEmailSender.invitations.at(-1)!.url);
+  await env.DB.prepare('UPDATE invitations SET expires_at = ? WHERE id = ?')
+    .bind(new Date(Date.now() - 60_000).toISOString(), expiredInvitation.invitation.id).run();
+  const expiredAcceptance = await dispatch('/v1/invitations/accept', { token: expiredToken }, invited.headers);
+  expect(expiredAcceptance.status).toBe(400);
+  expect(await expiredAcceptance.json()).toMatchObject({ error: { code: 'INVITATION_EXPIRED' } });
+
+  const cannotRemoveSelf = await dispatch(`/v1/households/${household.household.id}/members/${owner.id}`, undefined, owner.headers, 'DELETE');
+  expect(cannotRemoveSelf.status).toBe(409);
+  expect(await cannotRemoveSelf.json()).toMatchObject({ error: { code: 'CANNOT_REMOVE_SELF' } });
+  const removed = await dispatch(`/v1/households/${household.household.id}/members/${invited.id}`, undefined, owner.headers, 'DELETE');
+  expect(removed.status).toBe(200);
+  expect(await removed.json()).toEqual({ status: 'removed' });
 });
 
 it('creates a personal household with its default list in the same response', async () => {
@@ -248,6 +350,21 @@ async function authorizationFor(name: string): Promise<Record<string, string>> {
   await env.DB.prepare('INSERT INTO users (id, name, email, password_hash, email_verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .bind(id, name, `${id}@example.test`, 'hash', now, now, now).run();
   return { authorization: `Bearer ${await createAccessToken(id, 0, testEnv)}` };
+}
+
+async function verifiedUser(name: string): Promise<{ id: string; email: string; headers: Record<string, string> }> {
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const email = `${id}@example.test`;
+  await env.DB.prepare('INSERT INTO users (id, name, email, password_hash, email_verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, name, email, 'hash', now, now, now).run();
+  return { id, email, headers: { authorization: `Bearer ${await createAccessToken(id, 0, testEnv)}` } };
+}
+
+function tokenFromUrl(url: string): string {
+  const token = new URL(url).searchParams.get('token');
+  if (!token) throw new Error('La invitacion no contiene un token.');
+  return token;
 }
 
 async function dispatch(path: string, body: unknown, headers: Record<string, string>, method = 'POST'): Promise<Response> {

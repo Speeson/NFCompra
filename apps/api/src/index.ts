@@ -5,6 +5,7 @@ import { ResendEmailSender } from './email/resend-email-sender';
 import type { EmailSender } from './email/email-sender';
 import { errorResponse, notFound } from './shared/http';
 import { handleHouseholdRoute } from './households/routes';
+import { handleInvitationRoute } from './invitations/routes';
 import { handleListRoute } from './lists/routes';
 
 export function createWorker(emailSender?: EmailSender): ExportedHandler<Env> {
@@ -32,7 +33,11 @@ export function createWorker(emailSender?: EmailSender): ExportedHandler<Env> {
             response = errorResponse('UNAUTHORIZED', 'Debes iniciar sesión.', 401);
             return withCors(request, env, response);
           }
-          response = (await handleHouseholdRoute(request, env, user)) ?? (await handleListRoute(request, env, user)) ?? notFound();
+          const sender = emailSender ?? new ResendEmailSender(env);
+          response = (await handleHouseholdRoute(request, env, user))
+            ?? (await handleInvitationRoute(request, env, user, sender))
+            ?? (await handleListRoute(request, env, user))
+            ?? notFound();
         } else response = notFound();
       }
       return withCors(request, env, response);
@@ -42,6 +47,8 @@ export function createWorker(emailSender?: EmailSender): ExportedHandler<Env> {
 
 function isShoppingRoute(path: string): boolean {
   return path === '/v1/households'
+    || path === '/v1/invitations/accept'
+    || /^\/v1\/households\/[^/]+\/(?:invitations|members)(?:\/[^/]+)?$/.test(path)
     || /^\/v1\/households\/[^/]+\/lists$/.test(path)
     || /^\/v1\/lists\/[^/]+\/items(?:\/checked)?$/.test(path)
     || /^\/v1\/items\/[^/]+$/.test(path);

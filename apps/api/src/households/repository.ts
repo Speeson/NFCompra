@@ -45,3 +45,7 @@ export async function listHouseholdsForUser(env: Env, userId: string): Promise<H
 export async function isHouseholdMember(env: Env, householdId: string, userId: string): Promise<boolean> {
   return !!(await env.DB.prepare('SELECT 1 FROM household_members WHERE household_id = ? AND user_id = ?').bind(householdId, userId).first());
 }
+
+export async function isHouseholdOwner(env: Env, householdId: string, userId: string): Promise<boolean> {
+  return !!(await env.DB.prepare("SELECT 1 FROM household_members WHERE household_id = ? AND user_id = ? AND role = 'owner'").bind(householdId, userId).first());
+}
