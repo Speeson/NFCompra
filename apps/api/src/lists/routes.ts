@@ -2,7 +2,7 @@ import type { Env } from '../env';
 import type { AuthUser } from '../middleware/auth';
 import { isHouseholdMember } from '../households/repository';
 import { errorResponse } from '../shared/http';
-import { claimOperation, completeOperation, createShoppingItem, createShoppingList, deleteCheckedShoppingItems, deleteShoppingItem, findShoppingItem, isListMember, listShoppingItems, listShoppingLists, replayOperation, updateShoppingItem, type ItemPatch } from './repository';
+import { claimOperation, completeMissingItemOperation, completeOperation, createShoppingItem, createShoppingList, deleteCheckedShoppingItems, deleteShoppingItem, findShoppingItem, isListMember, listShoppingItems, listShoppingLists, replayOperation, updateShoppingItem, type ItemPatch } from './repository';
 import { boundedText, jsonObject, normalizedName, operationId, optionalBoundedText } from './validation';
 
 const householdListsPattern = /^\/v1\/households\/([^/]+)\/lists$/;
@@ -54,10 +54,12 @@ async function handleItemRoute(request: Request, env: Env, user: AuthUser, itemI
   if (!op || !Number.isInteger(expectedVersion) || (expectedVersion as number) < 1) return errorResponse('VALIDATION_ERROR', 'La solicitud no es válida.', 422);
   const patch = request.method === 'PATCH' ? itemPatch(body) : undefined;
   if (request.method === 'PATCH' && !patch) return errorResponse('VALIDATION_ERROR', 'La solicitud no es válida.', 422);
-  const previous = operationResponse(await replayOperation(env, op, user.id));
+  const pending = await replayOperation(env, op, user.id);
+  if (pending?.state === 'pending' && !(await findShoppingItem(env, itemId))) return missingItemResponse(env, op, user.id);
+  const previous = operationResponse(pending);
   if (previous) return previous;
   const current = await findShoppingItem(env, itemId);
-  if (!current) return null;
+  if (!current) return missingItemResponse(env, op, user.id);
   if (!(await isListMember(env, current.listId, user.id))) return errorResponse('FORBIDDEN', 'No tienes acceso a esta lista.', 403);
   const claimed = await claimOperation(env, op, user.id);
   const replay = operationResponse(claimed);
@@ -66,7 +68,7 @@ async function handleItemRoute(request: Request, env: Env, user: AuthUser, itemI
   if (request.method === 'DELETE') {
     if (!(await deleteShoppingItem(env, itemId, expectedVersion as number, claimed.leaseToken))) {
       const latest = await findShoppingItem(env, itemId);
-      if (!latest) return null;
+      if (!latest) return missingItemResponse(env, op, user.id);
       const responseBody = JSON.stringify({ error: { code: 'ITEM_VERSION_CONFLICT', message: 'El producto ha cambiado.', details: { current: latest } } });
       await completeOperation(env, op, user.id, claimed.leaseToken, 409, responseBody);
       return new Response(responseBody, { status: 409, headers: { 'content-type': 'application/json' } });
@@ -78,7 +80,7 @@ async function handleItemRoute(request: Request, env: Env, user: AuthUser, itemI
   const updated = await updateShoppingItem(env, itemId, expectedVersion as number, user.id, patch!, claimed.leaseToken);
   if (!updated) {
     const latest = await findShoppingItem(env, itemId);
-    if (!latest) return null;
+    if (!latest) return missingItemResponse(env, op, user.id);
     const responseBody = JSON.stringify({ error: { code: 'ITEM_VERSION_CONFLICT', message: 'El producto ha cambiado.', details: { current: latest } } });
     await completeOperation(env, op, user.id, claimed.leaseToken, 409, responseBody);
     return new Response(responseBody, { status: 409, headers: { 'content-type': 'application/json' } });
@@ -151,4 +153,10 @@ function operationResponse(claim: Awaited<ReturnType<typeof claimOperation>> | n
   if (claim.state === 'claimed') return null;
   if (claim.state === 'replay') return new Response(claim.body, { status: claim.status, headers: { 'content-type': 'application/json' } });
   return errorResponse(claim.state === 'pending' ? 'OPERATION_IN_PROGRESS' : 'OPERATION_ID_REUSED', 'El identificador de operación ya está en uso.', 409);
+}
+
+async function missingItemResponse(env: Env, operationId: string, userId: string): Promise<Response> {
+  const body = JSON.stringify({ error: { code: 'ITEM_NOT_FOUND', message: 'El producto no existe.', details: {} } });
+  await completeMissingItemOperation(env, operationId, userId, body);
+  return operationResponse(await replayOperation(env, operationId, userId)) ?? new Response(body, { status: 404, headers: { 'content-type': 'application/json' } });
 }

@@ -203,6 +203,32 @@ it('returns OPERATION_IN_PROGRESS for unfinished PATCH, DELETE and purge operati
   }
 });
 
+it('stores a deterministic 404 when a claimed PATCH or DELETE loses its item', async () => {
+  const authorization = await authorizationFor('Ana');
+  const household = await (await dispatch('/v1/households', { name: 'Casa' }, authorization)).json<{ defaultList: { id: string } }>();
+  const user = await env.DB.prepare('SELECT id FROM users ORDER BY created_at DESC LIMIT 1').first<{ id: string }>();
+  const item = await (await dispatch(`/v1/lists/${household.defaultList.id}/items`, { name: 'Sal', operationId: crypto.randomUUID() }, authorization)).json<{ item: { id: string } }>();
+  const operations = [crypto.randomUUID(), crypto.randomUUID()];
+  for (const operationId of operations) {
+    await env.DB.prepare('INSERT INTO sync_operations (operation_id, user_id, lease_token, created_at, response_status, response_body) VALUES (?, ?, ?, ?, 102, NULL)')
+      .bind(operationId, user!.id, crypto.randomUUID(), new Date().toISOString()).run();
+  }
+  await env.DB.prepare('DELETE FROM shopping_items WHERE id = ?').bind(item.item.id).run();
+
+  const requests: Array<[string, unknown, string]> = [
+    [`/v1/items/${item.item.id}`, { isChecked: true, expectedVersion: 1, operationId: operations[0] }, 'PATCH'],
+    [`/v1/items/${item.item.id}`, { expectedVersion: 1, operationId: operations[1] }, 'DELETE'],
+  ];
+  for (const [path, body, method] of requests) {
+    const first = await dispatch(path, body, authorization, method);
+    expect(first.status).toBe(404);
+    const expected = await first.json();
+    const repeated = await dispatch(path, body, authorization, method);
+    expect(repeated.status).toBe(404);
+    expect(await repeated.json()).toEqual(expected);
+  }
+});
+
 async function authorizationFor(name: string): Promise<Record<string, string>> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
