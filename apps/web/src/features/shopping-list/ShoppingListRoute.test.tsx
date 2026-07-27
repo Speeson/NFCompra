@@ -97,6 +97,37 @@ describe('ShoppingListRoute', () => {
     expect(screen.getByRole('button', { name: 'Desmarcar Pan' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('restores the confirmed state after two failed mutations of the same product', async () => {
+    vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000007' });
+    let rejectFirst: (error: Error) => void = () => undefined;
+    let rejectSecond: (error: Error) => void = () => undefined;
+    const first = new Promise<Response>((_resolve, reject) => { rejectFirst = reject; });
+    const second = new Promise<Response>((_resolve, reject) => { rejectSecond = reject; });
+    const item = { id: 'item-1', listId: 'list-1', name: 'Leche', normalizedName: 'leche', quantity: 1, unit: null, category: null, note: null, isChecked: false, position: 0, version: 1, createdBy: 'user-1', updatedBy: 'user-1', createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' };
+    let writes = 0;
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'household-1', name: 'Casa' }] }));
+      if (url.endsWith('/households/household-1/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-1', householdId: 'household-1', name: 'Compra', isDefault: true, version: 1, createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' }] }));
+      if (url.endsWith('/lists/list-1/items')) return Promise.resolve(Response.json({ items: [item] }));
+      if (url.endsWith('/items/item-1') && init?.method === 'PATCH') return ++writes === 1 ? first : second;
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+
+    render(<QueryClientProvider client={createWebQueryClient()}><ShoppingListRoute /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Marcar Leche' }));
+    await screen.findByRole('button', { name: 'Desmarcar Leche' });
+    fireEvent.click(screen.getByRole('button', { name: 'Desmarcar Leche' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Marcar Leche' })).toHaveAttribute('aria-pressed', 'false'));
+
+    rejectFirst(new Error('Sin conexión'));
+    rejectSecond(new Error('Sin conexión'));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('No se pudo guardar el cambio.'));
+    expect(writes).toBe(2);
+    expect(screen.getByRole('button', { name: 'Marcar Leche' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
   it('refreshes after OPERATION_IN_PROGRESS without reissuing the mutation', async () => {
     vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000004' });
     const item = { id: 'item-1', listId: 'list-1', name: 'Leche', normalizedName: 'leche', quantity: 1, unit: null, category: null, note: null, isChecked: false, position: 0, version: 1, createdBy: 'user-1', updatedBy: 'user-1', createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' };

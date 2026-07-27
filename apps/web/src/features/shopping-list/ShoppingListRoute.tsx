@@ -8,7 +8,9 @@ import { createHousehold, createItem, createList, deleteItem, fetchHouseholds, f
 
 type ItemPatch = Partial<Pick<ApiShoppingItem, 'name' | 'quantity' | 'unit' | 'isChecked'>>;
 type UpdateVariables = { item: ApiShoppingItem; patch: ItemPatch };
-type UpdateContext = { listId: string; itemId: string; previous?: ApiShoppingItem; revision: number; previousRevision?: number };
+type UpdateContext = { listId: string; itemId: string; revision: number };
+type OptimisticUpdate = { revision: number; patch: ItemPatch };
+type OptimisticItemState = { base: ApiShoppingItem; updates: OptimisticUpdate[] };
 type CreateContext = { listId: string; optimisticId: string };
 type DeleteContext = { listId: string; item: ApiShoppingItem };
 
@@ -23,7 +25,7 @@ export function ShoppingListRoute(): JSX.Element {
   const [message, setMessage] = useState<string>();
   const [conflict, setConflict] = useState<{ current: ApiShoppingItem; retry: () => void }>();
   const nextRevision = useRef(0);
-  const itemRevisions = useRef(new Map<string, number>());
+  const optimisticItems = useRef(new Map<string, OptimisticItemState>());
   const householdsQuery = useQuery({ queryKey: householdQueryKey, queryFn: fetchHouseholds });
   const listsQuery = useQuery({ queryKey: listQueryKey(householdId ?? ''), queryFn: () => fetchLists(householdId!), enabled: Boolean(householdId) });
   const itemsQuery = useQuery({
@@ -47,18 +49,21 @@ export function ShoppingListRoute(): JSX.Element {
   function replaceCurrentItem(list: string, current: ApiShoppingItem): void {
     queryClient.setQueryData<ApiShoppingItem[]>(itemQueryKey(list), (items) => items?.map((item) => item.id === current.id ? current : item));
   }
-  function restoreUpdate(context: UpdateContext | undefined): boolean {
-    if (!context || itemRevisions.current.get(keyFor(context.listId, context.itemId)) !== context.revision) return false;
-    queryClient.setQueryData<ApiShoppingItem[]>(itemQueryKey(context.listId), (items) => items?.map((item) => item.id === context.itemId && context.previous ? context.previous : item));
-    if (context.previousRevision === undefined) itemRevisions.current.delete(keyFor(context.listId, context.itemId));
-    else itemRevisions.current.set(keyFor(context.listId, context.itemId), context.previousRevision);
-    return true;
+  function resolvedItem(state: OptimisticItemState): ApiShoppingItem {
+    return state.updates.reduce((item, update) => ({ ...item, ...update.patch }), state.base);
   }
-  function commitUpdate(item: ApiShoppingItem, context: UpdateContext | undefined): void {
-    if (!context || itemRevisions.current.get(keyFor(item.listId, item.id)) !== context.revision) return;
-    replaceCurrentItem(item.listId, item);
-    if (context.previousRevision === undefined) itemRevisions.current.delete(keyFor(item.listId, item.id));
-    else itemRevisions.current.set(keyFor(item.listId, item.id), context.previousRevision);
+  function settleUpdate(context: UpdateContext | undefined, confirmed?: ApiShoppingItem): boolean {
+    if (!context) return false;
+    const key = keyFor(context.listId, context.itemId);
+    const state = optimisticItems.current.get(key);
+    if (!state) return false;
+    const index = state.updates.findIndex((update) => update.revision === context.revision);
+    if (index < 0) return false;
+    if (confirmed) state.base = confirmed;
+    state.updates.splice(index, 1);
+    replaceCurrentItem(context.listId, resolvedItem(state));
+    if (state.updates.length === 0) optimisticItems.current.delete(key);
+    return true;
   }
   function restoreDeleted(context: DeleteContext | undefined): void {
     if (!context) return;
@@ -70,32 +75,32 @@ export function ShoppingListRoute(): JSX.Element {
     onMutate: async (variables) => {
       resetFeedback();
       await queryClient.cancelQueries({ queryKey: itemQueryKey(variables.item.listId) });
-      const previous = queryClient.getQueryData<ApiShoppingItem[]>(itemQueryKey(variables.item.listId))?.find((item) => item.id === variables.item.id);
       const key = keyFor(variables.item.listId, variables.item.id);
-      const previousRevision = itemRevisions.current.get(key);
+      const current = queryClient.getQueryData<ApiShoppingItem[]>(itemQueryKey(variables.item.listId))?.find((item) => item.id === variables.item.id) ?? variables.item;
       const revision = ++nextRevision.current;
-      itemRevisions.current.set(key, revision);
-      queryClient.setQueryData<ApiShoppingItem[]>(itemQueryKey(variables.item.listId), (items) => items?.map((item) => item.id === variables.item.id ? { ...item, ...variables.patch } : item));
-      return { listId: variables.item.listId, itemId: variables.item.id, previous, revision, previousRevision };
+      const state = optimisticItems.current.get(key) ?? { base: current, updates: [] };
+      state.updates.push({ revision, patch: variables.patch });
+      optimisticItems.current.set(key, state);
+      replaceCurrentItem(variables.item.listId, resolvedItem(state));
+      return { listId: variables.item.listId, itemId: variables.item.id, revision };
     },
     onError: (error, variables, context) => {
       if (error instanceof ApiError && error.status === 409 && error.code === 'OPERATION_IN_PROGRESS') {
-        if (restoreUpdate(context)) void queryClient.invalidateQueries({ queryKey: itemQueryKey(variables.item.listId) });
+        if (settleUpdate(context)) void queryClient.invalidateQueries({ queryKey: itemQueryKey(variables.item.listId) });
         setMessage('La operación sigue en curso. Se ha actualizado la lista.');
         return;
       }
       const current = error instanceof ApiError ? error.details.current : undefined;
       if (error instanceof ApiError && error.status === 409 && error.code === 'ITEM_VERSION_CONFLICT' && isShoppingItem(current)) {
-        if (restoreUpdate(context)) {
-          replaceCurrentItem(variables.item.listId, current);
+        if (settleUpdate(context, current)) {
           setConflict({ current, retry: () => updateMutation.mutate({ item: current, patch: variables.patch }) });
         }
         return;
       }
-      restoreUpdate(context);
+      settleUpdate(context);
       setMessage('No se pudo guardar el cambio.');
     },
-    onSuccess: (item, _variables, context) => commitUpdate(item, context),
+    onSuccess: (item, _variables, context) => { settleUpdate(context, item); },
   });
 
   const createItemMutation = useMutation<ApiShoppingItem, Error, { listId: string; name: string; quantity: number; unit: string | null }, CreateContext>({
