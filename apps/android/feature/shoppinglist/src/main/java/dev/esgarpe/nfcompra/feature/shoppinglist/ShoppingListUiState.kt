@@ -6,6 +6,8 @@ data class ShoppingListItemUiModel(
     val quantity: String,
     val checked: Boolean,
     val version: Int = 1,
+    val pendingState: String? = null,
+    val serverItemJson: String? = null,
 )
 
 data class ShoppingListUiState(

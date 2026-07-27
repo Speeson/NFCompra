@@ -47,10 +47,10 @@ npm --workspace @nfcompra/web run typecheck
 npm --workspace @nfcompra/web run build
 ```
 
-Desde `apps/android`, con `ANDROID_HOME` apuntando al SDK instalado, para las pruebas unitarias de autenticacion, listas y colaboracion, la compilacion de las pruebas Compose y el APK de depuracion:
+Desde `apps/android`, con `ANDROID_HOME` apuntando al SDK instalado, para las pruebas unitarias de la base Room, autenticacion, listas y colaboracion, la compilacion de las pruebas Compose y el APK de depuracion:
 
 ```sh
-.\gradlew.bat :feature:auth:testDebugUnitTest :feature:shoppinglist:testDebugUnitTest :feature:sharing:testDebugUnitTest :feature:sharing:compileDebugAndroidTestKotlin :app:assembleDebug
+.\gradlew.bat :core:database:testDebugUnitTest :feature:auth:testDebugUnitTest :feature:shoppinglist:testDebugUnitTest :feature:sharing:testDebugUnitTest :feature:sharing:compileDebugAndroidTestKotlin :app:assembleDebug
 ```
 
 El APK queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`.
@@ -66,17 +66,18 @@ El APK queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`.
 - Los propietarios administran miembros e invitaciones desde el hogar seleccionado. La ruta `/invitations/accept?token=...` conserva su continuación de inicio de sesión en `sessionStorage`, muestra errores de aceptación sin datos ajenos y abre el hogar aceptado. La cabecera autenticada incluye notificaciones con contador, lectura individual o total y navegación al hogar o lista relacionada; consulta actualizaciones solo mientras el documento está visible.
 - La PWA conserva un aviso de error de lectura de notificaciones tras una navegacion contextual y permite cerrarlo; una solicitud de hogar/lista en URL se aplica una sola vez para no bloquear la seleccion manual posterior.
 - Android ofrece las pantallas de autenticacion y conserva los tokens de sesion y renovacion mediante Android Keystore. La pantalla autenticada permite seleccionar y gestionar hogares, listas y productos, con estados de carga, error y datos, y reintento ante conflictos.
+- Hito 3B (base Android): Room conserva hogares, listas, productos y operaciones pendientes en una base aislada por cuenta; los tokens continúan en Android Keystore y no se guardan en la base. Las respuestas correctas de listas se escriben en Room y la lista visible observa continuamente esa caché, conservando cambios locales pendientes durante los refrescos y mostrando el estado sin conexión cuando usa datos locales tras un fallo de transporte. Crear, editar o borrar un producto actualiza Room y añade una operación `pending` con UUID y secuencia persistente sin esperar una llamada de sincronización. La ejecución ordenada de esa cola y la resolución de conflictos se incorporarán con WorkManager en la siguiente tarea.
 - Android permite abrir los miembros del hogar seleccionado, invita, revoca y elimina miembros solo desde controles de propietario con confirmacion, y muestra el contenido en solo lectura al resto. La sesion autenticada incluye una campana accesible con contador, lectura individual o total y navegacion al hogar o lista exactos; consulta notificaciones cada 15 segundos mientras la actividad esta reanudada y la sesion sigue autenticada. Un fallo al marcar una notificacion no bloquea la navegacion y muestra un aviso cerrable; una lectura correcta refresca la lista y el contador.
 - Android acepta tanto `https://nfcompra.esgarpe.dev/invitations/accept?token=...`, que coincide con el enlace publico de correo previsto, como `nfcompra://app/invitations/accept?token=...`. El filtro HTTPS no declara verificacion de App Links, por lo que Android puede mostrar su selector. El token pendiente se conserva solo mediante el estado de instancia de la actividad durante una recreacion y se elimina al aceptar o cancelar; no se guarda en preferencias ni se registra. No se habilitan push, NFC ni trabajo en segundo plano.
 
 ## Limites del MVP
 
 - No hay despliegue ni operaciones remotas incluidas.
-- La PWA no encola ni sincroniza mutaciones offline. La sincronizacion offline de Android, Room, NFC, WorkManager y WebSockets quedan fuera de este alcance.
+- La PWA no encola ni sincroniza mutaciones offline. Android todavía no ejecuta ni reintenta su cola Room: WorkManager y la resolución de conflictos quedan pendientes. NFC y WebSockets quedan fuera de este alcance.
 
 ## Estructura
 
 - `apps/api`: Worker local, migraciones D1 y contrato `/v1`.
 - `apps/web`: PWA React con autenticacion y listas conectadas a la API local.
-- `apps/android`: aplicacion Compose con autenticacion y listas conectadas a la API configurada para `debug`.
+- `apps/android`: aplicacion Compose con autenticacion, listas respaldadas por Room y API configurada para `debug`.
 - `docs`: diseno, arquitectura, contrato versionado de API y plan del MVP.

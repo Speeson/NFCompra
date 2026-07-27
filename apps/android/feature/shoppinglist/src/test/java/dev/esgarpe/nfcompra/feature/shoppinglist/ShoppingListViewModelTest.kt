@@ -276,6 +276,39 @@ class ShoppingListViewModelTest {
         }
     }
 
+    @Test fun `an already loaded list keeps observing Room emissions`() = runTest {
+        val itemFlow = MutableStateFlow(
+            listOf(
+                ShoppingListItemUiModel(
+                    id = "item-1",
+                    name = "Leche",
+                    quantity = "1 litro",
+                    checked = false,
+                ),
+            ),
+        )
+        val viewModel = ShoppingListViewModel(FlowShoppingRepository(itemFlow))
+
+        viewModel.load()
+        advanceUntilIdle()
+        assertEquals("Leche", (viewModel.state.value as ShoppingListViewState.Data).content.pending.single().name)
+
+        itemFlow.value = listOf(
+            ShoppingListItemUiModel(
+                id = "item-1",
+                name = "Leche entera",
+                quantity = "1 litro",
+                checked = false,
+                pendingState = "pending",
+            ),
+        )
+        advanceUntilIdle()
+
+        val updated = viewModel.state.value as ShoppingListViewState.Data
+        assertEquals("Leche entera", updated.content.pending.single().name)
+        assertEquals("pending", updated.content.pending.single().pendingState)
+    }
+
     private fun enqueueInitialList() {
         server.enqueue(json("{\"households\":[{\"id\":\"home-1\",\"name\":\"Casa\",\"ownerId\":\"user-1\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}"))
         server.enqueue(json("{\"lists\":[{\"id\":\"list-1\",\"householdId\":\"home-1\",\"name\":\"Compra\",\"isDefault\":true,\"version\":1,\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}"))
@@ -283,6 +316,26 @@ class ShoppingListViewModelTest {
     }
 
     private fun json(body: String, status: Int = 200) = MockResponse().setResponseCode(status).setHeader("content-type", "application/json").setBody(body)
+}
+
+private class FlowShoppingRepository(
+    private val items: StateFlow<List<ShoppingListItemUiModel>>,
+) : ShoppingRepository {
+    override val continuouslyObservesItems = true
+    override suspend fun households() = listOf(HouseholdUiModel("home-1", "Casa"))
+    override suspend fun lists(householdId: String) =
+        listOf(ShoppingListSummaryUiModel("list-1", householdId, "Compra"))
+    override fun observeItems(listId: String) = items
+    override suspend fun createHousehold(name: String) =
+        error("No se usa en esta prueba.")
+    override suspend fun createList(householdId: String, name: String) =
+        error("No se usa en esta prueba.")
+    override suspend fun createItem(listId: String, name: String) =
+        error("No se usa en esta prueba.")
+    override suspend fun updateItem(item: ShoppingListItemUiModel, name: String?, checked: Boolean?) =
+        error("No se usa en esta prueba.")
+    override suspend fun deleteItem(item: ShoppingListItemUiModel) =
+        error("No se usa en esta prueba.")
 }
 
 private class InMemoryTokenStore(initialTokens: SessionTokens? = SessionTokens("access-token", "refresh-token")) : TokenStore {
