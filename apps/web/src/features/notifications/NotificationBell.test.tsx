@@ -79,8 +79,8 @@ describe('NotificationBell', () => {
       if (url.endsWith('/me')) return Promise.resolve(Response.json({ user: { id: 'owner-1', name: 'Ana', email: 'ana@example.test', emailVerifiedAt: '2026-07-27T00:00:00.000Z', createdAt: '2026-07-27T00:00:00.000Z', updatedAt: '2026-07-27T00:00:00.000Z' } }));
       if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'home-1', name: 'Casa uno' }, { id: 'home-2', name: 'Casa dos' }] }));
       if (url.endsWith('/households/home-1/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-1', householdId: 'home-1', name: 'Lista uno', isDefault: true, version: 1, createdAt: '2026-07-27T00:00:00.000Z', updatedAt: '2026-07-27T00:00:00.000Z' }] }));
-      if (url.endsWith('/households/home-2/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-2', householdId: 'home-2', name: 'Lista dos', isDefault: true, version: 1, createdAt: '2026-07-27T00:00:00.000Z', updatedAt: '2026-07-27T00:00:00.000Z' }] }));
-      if (url.endsWith('/lists/list-1/items') || url.endsWith('/lists/list-2/items')) return Promise.resolve(Response.json({ items: [] }));
+      if (url.endsWith('/households/home-2/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-2', householdId: 'home-2', name: 'Lista dos', isDefault: true, version: 1, createdAt: '2026-07-27T00:00:00.000Z', updatedAt: '2026-07-27T00:00:00.000Z' }, { id: 'list-3', householdId: 'home-2', name: 'Lista tres', isDefault: false, version: 1, createdAt: '2026-07-27T00:00:00.000Z', updatedAt: '2026-07-27T00:00:00.000Z' }] }));
+      if (url.endsWith('/lists/list-1/items') || url.endsWith('/lists/list-2/items') || url.endsWith('/lists/list-3/items')) return Promise.resolve(Response.json({ items: [] }));
       if (url.endsWith('/households/home-1/members') || url.endsWith('/households/home-2/members')) return Promise.resolve(Response.json({ members: [{ userId: 'owner-1', name: 'Ana', email: 'ana@example.test', role: 'owner', createdAt: '2026-07-27T00:00:00.000Z' }] }));
       if (url.endsWith('/notifications/unread-count')) return Promise.resolve(Response.json({ count: 1 }));
       if (url.endsWith('/notifications')) return Promise.resolve(Response.json({ notifications: [{ id: 'notice-list', type: 'item_created', title: 'Pan añadido', body: 'Lista dos', householdId: 'home-2', listId: 'list-2', invitationId: null, readAt: null, createdAt: '2026-07-27T00:00:00.000Z' }] }));
@@ -94,5 +94,34 @@ describe('NotificationBell', () => {
     expect(await screen.findByRole('heading', { name: 'Lista dos' })).toBeVisible();
     expect(screen.getByLabelText('Hogar')).toHaveValue('home-2');
     expect(screen.getByLabelText('Lista')).toHaveValue('list-2');
+    fireEvent.change(screen.getByLabelText('Hogar'), { target: { value: 'home-1' } });
+    expect(await screen.findByRole('heading', { name: 'Lista uno' })).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Hogar'), { target: { value: 'home-2' } });
+    await screen.findByRole('heading', { name: 'Lista dos' });
+    fireEvent.change(screen.getByLabelText('Lista'), { target: { value: 'list-3' } });
+    expect(await screen.findByRole('heading', { name: 'Lista tres' })).toBeVisible();
+  });
+
+  it('keeps a notification read failure visible after opening an invitation route', async () => {
+    window.history.replaceState({}, '', '/');
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/auth/refresh')) return Promise.resolve(Response.json({ accessToken: 'access' }));
+      if (url.endsWith('/me')) return Promise.resolve(Response.json({ user: { id: 'user-1', name: 'Ana', email: 'ana@example.test', emailVerifiedAt: '2026-07-27T00:00:00.000Z', createdAt: '2026-07-27T00:00:00.000Z', updatedAt: '2026-07-27T00:00:00.000Z' } }));
+      if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'home-1', name: 'Casa' }] }));
+      if (url.endsWith('/households/home-1/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-1', householdId: 'home-1', name: 'Compra', isDefault: true, version: 1, createdAt: '2026-07-27T00:00:00.000Z', updatedAt: '2026-07-27T00:00:00.000Z' }] }));
+      if (url.endsWith('/lists/list-1/items')) return Promise.resolve(Response.json({ items: [] }));
+      if (url.endsWith('/households/home-1/members')) return Promise.resolve(Response.json({ members: [{ userId: 'user-1', name: 'Ana', email: 'ana@example.test', role: 'owner', createdAt: '2026-07-27T00:00:00.000Z' }] }));
+      if (url.endsWith('/notifications/unread-count')) return Promise.resolve(Response.json({ count: 1 }));
+      if (url.endsWith('/notifications')) return Promise.resolve(Response.json({ notifications: [{ id: 'notice-invite', type: 'invitation_received', title: 'Nueva invitación', body: 'Acepta', householdId: 'home-1', listId: null, invitationId: 'invite-1', readAt: null, createdAt: '2026-07-27T00:00:00.000Z' }] }));
+      if (url.endsWith('/notifications/notice-invite/read') && init?.method === 'PATCH') return Promise.resolve(Response.json({ error: { code: 'REQUEST_FAILED', message: 'No se pudo marcar la notificación.', details: {} } }, { status: 503 }));
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+    render(<AuthProvider><App /></AuthProvider>);
+    await screen.findByRole('heading', { name: 'Compra' });
+    fireEvent.click(screen.getByRole('button', { name: 'Notificaciones (1 sin leer)' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Nueva invitación' }));
+    expect(await screen.findByRole('heading', { name: 'Acepta tu invitación' })).toBeVisible();
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo marcar la notificación.');
   });
 });

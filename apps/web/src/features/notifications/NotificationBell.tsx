@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { fetchNotifications, fetchUnreadCount, markAllNotificationsRead, markNotificationRead, notificationsQueryKey, type Notification, unreadNotificationsQueryKey } from './notification-api';
 
-export function NotificationBell({ onNavigate }: { onNavigate(path: string): void }): JSX.Element {
+export function NotificationBell({ onNavigate, onActionError }: { onNavigate(path: string): void; onActionError?(message: string): void }): JSX.Element {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [actionError, setActionError] = useState<string>();
@@ -12,9 +12,13 @@ export function NotificationBell({ onNavigate }: { onNavigate(path: string): voi
   const notifications = useQuery({ queryKey: notificationsQueryKey, queryFn: fetchNotifications, refetchInterval: polling, refetchIntervalInBackground: false });
   const unread = useQuery({ queryKey: unreadNotificationsQueryKey, queryFn: fetchUnreadCount, refetchInterval: polling, refetchIntervalInBackground: false });
   const refresh = () => Promise.all([queryClient.invalidateQueries({ queryKey: notificationsQueryKey, exact: true }), queryClient.invalidateQueries({ queryKey: unreadNotificationsQueryKey, exact: true })]);
-  const onActionError = (error: unknown) => setActionError(error instanceof ApiError ? error.message : 'No se pudo actualizar la notificación.');
-  const readOne = useMutation({ mutationFn: markNotificationRead, onSuccess: () => void refresh(), onError: onActionError });
-  const readAll = useMutation({ mutationFn: markAllNotificationsRead, onSuccess: () => void refresh(), onError: onActionError });
+  const reportActionError = (error: unknown) => {
+    const message = error instanceof ApiError ? error.message : 'No se pudo actualizar la notificación.';
+    setActionError(message);
+    onActionError?.(message);
+  };
+  const readOne = useMutation({ mutationFn: markNotificationRead, onSuccess: () => void refresh(), onError: reportActionError });
+  const readAll = useMutation({ mutationFn: markAllNotificationsRead, onSuccess: () => void refresh(), onError: reportActionError });
   const count = unread.data ?? 0;
 
   async function choose(notification: Notification): Promise<void> {

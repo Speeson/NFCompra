@@ -24,6 +24,7 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
   const queryClient = useQueryClient();
   const [householdId, setHouseholdId] = useState<string | undefined>(() => requestedHouseholdId ?? new URL(window.location.href).searchParams.get('household') ?? undefined);
   const [listId, setListId] = useState<string | undefined>(() => requestedListId ?? new URL(window.location.href).searchParams.get('list') ?? undefined);
+  const appliedRouteRequest = useRef<string | undefined>(undefined);
   const [message, setMessage] = useState<string>();
   const [conflict, setConflict] = useState<{ current: ApiShoppingItem; retry: () => void }>();
   const nextRevision = useRef(0);
@@ -36,9 +37,13 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
   });
 
   useEffect(() => {
-    if (requestedHouseholdId && requestedHouseholdId !== householdId) { setHouseholdId(requestedHouseholdId); setListId(requestedListId ?? undefined); }
-    else if (requestedHouseholdId && requestedListId && requestedListId !== listId) setListId(requestedListId);
-  }, [householdId, listId, requestedHouseholdId, requestedListId]);
+    if (!requestedHouseholdId) return;
+    const routeRequest = `${requestedHouseholdId}:${requestedListId ?? ''}`;
+    if (appliedRouteRequest.current === routeRequest) return;
+    appliedRouteRequest.current = routeRequest;
+    setHouseholdId(requestedHouseholdId);
+    setListId(requestedListId ?? undefined);
+  }, [requestedHouseholdId, requestedListId]);
   useEffect(() => {
     const households = householdsQuery.data ?? [];
     const first = households[0];
