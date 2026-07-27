@@ -64,7 +64,7 @@ expect(await response.json()).toMatchObject({ error: { code: 'EMAIL_NOT_VERIFIED
 - [ ] Write the failing test that `POST /v1/households` returns a default list in the same response.
 - [ ] Run `npm --workspace @nfcompra/api run test -- shopping-lists.integration.test.ts`; expect route-missing failure.
 - [ ] Implement D1 repositories and authorization. Household creation inserts owner membership and exactly one default list in a single D1 batch.
-- [ ] Implement item creation, edit, check, delete, checked-item purge, normalized search and `operationId` idempotency. `PATCH` requires `expectedVersion` and returns `409 ITEM_VERSION_CONFLICT` with current resource.
+- [ ] Implement item creation, edit, check, delete, checked-item purge, normalized search and `operationId` idempotency. A completed operation returns its stored response; a reserved but unfinished operation returns `409 OPERATION_IN_PROGRESS` and is never automatically reclaimed in this milestone. The client must refresh the resource before issuing a new operation ID. `PATCH` requires `expectedVersion` and returns `409 ITEM_VERSION_CONFLICT` with current resource.
 - [ ] Run the complete API suite; cover a foreign user, conflict, duplicate operation and several lists in one household.
 - [ ] Commit locally: `git commit -m "feat(api): add personal households and shopping lists"`.
 
