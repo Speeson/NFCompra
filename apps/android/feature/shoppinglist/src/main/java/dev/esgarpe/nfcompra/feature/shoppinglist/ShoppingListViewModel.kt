@@ -12,8 +12,6 @@ class ShoppingListViewModel(private val repository: ShoppingListRepository) : Vi
     private val mutableState = MutableStateFlow<ShoppingListViewState>(ShoppingListViewState.Loading)
     val state: StateFlow<ShoppingListViewState> = mutableState.asStateFlow()
 
-    init { load() }
-
     fun onAction(action: ShoppingListAction) {
         viewModelScope.launch {
             val data = mutableState.value as? ShoppingListViewState.Data ?: return@launch
@@ -30,14 +28,16 @@ class ShoppingListViewModel(private val repository: ShoppingListRepository) : Vi
                     ShoppingListAction.RetryConflict -> data.retryAction?.let(::onAction)
                 }
             } catch (error: ShoppingListApiException) {
-                mutableState.value = data.copy(message = error.message, conflict = error.current, retryAction = action)
+                val current = error.current
+                val conflicted = current?.let { data.withCurrent(it) } ?: data
+                mutableState.value = conflicted.copy(message = error.message, conflict = current, retryAction = action)
             } catch (_: Exception) {
                 mutableState.value = data.copy(message = "No se pudo conectar con el servidor.")
             }
         }
     }
 
-    private fun load() = viewModelScope.launch {
+    fun load() = viewModelScope.launch {
         try {
             val households = repository.households()
             if (households.isEmpty()) {
@@ -104,4 +104,9 @@ class ShoppingListViewModel(private val repository: ShoppingListRepository) : Vi
 
     private fun ShoppingListViewState.Data.item(id: String) =
         (content.pending + content.checked).first { it.id == id }
+
+    private fun ShoppingListViewState.Data.withCurrent(current: ShoppingListItemUiModel): ShoppingListViewState.Data {
+        val items = (content.pending + content.checked).map { item -> if (item.id == current.id) current else item }
+        return copy(content = content.copy(pending = items.filterNot { it.checked }, checked = items.filter { it.checked }))
+    }
 }

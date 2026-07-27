@@ -29,9 +29,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             var signedIn by remember { mutableStateOf(tokenStore.current() != null) }
             val authViewModel = remember { AuthViewModel(repository) }
-            val shoppingViewModel = remember { ShoppingListViewModel(shoppingRepository) }
             NFCompraTheme {
-                if (signedIn) ShoppingListApp(shoppingViewModel)
+                if (signedIn) {
+                    val shoppingViewModel = remember { ShoppingListViewModel(shoppingRepository) }
+                    ShoppingListApp(shoppingViewModel)
+                }
                 else AuthApp(authViewModel) { signedIn = true }
             }
         }

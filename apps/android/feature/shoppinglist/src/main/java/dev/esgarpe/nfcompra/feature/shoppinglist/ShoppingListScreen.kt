@@ -22,6 +22,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +38,7 @@ import dev.esgarpe.nfcompra.core.designsystem.NFCompraTheme
 @Composable
 fun ShoppingListApp(viewModel: ShoppingListViewModel) {
     val state by viewModel.state.collectAsState()
+    LaunchedEffect(viewModel) { viewModel.load() }
     when (state) {
         ShoppingListViewState.Loading -> Text("Cargando listaâ€¦")
         is ShoppingListViewState.Error -> Text((state as ShoppingListViewState.Error).message, color = MaterialTheme.colorScheme.error)
