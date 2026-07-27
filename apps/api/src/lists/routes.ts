@@ -55,11 +55,10 @@ async function handleItemRoute(request: Request, env: Env, user: AuthUser, itemI
   const patch = request.method === 'PATCH' ? itemPatch(body) : undefined;
   if (request.method === 'PATCH' && !patch) return errorResponse('VALIDATION_ERROR', 'La solicitud no es válida.', 422);
   const pending = await replayOperation(env, op, user.id);
-  if (pending?.state === 'pending' && !(await findShoppingItem(env, itemId))) return missingItemResponse(env, op, user.id);
   const previous = operationResponse(pending);
   if (previous) return previous;
   const current = await findShoppingItem(env, itemId);
-  if (!current) return missingItemResponse(env, op, user.id);
+  if (!current) return missingItemResponse();
   if (!(await isListMember(env, current.listId, user.id))) return errorResponse('FORBIDDEN', 'No tienes acceso a esta lista.', 403);
   const claimed = await claimOperation(env, op, user.id);
   const replay = operationResponse(claimed);
@@ -68,7 +67,7 @@ async function handleItemRoute(request: Request, env: Env, user: AuthUser, itemI
   if (request.method === 'DELETE') {
     if (!(await deleteShoppingItem(env, itemId, expectedVersion as number, claimed.leaseToken))) {
       const latest = await findShoppingItem(env, itemId);
-      if (!latest) return missingItemResponse(env, op, user.id);
+      if (!latest) return missingItemResponse(env, op, user.id, claimed.leaseToken);
       const responseBody = JSON.stringify({ error: { code: 'ITEM_VERSION_CONFLICT', message: 'El producto ha cambiado.', details: { current: latest } } });
       await completeOperation(env, op, user.id, claimed.leaseToken, 409, responseBody);
       return new Response(responseBody, { status: 409, headers: { 'content-type': 'application/json' } });
@@ -80,7 +79,7 @@ async function handleItemRoute(request: Request, env: Env, user: AuthUser, itemI
   const updated = await updateShoppingItem(env, itemId, expectedVersion as number, user.id, patch!, claimed.leaseToken);
   if (!updated) {
     const latest = await findShoppingItem(env, itemId);
-    if (!latest) return missingItemResponse(env, op, user.id);
+    if (!latest) return missingItemResponse(env, op, user.id, claimed.leaseToken);
     const responseBody = JSON.stringify({ error: { code: 'ITEM_VERSION_CONFLICT', message: 'El producto ha cambiado.', details: { current: latest } } });
     await completeOperation(env, op, user.id, claimed.leaseToken, 409, responseBody);
     return new Response(responseBody, { status: 409, headers: { 'content-type': 'application/json' } });
@@ -155,8 +154,9 @@ function operationResponse(claim: Awaited<ReturnType<typeof claimOperation>> | n
   return errorResponse(claim.state === 'pending' ? 'OPERATION_IN_PROGRESS' : 'OPERATION_ID_REUSED', 'El identificador de operación ya está en uso.', 409);
 }
 
-async function missingItemResponse(env: Env, operationId: string, userId: string): Promise<Response> {
+async function missingItemResponse(env?: Env, operationId?: string, userId?: string, leaseToken?: string): Promise<Response> {
   const body = JSON.stringify({ error: { code: 'ITEM_NOT_FOUND', message: 'El producto no existe.', details: {} } });
-  await completeMissingItemOperation(env, operationId, userId, body);
+  if (!env || !operationId || !userId || !leaseToken) return new Response(body, { status: 404, headers: { 'content-type': 'application/json' } });
+  await completeMissingItemOperation(env, operationId, userId, leaseToken, body);
   return operationResponse(await replayOperation(env, operationId, userId)) ?? new Response(body, { status: 404, headers: { 'content-type': 'application/json' } });
 }

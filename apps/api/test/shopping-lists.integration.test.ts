@@ -3,6 +3,7 @@ import { beforeEach, expect, it } from 'vitest';
 import { createWorker } from '../src';
 import { createAccessToken } from '../src/auth/token-service';
 import type { Env as WorkerEnv } from '../src/env';
+import { completeMissingItemOperation, completeOperation } from '../src/lists/repository';
 
 declare global {
   namespace Cloudflare {
@@ -203,30 +204,42 @@ it('returns OPERATION_IN_PROGRESS for unfinished PATCH, DELETE and purge operati
   }
 });
 
-it('stores a deterministic 404 when a claimed PATCH or DELETE loses its item', async () => {
+it('does not let a duplicate DELETE close another owner pending operation', async () => {
   const authorization = await authorizationFor('Ana');
   const household = await (await dispatch('/v1/households', { name: 'Casa' }, authorization)).json<{ defaultList: { id: string } }>();
   const user = await env.DB.prepare('SELECT id FROM users ORDER BY created_at DESC LIMIT 1').first<{ id: string }>();
   const item = await (await dispatch(`/v1/lists/${household.defaultList.id}/items`, { name: 'Sal', operationId: crypto.randomUUID() }, authorization)).json<{ item: { id: string } }>();
-  const operations = [crypto.randomUUID(), crypto.randomUUID()];
-  for (const operationId of operations) {
-    await env.DB.prepare('INSERT INTO sync_operations (operation_id, user_id, lease_token, created_at, response_status, response_body) VALUES (?, ?, ?, ?, 102, NULL)')
-      .bind(operationId, user!.id, crypto.randomUUID(), new Date().toISOString()).run();
-  }
+  const operationId = crypto.randomUUID();
+  const ownerLease = crypto.randomUUID();
+  await env.DB.prepare('INSERT INTO sync_operations (operation_id, user_id, lease_token, created_at, response_status, response_body) VALUES (?, ?, ?, ?, 102, NULL)')
+    .bind(operationId, user!.id, ownerLease, new Date().toISOString()).run();
   await env.DB.prepare('DELETE FROM shopping_items WHERE id = ?').bind(item.item.id).run();
 
-  const requests: Array<[string, unknown, string]> = [
-    [`/v1/items/${item.item.id}`, { isChecked: true, expectedVersion: 1, operationId: operations[0] }, 'PATCH'],
-    [`/v1/items/${item.item.id}`, { expectedVersion: 1, operationId: operations[1] }, 'DELETE'],
-  ];
-  for (const [path, body, method] of requests) {
-    const first = await dispatch(path, body, authorization, method);
-    expect(first.status).toBe(404);
-    const expected = await first.json();
-    const repeated = await dispatch(path, body, authorization, method);
-    expect(repeated.status).toBe(404);
-    expect(await repeated.json()).toEqual(expected);
-  }
+  const body = { expectedVersion: 1, operationId };
+  const duplicate = await dispatch(`/v1/items/${item.item.id}`, body, authorization, 'DELETE');
+  expect(duplicate.status).toBe(409);
+  expect(await duplicate.json()).toMatchObject({ error: { code: 'OPERATION_IN_PROGRESS' } });
+
+  const completed = JSON.stringify({ status: 'deleted' });
+  expect(await completeOperation(testEnv, operationId, user!.id, ownerLease, 200, completed)).toBe(true);
+  const retry = await dispatch(`/v1/items/${item.item.id}`, body, authorization, 'DELETE');
+  expect(retry.status).toBe(200);
+  expect(await retry.json()).toEqual({ status: 'deleted' });
+});
+
+it('replays the 404 stored by the lease owner after a claimed item disappears', async () => {
+  const authorization = await authorizationFor('Ana');
+  const user = await env.DB.prepare('SELECT id FROM users ORDER BY created_at DESC LIMIT 1').first<{ id: string }>();
+  const operationId = crypto.randomUUID();
+  const leaseToken = crypto.randomUUID();
+  await env.DB.prepare('INSERT INTO sync_operations (operation_id, user_id, lease_token, created_at, response_status, response_body) VALUES (?, ?, ?, ?, 102, NULL)')
+    .bind(operationId, user!.id, leaseToken, new Date().toISOString()).run();
+  const body = JSON.stringify({ error: { code: 'ITEM_NOT_FOUND', message: 'El producto no existe.', details: {} } });
+  expect(await completeMissingItemOperation(testEnv, operationId, user!.id, leaseToken, body)).toBe(true);
+
+  const response = await dispatch(`/v1/items/${crypto.randomUUID()}`, { expectedVersion: 1, operationId }, authorization, 'DELETE');
+  expect(response.status).toBe(404);
+  expect(await response.json()).toEqual(JSON.parse(body));
 });
 
 async function authorizationFor(name: string): Promise<Record<string, string>> {

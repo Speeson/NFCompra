@@ -106,9 +106,10 @@ export async function completeOperation(env: Env, operation: string, userId: str
   return result.meta.changes === 1;
 }
 
-export async function completeMissingItemOperation(env: Env, operation: string, userId: string, body: string): Promise<void> {
-  await env.DB.prepare('UPDATE sync_operations SET response_status = 404, response_body = ? WHERE operation_id = ? AND user_id = ? AND response_body IS NULL')
-    .bind(body, operation, userId).run();
+export async function completeMissingItemOperation(env: Env, operation: string, userId: string, leaseToken: string, body: string): Promise<boolean> {
+  const result = await env.DB.prepare('UPDATE sync_operations SET response_status = 404, response_body = ? WHERE operation_id = ? AND user_id = ? AND lease_token = ? AND response_body IS NULL')
+    .bind(body, operation, userId, leaseToken).run();
+  return result.meta.changes === 1;
 }
 
 export async function createShoppingItem(env: Env, input: Omit<ShoppingItem, 'id' | 'version' | 'createdAt' | 'updatedAt'>, leaseToken: string): Promise<ShoppingItem | null> {
