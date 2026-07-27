@@ -4,6 +4,8 @@ import app.cash.turbine.test
 import dev.esgarpe.nfcompra.core.network.NetworkClient
 import dev.esgarpe.nfcompra.core.network.SessionTokens
 import dev.esgarpe.nfcompra.core.network.TokenStore
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import okhttp3.Request
@@ -223,6 +225,27 @@ class AuthRepositoryTest {
     }
 
     @Test
+    fun `refresh failure publishes an anonymous observable session`() {
+        val server = MockWebServer()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = MockResponse().setResponseCode(401)
+        }
+        server.start()
+        try {
+            val store = FakeTokenStore().apply { tokens = SessionTokens("expired-access", "expired-refresh") }
+            val client = NetworkClient.authenticatedClient(server.url("/").toString(), store)
+
+            client.newCall(Request.Builder().url(server.url("/v1/protected")).build()).execute().use { response ->
+                assertEquals(401, response.code)
+            }
+
+            assertNull(store.session.value)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
     fun `atomic cleanup cannot erase tokens saved after failure handling starts`() {
         val cleanupStarted = CountDownLatch(1)
         val allowCleanup = CountDownLatch(1)
@@ -286,8 +309,73 @@ class AuthRepositoryTest {
         }
     }
 
+    @Test
+    fun `logout revokes the Android refresh token and publishes an anonymous session`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("""{"status":"logged_out"}"""))
+        server.start()
+        try {
+            val store = FakeTokenStore().apply { tokens = SessionTokens("access-token", "refresh-token") }
+            val repository = AuthRepository(NetworkClient.authApi(server.url("/").toString()), store)
+
+            repository.logout()
+
+            assertNull(store.session.value)
+            val request = server.takeRequest()
+            assertEquals("/v1/auth/logout", request.path)
+            assertEquals(
+                """{"clientType":"android","refreshToken":"refresh-token"}""",
+                request.body.readUtf8(),
+            )
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `logout publishes an anonymous session even when remote revocation fails`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(503))
+        server.start()
+        try {
+            val store = FakeTokenStore().apply { tokens = SessionTokens("access-token", "refresh-token") }
+            val repository = AuthRepository(NetworkClient.authApi(server.url("/").toString()), store)
+
+            runCatching { repository.logout() }
+
+            assertNull(store.session.value)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `resend verification retries delivery for the registered email`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(202).setBody("""{"status":"accepted"}"""))
+        server.start()
+        try {
+            val repository = AuthRepository(NetworkClient.authApi(server.url("/").toString()), FakeTokenStore())
+
+            repository.resendVerification("ana@example.test").test {
+                assertEquals(AuthResult.Success("Hemos vuelto a enviar el correo de verificación."), awaitItem())
+                awaitComplete()
+            }
+
+            val request = server.takeRequest()
+            assertEquals("/v1/auth/resend-verification", request.path)
+            assertEquals("""{"email":"ana@example.test"}""", request.body.readUtf8())
+        } finally {
+            server.shutdown()
+        }
+    }
+
     private class FakeTokenStore : TokenStore {
-        var tokens: SessionTokens? = null
+        private val mutableSession = MutableStateFlow<SessionTokens?>(null)
+        override val session: StateFlow<SessionTokens?> = mutableSession
+        var tokens: SessionTokens?
+            get() = mutableSession.value
+            set(value) { mutableSession.value = value }
         var onSave: ((SessionTokens) -> Unit)? = null
 
         override fun current(): SessionTokens? = tokens
@@ -313,6 +401,7 @@ class AuthRepositoryTest {
     }
 
     private class FailingTokenStore : TokenStore {
+        override val session = MutableStateFlow<SessionTokens?>(null)
         override fun current(): SessionTokens? = null
         override suspend fun read(): SessionTokens? = null
         override suspend fun save(tokens: SessionTokens): Nothing = throw IOException("disk full")
@@ -327,7 +416,11 @@ class AuthRepositoryTest {
         private val saveStarted: CountDownLatch,
     ) : TokenStore {
         private val lock = Any()
-        private var tokens: SessionTokens? = initial
+        private val mutableSession = MutableStateFlow<SessionTokens?>(initial)
+        override val session: StateFlow<SessionTokens?> = mutableSession
+        private var tokens: SessionTokens?
+            get() = mutableSession.value
+            set(value) { mutableSession.value = value }
 
         override fun current(): SessionTokens? = synchronized(lock) { tokens }
         override suspend fun read(): SessionTokens? = current()

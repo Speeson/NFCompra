@@ -3,8 +3,10 @@ package dev.esgarpe.nfcompra.feature.auth
 import dev.esgarpe.nfcompra.core.network.AuthApi
 import dev.esgarpe.nfcompra.core.network.ForgotPasswordRequest
 import dev.esgarpe.nfcompra.core.network.LoginRequest
+import dev.esgarpe.nfcompra.core.network.LogoutRequest
 import dev.esgarpe.nfcompra.core.network.RefreshRequest
 import dev.esgarpe.nfcompra.core.network.RegisterRequest
+import dev.esgarpe.nfcompra.core.network.ResendVerificationRequest
 import dev.esgarpe.nfcompra.core.network.ResetPasswordRequest
 import dev.esgarpe.nfcompra.core.network.SessionTokens
 import dev.esgarpe.nfcompra.core.network.TokenRequest
@@ -41,6 +43,8 @@ class AuthRepository(private val api: AuthApi, private val tokenStore: TokenStor
 
     fun register(name: String, email: String, password: String): Flow<AuthResult> =
         complete("Te hemos enviado un enlace de verificación.") { api.register(RegisterRequest(name, email, password)) }
+    fun resendVerification(email: String): Flow<AuthResult> =
+        complete("Hemos vuelto a enviar el correo de verificación.") { api.resendVerification(ResendVerificationRequest(email)) }
     fun verifyEmail(token: String): Flow<AuthResult> =
         complete("Correo verificado. Ya puedes iniciar sesión.") { api.verifyEmail(TokenRequest(token)) }
     fun requestPasswordReset(email: String): Flow<AuthResult> =
@@ -57,6 +61,15 @@ class AuthRepository(private val api: AuthApi, private val tokenStore: TokenStor
         } catch (error: Exception) {
             runCatching { tokenStore.clear() }
             AuthResult.Failure(error.messageForUser())
+        }
+    }
+
+    suspend fun logout() {
+        val refreshToken = tokenStore.read()?.refreshToken
+        try {
+            if (refreshToken != null) api.logout(LogoutRequest(refreshToken = refreshToken))
+        } finally {
+            tokenStore.clear()
         }
     }
 

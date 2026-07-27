@@ -4,6 +4,8 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.security.KeyStore
 import java.io.IOException
 import javax.crypto.Cipher
@@ -14,6 +16,7 @@ import javax.crypto.spec.GCMParameterSpec
 data class SessionTokens(val accessToken: String, val refreshToken: String)
 
 interface TokenStore {
+    val session: StateFlow<SessionTokens?>
     fun current(): SessionTokens?
     suspend fun read(): SessionTokens?
     suspend fun save(tokens: SessionTokens)
@@ -25,10 +28,11 @@ interface TokenStore {
 class KeystoreTokenStore(context: Context) : TokenStore {
     private val preferences = context.getSharedPreferences("nfcompra.session", Context.MODE_PRIVATE)
     private val sessionLock = Any()
-    @Volatile private var cached: SessionTokens? = readEncrypted()
+    private val mutableSession = MutableStateFlow(readEncrypted())
+    override val session: StateFlow<SessionTokens?> = mutableSession
 
-    override fun current(): SessionTokens? = cached
-    override suspend fun read(): SessionTokens? = cached
+    override fun current(): SessionTokens? = session.value
+    override suspend fun read(): SessionTokens? = session.value
 
     override suspend fun save(tokens: SessionTokens) {
         val access = encrypt(tokens.accessToken)
@@ -39,7 +43,7 @@ class KeystoreTokenStore(context: Context) : TokenStore {
                 .putString(REFRESH_TOKEN, refresh)
                 .commit()
             ) throw IOException("No se pudo guardar la sesión.")
-            cached = tokens
+            mutableSession.value = tokens
         }
     }
 
@@ -50,7 +54,7 @@ class KeystoreTokenStore(context: Context) : TokenStore {
     }
 
     override suspend fun compareAndClear(expected: SessionTokens): Boolean = synchronized(sessionLock) {
-        if (cached != expected) return@synchronized false
+        if (session.value != expected) return@synchronized false
         clearLocked()
         true
     }
@@ -59,7 +63,7 @@ class KeystoreTokenStore(context: Context) : TokenStore {
         if (!preferences.edit().remove(ACCESS_TOKEN).remove(REFRESH_TOKEN).commit()) {
             throw IOException("No se pudo borrar la sesión.")
         }
-        cached = null
+        mutableSession.value = null
     }
 
     private fun readEncrypted(): SessionTokens? {

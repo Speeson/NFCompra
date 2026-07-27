@@ -12,7 +12,11 @@ declare global {
 
 class FakeEmailSender implements EmailSender {
   messages: EmailMessage[] = [];
-  async send(message: EmailMessage): Promise<void> { this.messages.push(message); }
+  failure: Error | null = null;
+  async send(message: EmailMessage): Promise<void> {
+    if (this.failure) throw this.failure;
+    this.messages.push(message);
+  }
 }
 
 const fakeEmailSender = new FakeEmailSender();
@@ -29,6 +33,7 @@ beforeEach(async () => {
     DELETE FROM users;
   `);
   fakeEmailSender.messages = [];
+  fakeEmailSender.failure = null;
 });
 
 it('does not allow an unverified user to log in', async () => {
@@ -66,6 +71,33 @@ it('sends a verifiable email and creates a web session for a verified user', asy
   const updateResponse = await dispatch('/v1/me', { name: 'Beatriz' }, { authorization: `Bearer ${accessToken}` }, 'PATCH');
   expect(updateResponse.status).toBe(200);
   expect(await updateResponse.json()).toMatchObject({ user: { name: 'Beatriz' } });
+});
+
+it('returns a recoverable JSON error when registration email fails and supports resending it', async () => {
+  const email = `recoverable-${crypto.randomUUID()}@example.test`;
+  fakeEmailSender.failure = new Error('provider unavailable');
+
+  const failedRegistration = await dispatch('/v1/auth/register', { name: 'Bea', email, password: 'a secure password' });
+
+  expect(failedRegistration.status).toBe(503);
+  expect(failedRegistration.headers.get('content-type')).toContain('application/json');
+  expect(await failedRegistration.json()).toEqual({
+    error: {
+      code: 'EMAIL_DELIVERY_FAILED',
+      message: 'No se pudo enviar el correo de verificación.',
+      details: { retryPath: '/v1/auth/resend-verification' },
+    },
+  });
+
+  fakeEmailSender.failure = null;
+  const resent = await dispatch('/v1/auth/resend-verification', { email });
+  expect(resent.status).toBe(202);
+  expect(await resent.json()).toEqual({ status: 'accepted' });
+  expect(fakeEmailSender.messages).toHaveLength(1);
+  expect(fakeEmailSender.messages[0]).toMatchObject({ to: email, subject: 'Verifica tu correo de NFCompra' });
+
+  const verified = await dispatch('/v1/auth/verify-email', { token: tokenFrom(fakeEmailSender.messages[0]) });
+  expect(verified.status).toBe(200);
 });
 
 it('rotates and revokes Android refresh tokens', async () => {
@@ -116,7 +148,7 @@ it('does not refresh a session invalidated during password reset', async () => {
 it('sends a reset link and accepts the replacement password once', async () => {
   const email = `reset-${crypto.randomUUID()}@example.test`;
   await registerAndVerify(email);
-  const previousSession = await (await dispatch('/v1/auth/login', { email, password: 'a secure password', clientType: 'android' })).json<{ refreshToken: string }>();
+  const previousSession = await (await dispatch('/v1/auth/login', { email, password: 'a secure password', clientType: 'android' })).json<{ accessToken: string; refreshToken: string }>();
   const secondPreviousSession = await (await dispatch('/v1/auth/login', { email, password: 'a secure password', clientType: 'android', deviceName: 'Tablet' })).json<{ refreshToken: string }>();
   const forgottenResponse = await dispatch('/v1/auth/forgot-password', { email });
   expect(forgottenResponse.status).toBe(202);
@@ -130,6 +162,8 @@ it('sends a reset link and accepts the replacement password once', async () => {
   expect(previousRefreshResponse.status).toBe(401);
   const secondPreviousRefreshResponse = await dispatch('/v1/auth/refresh', { clientType: 'android', refreshToken: secondPreviousSession.refreshToken });
   expect(secondPreviousRefreshResponse.status).toBe(401);
+  const previousAccessResponse = await dispatch('/v1/me', undefined, { authorization: `Bearer ${previousSession.accessToken}` }, 'GET');
+  expect(previousAccessResponse.status).toBe(401);
   const reusedResponse = await dispatch('/v1/auth/reset-password', { token: tokenFrom(fakeEmailSender.messages[1]), password: 'another replacement password' });
   expect(reusedResponse.status).toBe(400);
 

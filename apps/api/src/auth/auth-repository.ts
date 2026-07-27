@@ -35,10 +35,19 @@ export async function findUserByEmail(env: Env, email: string): Promise<UserWith
 }
 
 export async function findUserById(env: Env, id: string): Promise<AuthUser | null> {
+  return (await findUserSessionById(env, id))?.user ?? null;
+}
+
+export interface UserSession {
+  user: AuthUser;
+  sessionVersion: number;
+}
+
+export async function findUserSessionById(env: Env, id: string): Promise<UserSession | null> {
   const row = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<UserRow>();
   if (!row) return null;
-  const { passwordHash: _passwordHash, sessionVersion: _sessionVersion, ...user } = mapUser(row);
-  return user;
+  const { passwordHash: _passwordHash, sessionVersion, ...user } = mapUser(row);
+  return { user, sessionVersion };
 }
 
 export async function createUser(env: Env, input: { name: string; email: string; passwordHash: string }): Promise<AuthUser> {

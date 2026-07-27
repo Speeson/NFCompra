@@ -14,17 +14,33 @@ function errorMessage(error: unknown): string {
 }
 
 export function RegisterPage({ onNavigate }: AuthPageProps): JSX.Element {
-  const { register } = useSession();
+  const { register, resendVerification } = useSession();
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [retryEmail, setRetryEmail] = useState<string | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const email = String(form.get('email'));
+    setError(null);
+    setRetryEmail(null);
+    try {
+      await register({ name: String(form.get('name')), email, password: String(form.get('password')) });
+      setMessage('Revisa tu correo para verificar la cuenta antes de iniciar sesión.');
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.code === 'EMAIL_DELIVERY_FAILED') setRetryEmail(email);
+      setError(errorMessage(cause));
+    }
+  }
+
+  async function resend(): Promise<void> {
+    if (!retryEmail) return;
     setError(null);
     try {
-      await register({ name: String(form.get('name')), email: String(form.get('email')), password: String(form.get('password')) });
-      setMessage('Revisa tu correo para verificar la cuenta antes de iniciar sesión.');
+      await resendVerification(retryEmail);
+      setMessage('Hemos vuelto a enviar el correo de verificación.');
+      setRetryEmail(null);
     } catch (cause) {
       setError(errorMessage(cause));
     }
@@ -37,6 +53,7 @@ export function RegisterPage({ onNavigate }: AuthPageProps): JSX.Element {
       <label>Contraseña<input name="password" type="password" autoComplete="new-password" minLength={8} required /></label>
       {message && <p role="status">{message}</p>}
       {error && <p role="alert">{error}</p>}
+      {retryEmail && <button type="button" onClick={() => void resend()}>Reenviar verificación</button>}
       <button type="submit">Crear cuenta</button>
     </form>
     <p>¿Ya tienes cuenta? <button type="button" onClick={() => onNavigate?.('/login')}>Inicia sesión</button></p>

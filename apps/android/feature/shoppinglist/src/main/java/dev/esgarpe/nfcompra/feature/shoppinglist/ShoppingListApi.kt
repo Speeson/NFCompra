@@ -2,8 +2,8 @@ package dev.esgarpe.nfcompra.feature.shoppinglist
 
 import retrofit2.Response
 import retrofit2.http.Body
-import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.HTTP
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
@@ -40,5 +40,6 @@ interface ShoppingListApi {
     @GET("v1/lists/{listId}/items") suspend fun items(@Path("listId") listId: String): Response<ItemsResponse>
     @POST("v1/lists/{listId}/items") suspend fun createItem(@Path("listId") listId: String, @Body request: CreateItemRequest): Response<ItemResponse>
     @PATCH("v1/items/{itemId}") suspend fun updateItem(@Path("itemId") itemId: String, @Body request: UpdateItemRequest): Response<ItemResponse>
-    @DELETE("v1/items/{itemId}") suspend fun deleteItem(@Path("itemId") itemId: String, @Body request: DeleteItemRequest): Response<Unit>
+    @HTTP(method = "DELETE", path = "v1/items/{itemId}", hasBody = true)
+    suspend fun deleteItem(@Path("itemId") itemId: String, @Body request: DeleteItemRequest): Response<Unit>
 }

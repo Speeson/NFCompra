@@ -247,7 +247,7 @@ async function authorizationFor(name: string): Promise<Record<string, string>> {
   const now = new Date().toISOString();
   await env.DB.prepare('INSERT INTO users (id, name, email, password_hash, email_verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .bind(id, name, `${id}@example.test`, 'hash', now, now, now).run();
-  return { authorization: `Bearer ${await createAccessToken(id, testEnv)}` };
+  return { authorization: `Bearer ${await createAccessToken(id, 0, testEnv)}` };
 }
 
 async function dispatch(path: string, body: unknown, headers: Record<string, string>, method = 'POST'): Promise<Response> {

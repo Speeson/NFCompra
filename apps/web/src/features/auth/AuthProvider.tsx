@@ -19,6 +19,7 @@ interface AuthContextValue {
   user: User | null;
   login(credentials: Credentials): Promise<void>;
   register(registration: Registration): Promise<void>;
+  resendVerification(email: string): Promise<void>;
   verifyEmail(token: string): Promise<void>;
   forgotPassword(email: string): Promise<void>;
   resetPassword(token: string, password: string): Promise<void>;
@@ -68,6 +69,9 @@ export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
     },
     async register(registration) {
       await apiClient.request('/auth/register', { method: 'POST', body: registration, retryOnUnauthorized: false });
+    },
+    async resendVerification(email) {
+      await apiClient.request('/auth/resend-verification', { method: 'POST', body: { email }, retryOnUnauthorized: false });
     },
     async verifyEmail(token) {
       await apiClient.request('/auth/verify-email', { method: 'POST', body: { token }, retryOnUnauthorized: false });

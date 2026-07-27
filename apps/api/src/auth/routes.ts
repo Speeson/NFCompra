@@ -53,11 +53,32 @@ function invalidInput(): Response {
 async function issueSession(env: Env, userId: string, client: ClientType, deviceName: string | null, sessionVersion: number): Promise<Response | null> {
   const refreshToken = createRandomToken();
   if (!(await createRefreshToken(env, userId, await hashToken(refreshToken), deviceName, sessionVersion))) return null;
-  const body: Record<string, unknown> = { accessToken: await createAccessToken(userId, env) };
+  const body: Record<string, unknown> = { accessToken: await createAccessToken(userId, sessionVersion, env) };
   const headers = new Headers({ 'content-type': 'application/json' });
   if (client === 'web') headers.set('set-cookie', refreshCookie(refreshToken));
   else body.refreshToken = refreshToken;
   return new Response(JSON.stringify(body), { status: 200, headers });
+}
+
+async function sendVerificationEmail(
+  env: Env,
+  emailSender: EmailSender,
+  user: { id: string; email: string },
+): Promise<void> {
+  const token = createRandomToken();
+  await createAuthToken(env, user.id, 'email_verification', await hashToken(token));
+  const url = `${env.APP_BASE_URL}/auth/verify?token=${encodeURIComponent(token)}`;
+  await emailSender.send({ to: user.email, subject: 'Verifica tu correo de NFCompra', text: `Verifica tu correo: ${url}` });
+}
+
+function emailDeliveryFailed(purpose: 'verification' | 'password_reset'): Response {
+  const verification = purpose === 'verification';
+  return errorResponse(
+    'EMAIL_DELIVERY_FAILED',
+    verification ? 'No se pudo enviar el correo de verificación.' : 'No se pudo enviar el correo de recuperación.',
+    503,
+    verification ? { retryPath: '/v1/auth/resend-verification' } : { retryPath: '/v1/auth/forgot-password' },
+  );
 }
 
 export async function handleAuthRoute(request: Request, env: Env, emailSender: EmailSender): Promise<Response | null> {
@@ -74,11 +95,26 @@ export async function handleAuthRoute(request: Request, env: Env, emailSender: E
     if (!name || !email || !password || password.length < 8) return invalidInput();
     if (await findUserByEmail(env, email)) return errorResponse('EMAIL_ALREADY_REGISTERED', 'El correo ya está registrado.', 409);
     const user = await createUser(env, { name, email, passwordHash: await hashPassword(password) });
-    const token = createRandomToken();
-    await createAuthToken(env, user.id, 'email_verification', await hashToken(token));
-    const url = `${env.APP_BASE_URL}/auth/verify?token=${encodeURIComponent(token)}`;
-    await emailSender.send({ to: user.email, subject: 'Verifica tu correo de NFCompra', text: `Verifica tu correo: ${url}` });
+    try {
+      await sendVerificationEmail(env, emailSender, user);
+    } catch {
+      return emailDeliveryFailed('verification');
+    }
     return Response.json({ user }, { status: 201 });
+  }
+
+  if (action === 'resend-verification') {
+    const email = parseEmail(body.email);
+    if (!email) return invalidInput();
+    const user = await findUserByEmail(env, email);
+    if (user && !user.emailVerifiedAt) {
+      try {
+        await sendVerificationEmail(env, emailSender, user);
+      } catch {
+        return emailDeliveryFailed('verification');
+      }
+    }
+    return Response.json({ status: 'accepted' }, { status: 202 });
   }
 
   if (action === 'verify-email') {
@@ -130,7 +166,11 @@ export async function handleAuthRoute(request: Request, env: Env, emailSender: E
       const token = createRandomToken();
       await createAuthToken(env, user.id, 'password_reset', await hashToken(token));
       const url = `${env.APP_BASE_URL}/auth/reset-password?token=${encodeURIComponent(token)}`;
-      await emailSender.send({ to: user.email, subject: 'Restablece tu contraseña de NFCompra', text: `Restablece tu contraseña: ${url}` });
+      try {
+        await emailSender.send({ to: user.email, subject: 'Restablece tu contraseña de NFCompra', text: `Restablece tu contraseña: ${url}` });
+      } catch {
+        return emailDeliveryFailed('password_reset');
+      }
     }
     return Response.json({ status: 'accepted' }, { status: 202 });
   }

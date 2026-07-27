@@ -14,6 +14,10 @@ class ShoppingListViewModel(private val repository: ShoppingListRepository) : Vi
 
     fun onAction(action: ShoppingListAction) {
         viewModelScope.launch {
+            if (mutableState.value === ShoppingListViewState.NoHouseholds) {
+                if (action is ShoppingListAction.CreateHousehold) createInitialHousehold(action.name)
+                return@launch
+            }
             val data = mutableState.value as? ShoppingListViewState.Data ?: return@launch
             try {
                 when (action) {
@@ -41,7 +45,7 @@ class ShoppingListViewModel(private val repository: ShoppingListRepository) : Vi
         try {
             val households = repository.households()
             if (households.isEmpty()) {
-                mutableState.value = ShoppingListViewState.Error("No tienes hogares. Crea uno para empezar.")
+                mutableState.value = ShoppingListViewState.NoHouseholds
                 return@launch
             }
             val household = households.first()
@@ -64,6 +68,17 @@ class ShoppingListViewModel(private val repository: ShoppingListRepository) : Vi
     private suspend fun createHousehold(data: ShoppingListViewState.Data, name: String) {
         val (household, list) = repository.createHousehold(name)
         publish(data.households + household, listOf(list), household.id, list.id)
+    }
+
+    private suspend fun createInitialHousehold(name: String) {
+        try {
+            val (household, list) = repository.createHousehold(name)
+            publish(listOf(household), listOf(list), household.id, list.id)
+        } catch (error: ShoppingListApiException) {
+            mutableState.value = ShoppingListViewState.Error(error.message)
+        } catch (_: Exception) {
+            mutableState.value = ShoppingListViewState.Error("No se pudo conectar con el servidor.")
+        }
     }
 
     private suspend fun createList(data: ShoppingListViewState.Data, name: String) {

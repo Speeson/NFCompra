@@ -4,9 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import dev.esgarpe.nfcompra.core.designsystem.NFCompraTheme
 import dev.esgarpe.nfcompra.core.network.KeystoreTokenStore
 import dev.esgarpe.nfcompra.core.network.NetworkClient
@@ -27,14 +26,14 @@ class MainActivity : ComponentActivity() {
             NetworkClient.authenticatedApi(BuildConfig.AUTH_BASE_URL, tokenStore, ShoppingListApi::class.java),
         )
         setContent {
-            var signedIn by remember { mutableStateOf(tokenStore.current() != null) }
+            val session by tokenStore.session.collectAsState()
             val authViewModel = remember { AuthViewModel(repository) }
             NFCompraTheme {
-                if (signedIn) {
+                if (session != null) {
                     val shoppingViewModel = remember { ShoppingListViewModel(shoppingRepository) }
-                    ShoppingListApp(shoppingViewModel)
+                    ShoppingListApp(shoppingViewModel, authViewModel::logout)
                 }
-                else AuthApp(authViewModel) { signedIn = true }
+                else AuthApp(authViewModel)
             }
         }
     }

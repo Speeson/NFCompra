@@ -35,7 +35,7 @@ fun AuthApp(viewModel: AuthViewModel, onSignedIn: () -> Unit = {}) {
             onRegister = { route = AuthRoute.REGISTER },
             onForgotPassword = { route = AuthRoute.FORGOT },
         )
-        AuthRoute.REGISTER -> RegisterScreen(state, viewModel::register, { route = AuthRoute.LOGIN }, { route = AuthRoute.VERIFY })
+        AuthRoute.REGISTER -> RegisterScreen(state, viewModel::register, viewModel::resendVerification, { route = AuthRoute.LOGIN }, { route = AuthRoute.VERIFY })
         AuthRoute.VERIFY -> VerificationScreen(state, viewModel::verify, { route = AuthRoute.LOGIN })
         AuthRoute.FORGOT -> ForgotPasswordScreen(state, viewModel::forgotPassword, { route = AuthRoute.RESET })
         AuthRoute.RESET -> ResetPasswordScreen(state, viewModel::resetPassword, { route = AuthRoute.LOGIN })
@@ -64,6 +64,7 @@ fun LoginScreen(
 fun RegisterScreen(
     state: AuthUiState,
     onRegister: (String, String, String) -> Unit,
+    onResendVerification: (String) -> Unit,
     onBack: () -> Unit,
     onVerify: () -> Unit,
 ) {
@@ -75,6 +76,9 @@ fun RegisterScreen(
         EmailField(email) { email = it }
         PasswordField(password) { password = it }
         SubmitButton("Registrarme", state) { onRegister(name, email, password) }
+        TextButton(onClick = { onResendVerification(email) }, enabled = email.isNotBlank() && !state.isSubmitting) {
+            Text("Reenviar verificación")
+        }
         TextButton(onClick = onVerify) { Text("Ya tengo un código de verificación") }
         TextButton(onClick = onBack) { Text("Volver a iniciar sesión") }
     }

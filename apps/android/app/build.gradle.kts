@@ -4,6 +4,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val debugApiBaseUrl = providers.gradleProperty("NFCompraApiBaseUrl")
+    .orElse(providers.environmentVariable("NFCOMPRA_API_BASE_URL"))
+    .orElse("http://10.0.2.2:8787/")
+    .map { if (it.endsWith("/")) it else "$it/" }
+
 android {
     namespace = "dev.esgarpe.nfcompra"
     compileSdk = 36
@@ -20,7 +25,7 @@ android {
     buildFeatures { buildConfig = true }
     buildTypes {
         debug {
-            buildConfigField("String", "AUTH_BASE_URL", "\"https://example.invalid/\"")
+            buildConfigField("String", "AUTH_BASE_URL", "\"${debugApiBaseUrl.get()}\"")
         }
         release {
             buildConfigField("String", "AUTH_BASE_URL", "\"https://example.invalid/\"")

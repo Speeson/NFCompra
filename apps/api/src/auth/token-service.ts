@@ -33,22 +33,31 @@ export async function hashToken(token: string): Promise<string> {
   return base64Url(new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(token))));
 }
 
-export async function createAccessToken(userId: string, env: Env): Promise<string> {
+export async function createAccessToken(userId: string, sessionVersion: number, env: Env): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const header = base64Url(encoder.encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
-  const payload = base64Url(encoder.encode(JSON.stringify({ sub: userId, iat: now, exp: now + 15 * 60 })));
+  const payload = base64Url(encoder.encode(JSON.stringify({ sub: userId, session_version: sessionVersion, iat: now, exp: now + 15 * 60 })));
   const signingInput = `${header}.${payload}`;
   return `${signingInput}.${base64Url(await hmac(env.JWT_SECRET, signingInput))}`;
 }
 
-export async function verifyAccessToken(token: string, env: Env): Promise<string | null> {
+export interface AccessTokenSession {
+  userId: string;
+  sessionVersion: number;
+}
+
+export async function verifyAccessToken(token: string, env: Env): Promise<AccessTokenSession | null> {
   const [header, payload, signature] = token.split('.');
   if (!header || !payload || !signature) return null;
   if (!equal(decodeBase64Url(signature), await hmac(env.JWT_SECRET, `${header}.${payload}`))) return null;
   try {
-    const claims = JSON.parse(new TextDecoder().decode(decodeBase64Url(payload))) as { sub?: unknown; exp?: unknown };
-    if (typeof claims.sub !== 'string' || typeof claims.exp !== 'number' || claims.exp <= Math.floor(Date.now() / 1000)) return null;
-    return claims.sub;
+    const claims = JSON.parse(new TextDecoder().decode(decodeBase64Url(payload))) as { sub?: unknown; session_version?: unknown; exp?: unknown };
+    if (typeof claims.sub !== 'string'
+      || typeof claims.session_version !== 'number'
+      || !Number.isInteger(claims.session_version)
+      || typeof claims.exp !== 'number'
+      || claims.exp <= Math.floor(Date.now() / 1000)) return null;
+    return { userId: claims.sub, sessionVersion: claims.session_version };
   } catch {
     return null;
   }

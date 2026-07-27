@@ -7,6 +7,7 @@ import { ApiClient } from '../../api/client';
 import { App } from '../../app/App';
 import { AuthProvider } from './AuthProvider';
 import { LoginPage } from './LoginPage';
+import { RegisterPage } from './RegisterPage';
 
 afterEach(() => {
   cleanup();
@@ -37,6 +38,42 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent('Las credenciales no son válidas.');
     });
+  });
+});
+
+describe('RegisterPage', () => {
+  it('offers a verification email retry when the account exists but delivery failed', async () => {
+    const fetchMock = vi.fn((input: string | URL | Request, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/auth/refresh')) {
+        return Promise.resolve(Response.json({ error: { code: 'UNAUTHORIZED', message: 'No hay sesión.', details: {} } }, { status: 401 }));
+      }
+      if (url.endsWith('/auth/register')) {
+        return Promise.resolve(Response.json({
+          error: {
+            code: 'EMAIL_DELIVERY_FAILED',
+            message: 'No se pudo enviar el correo de verificación.',
+            details: { retryPath: '/v1/auth/resend-verification' },
+          },
+        }, { status: 503 }));
+      }
+      if (url.endsWith('/auth/resend-verification')) return Promise.resolve(Response.json({ status: 'accepted' }, { status: 202 }));
+      throw new Error(`Solicitud inesperada: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<AuthProvider><RegisterPage /></AuthProvider>);
+    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Ana' } });
+    fireEvent.change(screen.getByLabelText('Correo electrónico'), { target: { value: 'ana@example.test' } });
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'a secure password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo enviar el correo de verificación.');
+    fireEvent.click(screen.getByRole('button', { name: 'Reenviar verificación' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Hemos vuelto a enviar el correo de verificación.');
+    const resendCall = fetchMock.mock.calls.find(([input]) => String(input).endsWith('/auth/resend-verification'));
+    expect(JSON.parse(String(resendCall?.[1]?.body))).toEqual({ email: 'ana@example.test' });
   });
 });
 

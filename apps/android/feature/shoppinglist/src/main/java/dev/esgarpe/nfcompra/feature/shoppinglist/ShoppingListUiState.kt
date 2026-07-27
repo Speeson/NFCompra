@@ -29,6 +29,7 @@ sealed interface ShoppingListAction {
 
 sealed interface ShoppingListViewState {
     data object Loading : ShoppingListViewState
+    data object NoHouseholds : ShoppingListViewState
     data class Error(val message: String) : ShoppingListViewState
     data class Data(
         val content: ShoppingListUiState,
