@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ApiError } from '../../api/client';
@@ -8,7 +8,9 @@ import { createHousehold, createItem, createList, deleteItem, fetchHouseholds, f
 
 type ItemPatch = Partial<Pick<ApiShoppingItem, 'name' | 'quantity' | 'unit' | 'isChecked'>>;
 type UpdateVariables = { item: ApiShoppingItem; patch: ItemPatch };
-type PreviousItems = { previous?: ApiShoppingItem[] };
+type UpdateContext = { listId: string; itemId: string; previous?: ApiShoppingItem; revision: number; previousRevision?: number };
+type CreateContext = { listId: string; optimisticId: string };
+type DeleteContext = { listId: string; item: ApiShoppingItem };
 
 export function createWebQueryClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -20,11 +22,13 @@ export function ShoppingListRoute(): JSX.Element {
   const [listId, setListId] = useState<string>();
   const [message, setMessage] = useState<string>();
   const [conflict, setConflict] = useState<{ current: ApiShoppingItem; retry: () => void }>();
+  const nextRevision = useRef(0);
+  const itemRevisions = useRef(new Map<string, number>());
   const householdsQuery = useQuery({ queryKey: householdQueryKey, queryFn: fetchHouseholds });
   const listsQuery = useQuery({ queryKey: listQueryKey(householdId ?? ''), queryFn: () => fetchLists(householdId!), enabled: Boolean(householdId) });
   const itemsQuery = useQuery({
     queryKey: itemQueryKey(listId ?? ''), queryFn: () => fetchItems(listId!), enabled: Boolean(listId),
-    refetchInterval: 15_000, refetchIntervalInBackground: true,
+    refetchInterval: 15_000, refetchIntervalInBackground: false,
   });
 
   useEffect(() => {
@@ -39,76 +43,97 @@ export function ShoppingListRoute(): JSX.Element {
   }, [listId, listsQuery.data]);
 
   function resetFeedback(): void { setMessage(undefined); setConflict(undefined); }
+  function keyFor(list: string, item: string): string { return `${list}:${item}`; }
   function replaceCurrentItem(list: string, current: ApiShoppingItem): void {
     queryClient.setQueryData<ApiShoppingItem[]>(itemQueryKey(list), (items) => items?.map((item) => item.id === current.id ? current : item));
   }
-  function handleItemError(error: Error, variables: UpdateVariables, context: PreviousItems | undefined): void {
-    if (error instanceof ApiError && error.status === 409 && error.code === 'OPERATION_IN_PROGRESS') {
-      queryClient.setQueryData(itemQueryKey(variables.item.listId), context?.previous);
-      void queryClient.invalidateQueries({ queryKey: itemQueryKey(variables.item.listId) });
-      setMessage('La operación sigue en curso. Se ha actualizado la lista.');
-      return;
-    }
-    const current = error instanceof ApiError ? error.details.current : undefined;
-    if (error instanceof ApiError && error.status === 409 && error.code === 'ITEM_VERSION_CONFLICT' && isShoppingItem(current)) {
-      replaceCurrentItem(variables.item.listId, current);
-      setConflict({ current, retry: () => updateMutation.mutate({ item: current, patch: variables.patch }) });
-      return;
-    }
-    queryClient.setQueryData(itemQueryKey(variables.item.listId), context?.previous);
-    setMessage('No se pudo guardar el cambio.');
+  function restoreUpdate(context: UpdateContext | undefined): boolean {
+    if (!context || itemRevisions.current.get(keyFor(context.listId, context.itemId)) !== context.revision) return false;
+    queryClient.setQueryData<ApiShoppingItem[]>(itemQueryKey(context.listId), (items) => items?.map((item) => item.id === context.itemId && context.previous ? context.previous : item));
+    if (context.previousRevision === undefined) itemRevisions.current.delete(keyFor(context.listId, context.itemId));
+    else itemRevisions.current.set(keyFor(context.listId, context.itemId), context.previousRevision);
+    return true;
+  }
+  function commitUpdate(item: ApiShoppingItem, context: UpdateContext | undefined): void {
+    if (!context || itemRevisions.current.get(keyFor(item.listId, item.id)) !== context.revision) return;
+    replaceCurrentItem(item.listId, item);
+    if (context.previousRevision === undefined) itemRevisions.current.delete(keyFor(item.listId, item.id));
+    else itemRevisions.current.set(keyFor(item.listId, item.id), context.previousRevision);
+  }
+  function restoreDeleted(context: DeleteContext | undefined): void {
+    if (!context) return;
+    queryClient.setQueryData<ApiShoppingItem[]>(itemQueryKey(context.listId), (items = []) => items.some((item) => item.id === context.item.id) ? items : [...items, context.item]);
   }
 
-  const updateMutation = useMutation<ApiShoppingItem, Error, UpdateVariables, PreviousItems>({
-    mutationFn: ({ item, patch }) => updateItemRequest(item, patch),
+  const updateMutation = useMutation<ApiShoppingItem, Error, UpdateVariables, UpdateContext>({
+    mutationFn: ({ item, patch }) => updateItem(item, patch, operationId()),
     onMutate: async (variables) => {
       resetFeedback();
       await queryClient.cancelQueries({ queryKey: itemQueryKey(variables.item.listId) });
-      const previous = queryClient.getQueryData<ApiShoppingItem[]>(itemQueryKey(variables.item.listId));
+      const previous = queryClient.getQueryData<ApiShoppingItem[]>(itemQueryKey(variables.item.listId))?.find((item) => item.id === variables.item.id);
+      const key = keyFor(variables.item.listId, variables.item.id);
+      const previousRevision = itemRevisions.current.get(key);
+      const revision = ++nextRevision.current;
+      itemRevisions.current.set(key, revision);
       queryClient.setQueryData<ApiShoppingItem[]>(itemQueryKey(variables.item.listId), (items) => items?.map((item) => item.id === variables.item.id ? { ...item, ...variables.patch } : item));
-      return { previous };
+      return { listId: variables.item.listId, itemId: variables.item.id, previous, revision, previousRevision };
     },
-    onError: handleItemError,
-    onSuccess: (item) => replaceCurrentItem(item.listId, item),
+    onError: (error, variables, context) => {
+      if (error instanceof ApiError && error.status === 409 && error.code === 'OPERATION_IN_PROGRESS') {
+        if (restoreUpdate(context)) void queryClient.invalidateQueries({ queryKey: itemQueryKey(variables.item.listId) });
+        setMessage('La operación sigue en curso. Se ha actualizado la lista.');
+        return;
+      }
+      const current = error instanceof ApiError ? error.details.current : undefined;
+      if (error instanceof ApiError && error.status === 409 && error.code === 'ITEM_VERSION_CONFLICT' && isShoppingItem(current)) {
+        if (restoreUpdate(context)) {
+          replaceCurrentItem(variables.item.listId, current);
+          setConflict({ current, retry: () => updateMutation.mutate({ item: current, patch: variables.patch }) });
+        }
+        return;
+      }
+      restoreUpdate(context);
+      setMessage('No se pudo guardar el cambio.');
+    },
+    onSuccess: (item, _variables, context) => commitUpdate(item, context),
   });
 
-  const createItemMutation = useMutation<ApiShoppingItem, Error, { listId: string; name: string; quantity: number; unit: string | null }, PreviousItems>({
+  const createItemMutation = useMutation<ApiShoppingItem, Error, { listId: string; name: string; quantity: number; unit: string | null }, CreateContext>({
     mutationFn: ({ listId: targetListId, name, quantity, unit }) => createItem(targetListId, { name, quantity, unit, operationId: operationId() }),
     onMutate: async (variables) => {
       resetFeedback();
       await queryClient.cancelQueries({ queryKey: itemQueryKey(variables.listId) });
-      const previous = queryClient.getQueryData<ApiShoppingItem[]>(itemQueryKey(variables.listId));
-      queryClient.setQueryData<ApiShoppingItem[]>(itemQueryKey(variables.listId), (items = []) => [...items, optimisticItem(variables)]);
-      return { previous };
+      const optimistic = optimisticItem(variables);
+      queryClient.setQueryData<ApiShoppingItem[]>(itemQueryKey(variables.listId), (items = []) => [...items, optimistic]);
+      return { listId: variables.listId, optimisticId: optimistic.id };
     },
     onError: (error, variables, context) => {
-      queryClient.setQueryData(itemQueryKey(variables.listId), context?.previous);
+      queryClient.setQueryData<ApiShoppingItem[]>(itemQueryKey(variables.listId), (items) => items?.filter((item) => item.id !== context?.optimisticId));
       if (error instanceof ApiError && error.status === 409 && error.code === 'OPERATION_IN_PROGRESS') void queryClient.invalidateQueries({ queryKey: itemQueryKey(variables.listId) });
       setMessage('No se pudo guardar el cambio.');
     },
-    onSuccess: (item) => queryClient.setQueryData<ApiShoppingItem[]>(itemQueryKey(item.listId), (items) => items?.map((candidate) => candidate.id.startsWith('optimistic-') ? item : candidate)),
+    onSuccess: (item, _variables, context) => queryClient.setQueryData<ApiShoppingItem[]>(itemQueryKey(item.listId), (items) => items?.map((candidate) => candidate.id === context?.optimisticId ? item : candidate)),
   });
 
-  const deleteMutation = useMutation<void, Error, ApiShoppingItem, PreviousItems>({
+  const deleteMutation = useMutation<void, Error, ApiShoppingItem, DeleteContext>({
     mutationFn: (item) => deleteItem(item, operationId()),
     onMutate: async (item) => {
       resetFeedback();
       await queryClient.cancelQueries({ queryKey: itemQueryKey(item.listId) });
-      const previous = queryClient.getQueryData<ApiShoppingItem[]>(itemQueryKey(item.listId));
       queryClient.setQueryData<ApiShoppingItem[]>(itemQueryKey(item.listId), (items) => items?.filter((candidate) => candidate.id !== item.id));
-      return { previous };
+      return { listId: item.listId, item };
     },
     onError: (error, item, context) => {
       if (error instanceof ApiError && error.status === 409 && error.code === 'OPERATION_IN_PROGRESS') {
-        queryClient.setQueryData(itemQueryKey(item.listId), context?.previous);
+        restoreDeleted(context);
         void queryClient.invalidateQueries({ queryKey: itemQueryKey(item.listId) });
       } else if (error instanceof ApiError && error.status === 409 && error.code === 'ITEM_VERSION_CONFLICT') {
         const current = error.details.current;
         if (isShoppingItem(current)) {
           replaceCurrentItem(item.listId, current);
           setConflict({ current, retry: () => deleteMutation.mutate(current) });
-        } else queryClient.setQueryData(itemQueryKey(item.listId), context?.previous);
-      } else queryClient.setQueryData(itemQueryKey(item.listId), context?.previous);
+        } else restoreDeleted(context);
+      } else restoreDeleted(context);
       setMessage('No se pudo guardar el cambio.');
     },
   });
@@ -127,7 +152,7 @@ export function ShoppingListRoute(): JSX.Element {
     mutationFn: ({ targetHouseholdId, name }: { targetHouseholdId: string; name: string }) => createList(targetHouseholdId, name),
     onMutate: () => resetFeedback(),
     onSuccess: (list) => {
-      queryClient.setQueryData<ReturnType<typeof fetchLists> extends Promise<infer T> ? T : never>(listQueryKey(list.householdId), (lists = []) => [...lists, list]);
+      queryClient.setQueryData<Awaited<ReturnType<typeof fetchLists>>>(listQueryKey(list.householdId), (lists = []) => [...lists, list]);
       setListId(list.id);
     },
     onError: () => setMessage('No se pudo crear la lista.'),
@@ -135,18 +160,14 @@ export function ShoppingListRoute(): JSX.Element {
 
   if (householdsQuery.isPending) return <main><p role="status">Cargando hogares…</p></main>;
   if (householdsQuery.isError) return <main><p role="alert">No se pudieron cargar los hogares.</p></main>;
-  if (!householdsQuery.data?.length) return <HouseholdSetup onCreate={async (name) => { try { await householdMutation.mutateAsync(name); } catch { /* feedback comes from the mutation */ } }} isCreating={householdMutation.isPending} error={message} />;
+  if (!householdsQuery.data?.length) return <HouseholdSetup onCreate={async (name) => { try { await householdMutation.mutateAsync(name); } catch { /* mutation exposes feedback */ } }} isCreating={householdMutation.isPending} error={message} />;
   if (!householdId || listsQuery.isPending || !listId || itemsQuery.isPending) return <main><p role="status">Cargando lista…</p></main>;
   if (listsQuery.isError || itemsQuery.isError) return <main><p role="alert">No se pudo cargar la lista.</p></main>;
 
   return <>
     <section className="list-selectors" aria-label="Seleccionar hogar y lista">
-      <label>Hogar<select value={householdId} onChange={(event) => { setHouseholdId(event.target.value); setListId(undefined); }}>
-        {householdsQuery.data.map((household) => <option key={household.id} value={household.id}>{household.name}</option>)}
-      </select></label>
-      <label>Lista<select value={listId} onChange={(event) => setListId(event.target.value)}>
-        {listsQuery.data?.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}
-      </select></label>
+      <label>Hogar<select value={householdId} onChange={(event) => { setHouseholdId(event.target.value); setListId(undefined); }}>{householdsQuery.data.map((household) => <option key={household.id} value={household.id}>{household.name}</option>)}</select></label>
+      <label>Lista<select value={listId} onChange={(event) => setListId(event.target.value)}>{listsQuery.data?.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}</select></label>
       <NewListForm onCreate={(name) => listMutation.mutate({ targetHouseholdId: householdId, name })} />
     </section>
     {message ? <p role="alert">{message}</p> : null}
@@ -161,14 +182,7 @@ export function ShoppingListRoute(): JSX.Element {
 
 function NewListForm({ onCreate }: { onCreate(name: string): void }): JSX.Element {
   const [name, setName] = useState('');
-  return <form onSubmit={(event) => { event.preventDefault(); if (name.trim()) { onCreate(name.trim()); setName(''); } }}>
-    <label htmlFor="new-list-name">Nueva lista</label><input id="new-list-name" value={name} onChange={(event) => setName(event.target.value)} maxLength={100} />
-    <button type="submit">Crear lista</button>
-  </form>;
-}
-
-function updateItemRequest(item: ApiShoppingItem, patch: ItemPatch): Promise<ApiShoppingItem> {
-  return updateItem(item, patch, operationId());
+  return <form onSubmit={(event) => { event.preventDefault(); if (name.trim()) { onCreate(name.trim()); setName(''); } }}><label htmlFor="new-list-name">Nueva lista</label><input id="new-list-name" value={name} onChange={(event) => setName(event.target.value)} maxLength={100} /><button type="submit">Crear lista</button></form>;
 }
 
 function operationId(): string { return crypto.randomUUID(); }

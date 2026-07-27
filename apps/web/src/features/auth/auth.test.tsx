@@ -118,4 +118,47 @@ describe('logout', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo cerrar sesión en el servidor. La sesión local se ha cerrado.');
     expect(screen.getByRole('button', { name: 'Iniciar sesión' })).toBeVisible();
   });
+
+  it('never renders one account cached shopping data after logout and login as another account', async () => {
+    window.history.pushState({}, '', '/');
+    let activeUser: 'a' | 'b' | null = null;
+    let resolveBHouseholds: (response: Response) => void = () => undefined;
+    const bHouseholds = new Promise<Response>((resolve) => { resolveBHouseholds = resolve; });
+    const user = (id: string, name: string) => ({ id, name, email: `${id}@example.com`, emailVerifiedAt: '2026-07-27T00:00:00.000Z', createdAt: '2026-07-27T00:00:00.000Z', updatedAt: '2026-07-27T00:00:00.000Z' });
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const body = init?.body ? JSON.parse(String(init.body)) as { email?: string } : {};
+      if (url.endsWith('/auth/refresh')) return Promise.resolve(Response.json({ error: { code: 'UNAUTHORIZED', message: 'No hay sesiÃ³n.', details: {} } }, { status: 401 }));
+      if (url.endsWith('/auth/login')) { activeUser = body.email?.startsWith('b@') ? 'b' : 'a'; return Promise.resolve(Response.json({ accessToken: `token-${activeUser}` })); }
+      if (url.endsWith('/auth/logout')) { activeUser = null; return Promise.resolve(Response.json({ ok: true })); }
+      if (url.endsWith('/me')) return Promise.resolve(Response.json({ user: activeUser === 'a' ? user('a', 'Ana') : user('b', 'Bea') }));
+      if (url.endsWith('/households')) {
+        if (activeUser === 'b') return bHouseholds;
+        return Promise.resolve(Response.json({ households: [{ id: 'home-a', name: 'Casa de Ana' }] }));
+      }
+      if (url.endsWith('/households/home-a/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-a', householdId: 'home-a', name: 'Compra', isDefault: true, version: 1, createdAt: '2026-07-27T00:00:00.000Z', updatedAt: '2026-07-27T00:00:00.000Z' }] }));
+      if (url.endsWith('/lists/list-a/items')) return Promise.resolve(Response.json({ items: [{ id: 'item-a', listId: 'list-a', name: 'Producto de Ana', normalizedName: 'producto de ana', quantity: 1, unit: null, category: null, note: null, isChecked: false, position: 0, version: 1, createdBy: 'a', updatedBy: 'a', createdAt: '2026-07-27T00:00:00.000Z', updatedAt: '2026-07-27T00:00:00.000Z' }] }));
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+
+    render(<AuthProvider><App /></AuthProvider>);
+    await screen.findByRole('button', { name: /Iniciar/ });
+    fireEvent.change(screen.getByLabelText(/Correo/), { target: { value: 'a@example.com' } });
+    fireEvent.change(screen.getByLabelText(/Contrase/), { target: { value: 'contraseña' } });
+    fireEvent.click(screen.getByRole('button', { name: /Iniciar/ }));
+    await screen.findByText('Producto de Ana');
+
+    fireEvent.click(screen.getByRole('button', { name: /Cerrar/ }));
+    await screen.findByRole('button', { name: /Iniciar/ });
+    fireEvent.change(screen.getByLabelText(/Correo/), { target: { value: 'b@example.com' } });
+    fireEvent.change(screen.getByLabelText(/Contrase/), { target: { value: 'contraseña' } });
+    fireEvent.click(screen.getByRole('button', { name: /Iniciar/ }));
+
+    await screen.findByRole('status', { name: '' });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(screen.queryByText('Producto de Ana')).not.toBeInTheDocument();
+
+    resolveBHouseholds(Response.json({ households: [] }));
+    expect(await screen.findByRole('heading', { name: 'Crea tu hogar' })).toBeVisible();
+  });
 });

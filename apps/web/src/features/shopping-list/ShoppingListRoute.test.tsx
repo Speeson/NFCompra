@@ -68,4 +68,130 @@ describe('ShoppingListRoute', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Desmarcar Leche entera' })).toHaveAttribute('aria-pressed', 'true'));
     expect(attempts).toBe(2);
   });
+
+  it('keeps a later optimistic mutation when an earlier mutation fails', async () => {
+    vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000003' });
+    let rejectFirst: (error: Error) => void = () => undefined;
+    const first = new Promise<Response>((_resolve, reject) => { rejectFirst = reject; });
+    const second = new Promise<Response>(() => undefined);
+    const item = (id: string, name: string) => ({ id, listId: 'list-1', name, normalizedName: name.toLowerCase(), quantity: 1, unit: null, category: null, note: null, isChecked: false, position: 0, version: 1, createdBy: 'user-1', updatedBy: 'user-1', createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' });
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'household-1', name: 'Casa' }] }));
+      if (url.endsWith('/households/household-1/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-1', householdId: 'household-1', name: 'Compra', isDefault: true, version: 1, createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' }] }));
+      if (url.endsWith('/lists/list-1/items')) return Promise.resolve(Response.json({ items: [item('item-1', 'Leche'), item('item-2', 'Pan')] }));
+      if (url.endsWith('/items/item-1') && init?.method === 'PATCH') return first;
+      if (url.endsWith('/items/item-2') && init?.method === 'PATCH') return second;
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+
+    render(<QueryClientProvider client={createWebQueryClient()}><ShoppingListRoute /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Marcar Leche' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Desmarcar Leche' })).toHaveAttribute('aria-pressed', 'true'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Marcar Pan' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Desmarcar Pan' })).toHaveAttribute('aria-pressed', 'true'));
+
+    rejectFirst(new Error('Sin conexión'));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Marcar Leche' })).toHaveAttribute('aria-pressed', 'false'));
+    expect(screen.getByRole('button', { name: 'Desmarcar Pan' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('refreshes after OPERATION_IN_PROGRESS without reissuing the mutation', async () => {
+    vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000004' });
+    const item = { id: 'item-1', listId: 'list-1', name: 'Leche', normalizedName: 'leche', quantity: 1, unit: null, category: null, note: null, isChecked: false, position: 0, version: 1, createdBy: 'user-1', updatedBy: 'user-1', createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' };
+    let itemReads = 0;
+    let patchWrites = 0;
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'household-1', name: 'Casa' }] }));
+      if (url.endsWith('/households/household-1/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-1', householdId: 'household-1', name: 'Compra', isDefault: true, version: 1, createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' }] }));
+      if (url.endsWith('/lists/list-1/items')) { itemReads += 1; return Promise.resolve(Response.json({ items: [item] })); }
+      if (url.endsWith('/items/item-1') && init?.method === 'PATCH') { patchWrites += 1; return Promise.resolve(Response.json({ error: { code: 'OPERATION_IN_PROGRESS', message: 'En curso.', details: {} } }, { status: 409 })); }
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+
+    render(<QueryClientProvider client={createWebQueryClient()}><ShoppingListRoute /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Marcar Leche' }));
+    await waitFor(() => expect(itemReads).toBe(2));
+    expect(patchWrites).toBe(1);
+    expect(screen.getByRole('button', { name: 'Marcar Leche' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('rolls back optimistic add, edit and delete product changes', async () => {
+    vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000005' });
+    let rejectAdd: (error: Error) => void = () => undefined;
+    let rejectEdit: (error: Error) => void = () => undefined;
+    let rejectDelete: (error: Error) => void = () => undefined;
+    const add = new Promise<Response>((_resolve, reject) => { rejectAdd = reject; });
+    const edit = new Promise<Response>((_resolve, reject) => { rejectEdit = reject; });
+    const deletion = new Promise<Response>((_resolve, reject) => { rejectDelete = reject; });
+    const item = { id: 'item-1', listId: 'list-1', name: 'Leche', normalizedName: 'leche', quantity: 1, unit: null, category: null, note: null, isChecked: false, position: 0, version: 1, createdBy: 'user-1', updatedBy: 'user-1', createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' };
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'household-1', name: 'Casa' }] }));
+      if (url.endsWith('/households/household-1/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-1', householdId: 'household-1', name: 'Compra', isDefault: true, version: 1, createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' }] }));
+      if (url.endsWith('/lists/list-1/items') && init?.method === 'POST') return add;
+      if (url.endsWith('/lists/list-1/items')) return Promise.resolve(Response.json({ items: [item] }));
+      if (url.endsWith('/items/item-1') && init?.method === 'PATCH') return edit;
+      if (url.endsWith('/items/item-1') && init?.method === 'DELETE') return deletion;
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+
+    render(<QueryClientProvider client={createWebQueryClient()}><ShoppingListRoute /></QueryClientProvider>);
+    await screen.findByText('Leche');
+    fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'Pan' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir' }));
+    expect(await screen.findByText('Pan')).toBeVisible();
+    rejectAdd(new Error('Sin conexión'));
+    await waitFor(() => expect(screen.queryByText('Pan')).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Editar Leche' }));
+    fireEvent.change(screen.getByLabelText('Nombre del producto'), { target: { value: 'Leche entera' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    expect(await screen.findByText('Leche entera')).toBeVisible();
+    rejectEdit(new Error('Sin conexión'));
+    expect(await screen.findByText('Leche')).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar Leche' }));
+    await waitFor(() => expect(screen.queryByText('Leche')).not.toBeInTheDocument());
+    rejectDelete(new Error('Sin conexión'));
+    expect(await screen.findByText('Leche')).toBeVisible();
+  });
+
+  it('creates the first household and its default list', async () => {
+    vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000006' });
+    let hasHousehold = false;
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/households') && init?.method === 'POST') { hasHousehold = true; return Promise.resolve(Response.json({ household: { id: 'home-1', name: 'Casa', ownerId: 'user-1', createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' }, defaultList: { id: 'list-1', householdId: 'home-1', name: 'Compra', isDefault: true, version: 1, createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' } }, { status: 201 })); }
+      if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: hasHousehold ? [{ id: 'home-1', name: 'Casa' }, { id: 'home-2', name: 'Piso' }] : [] }));
+      if (url.endsWith('/households/home-1/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-1', householdId: 'home-1', name: 'Compra', isDefault: true, version: 1, createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' }] }));
+      if (url.endsWith('/households/home-2/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-2', householdId: 'home-2', name: 'Fin de semana', isDefault: true, version: 1, createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' }] }));
+      if (url.endsWith('/lists/list-1/items') || url.endsWith('/lists/list-2/items')) return Promise.resolve(Response.json({ items: [] }));
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+
+    render(<QueryClientProvider client={createWebQueryClient()}><ShoppingListRoute /></QueryClientProvider>);
+    fireEvent.change(await screen.findByLabelText('Nombre del hogar'), { target: { value: 'Casa' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Crear hogar' }));
+    await screen.findByRole('heading', { name: 'Compra' });
+
+    expect(screen.getByLabelText('Hogar')).toHaveValue('home-1');
+  });
+
+  it('loads the selected household list', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'home-1', name: 'Casa' }, { id: 'home-2', name: 'Piso' }] }));
+      if (url.endsWith('/households/home-1/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-1', householdId: 'home-1', name: 'Compra', isDefault: true, version: 1, createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' }] }));
+      if (url.endsWith('/households/home-2/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-2', householdId: 'home-2', name: 'Piso', isDefault: true, version: 1, createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' }] }));
+      if (url.endsWith('/lists/list-1/items') || url.endsWith('/lists/list-2/items')) return Promise.resolve(Response.json({ items: [] }));
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+    render(<QueryClientProvider client={createWebQueryClient()}><ShoppingListRoute /></QueryClientProvider>);
+    await screen.findByRole('heading', { name: 'Compra' });
+    fireEvent.change(screen.getByLabelText('Hogar'), { target: { value: 'home-2' } });
+    expect(await screen.findByRole('heading', { name: 'Piso' })).toBeVisible();
+  });
 });

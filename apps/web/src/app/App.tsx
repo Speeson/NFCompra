@@ -1,5 +1,5 @@
-import { useEffect, useState, type JSX } from 'react';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { useEffect, useRef, useState, type JSX } from 'react';
+import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 
 import { createWebQueryClient, ShoppingListRoute } from '../features/shopping-list/ShoppingListRoute';
 import { useSession } from '../features/auth/AuthProvider';
@@ -7,14 +7,21 @@ import { ForgotPasswordPage, LoginPage } from '../features/auth/LoginPage';
 import { RegisterPage, ResetPasswordPage, VerifyEmailPage } from '../features/auth/RegisterPage';
 
 export function App(): JSX.Element {
-  const [queryClient] = useState(createWebQueryClient);
-  return <QueryClientProvider client={queryClient}><AppRoute /></QueryClientProvider>;
+  const { user } = useSession();
+  const clientScope = useRef<{ userId: string | null; client: ReturnType<typeof createWebQueryClient> } | null>(null);
+  const userId = user?.id ?? null;
+  if (!clientScope.current || clientScope.current.userId !== userId) {
+    clientScope.current?.client.clear();
+    clientScope.current = { userId, client: createWebQueryClient() };
+  }
+  return <QueryClientProvider client={clientScope.current.client}><AppRoute /></QueryClientProvider>;
 }
 
 function AppRoute(): JSX.Element {
   const [location, setLocation] = useState(() => new URL(window.location.href));
   const [logoutError, setLogoutError] = useState(false);
   const { status, user, logout } = useSession();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const updateLocation = () => setLocation(new URL(window.location.href));
@@ -29,6 +36,7 @@ function AppRoute(): JSX.Element {
 
   async function handleLogout(): Promise<void> {
     setLogoutError(false);
+    queryClient.clear();
     if (!await logout()) setLogoutError(true);
   }
 
