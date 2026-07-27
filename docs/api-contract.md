@@ -125,7 +125,7 @@ Los tipos actuales son `invitation_received`, `invitation_accepted`, `member_rem
 
 | Situación | Estado y código |
 | --- | --- |
-| Sin sesión o token no válido en una ruta `/v1` | `401 UNAUTHORIZED` |
+| Sin sesión o token no válido en las rutas protegidas descritas en este documento | `401 UNAUTHORIZED` |
 | Consultar miembros sin pertenecer al hogar | `403 FORBIDDEN` |
 | Gestionar invitaciones, revocar o eliminar miembros sin ser propietario | `403 FORBIDDEN` |
 | Aceptar con cuenta sin correo verificado | `403 EMAIL_NOT_VERIFIED` |
