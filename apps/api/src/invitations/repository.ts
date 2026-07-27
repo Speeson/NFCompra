@@ -94,7 +94,7 @@ export async function acceptInvitation(env: Env, input: { rawToken: string; user
       FROM invitations WHERE id = ? AND status = 'accepted' AND accepted_at = ?
     `).bind(input.userId, now, row.id, now),
   ]);
-  if (results[0].meta.changes !== 1) {
+  if (results[0].meta.changes < 1) {
     const latest = await env.DB.prepare('SELECT status, expires_at FROM invitations WHERE id = ?').bind(row.id).first<{ status: Invitation['status']; expires_at: string }>();
     if (latest?.status === 'accepted') throw new InvitationAcceptanceError('INVITATION_ALREADY_ACCEPTED');
     if (latest?.status === 'revoked') throw new InvitationAcceptanceError('INVITATION_REVOKED');
@@ -119,14 +119,14 @@ export async function listHouseholdMembers(env: Env, householdId: string): Promi
   return rows.results.map((row) => ({ userId: row.user_id, name: row.name, email: row.email, role: row.role, createdAt: row.created_at }));
 }
 
-export async function removeHouseholdMember(env: Env, input: { householdId: string; requesterId: string; memberUserId: string }): Promise<'removed' | 'forbidden' | 'self'> {
+export async function removeHouseholdMember(env: Env, input: { householdId: string; requesterId: string; memberUserId: string }): Promise<'removed' | 'forbidden' | 'self' | 'not_found'> {
   if (input.requesterId === input.memberUserId) return 'self';
   const requester = await env.DB.prepare("SELECT role FROM household_members WHERE household_id = ? AND user_id = ? AND role = 'owner'")
     .bind(input.householdId, input.requesterId).first();
   if (!requester) return 'forbidden';
-  await env.DB.prepare("DELETE FROM household_members WHERE household_id = ? AND user_id = ? AND role = 'member'")
+  const result = await env.DB.prepare("DELETE FROM household_members WHERE household_id = ? AND user_id = ? AND role = 'member'")
     .bind(input.householdId, input.memberUserId).run();
-  return 'removed';
+  return result.meta.changes >= 1 ? 'removed' : 'not_found';
 }
 
 export async function listInvitations(env: Env, householdId: string): Promise<Invitation[]> {

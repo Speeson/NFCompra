@@ -89,6 +89,7 @@ export async function handleInvitationRoute(request: Request, env: Env, user: Au
   const result = await removeHouseholdMember(env, { householdId, requesterId: user.id, memberUserId });
   if (result === 'self') return errorResponse('CANNOT_REMOVE_SELF', 'No puedes eliminarte del hogar.', 409);
   if (result === 'forbidden') return errorResponse('FORBIDDEN', 'No tienes permisos para gestionar este hogar.', 403);
+  if (result === 'not_found') return notFound();
   return Response.json({ status: 'removed' });
 }
 

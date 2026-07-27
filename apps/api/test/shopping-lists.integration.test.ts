@@ -34,6 +34,7 @@ class FakeEmailSender implements EmailSender {
 const fakeEmailSender = new FakeEmailSender();
 const worker = createWorker(fakeEmailSender);
 const testEnv: WorkerEnv = { ...env, JWT_SECRET: 'test-jwt-secret', APP_BASE_URL: 'http://app.test' };
+let notificationsSchemaInstalled = false;
 
 beforeEach(async () => {
   await env.DB.exec(`
@@ -54,6 +55,14 @@ beforeEach(async () => {
     DELETE FROM households;
     DELETE FROM users;
   `);
+  if (!notificationsSchemaInstalled) {
+    const migrations = (env as unknown as { TEST_MIGRATIONS: Array<{ name: string; queries: string[] }> }).TEST_MIGRATIONS;
+    const migration = migrations.find(({ name }) => name.startsWith('0006_notifications'));
+    if (!migration) throw new Error('No se ha encontrado la migración de notificaciones.');
+    await env.DB.batch(migration.queries.map((query) => env.DB.prepare(query)));
+    notificationsSchemaInstalled = true;
+  }
+  await env.DB.exec('DELETE FROM notifications;');
   fakeEmailSender.messages = [];
   fakeEmailSender.invitations = [];
 });
@@ -132,6 +141,66 @@ it('manages the invitation lifecycle without persisting raw tokens or exposing o
   const removed = await dispatch(`/v1/households/${household.household.id}/members/${invited.id}`, undefined, owner.headers, 'DELETE');
   expect(removed.status).toBe(200);
   expect(await removed.json()).toEqual({ status: 'removed' });
+});
+
+it('notifies only relevant users about sharing and grouped remote list activity', async () => {
+  const owner = await verifiedUser('Ana');
+  const invited = await verifiedUser('Bea');
+  const member = await verifiedUser('Cora');
+  const household = await (await dispatch('/v1/households', { name: 'Casa' }, owner.headers)).json<{ household: { id: string }; defaultList: { id: string } }>();
+
+  const invitationResponse = await dispatch(`/v1/households/${household.household.id}/invitations`, { email: invited.email }, owner.headers);
+  expect(invitationResponse.status).toBe(201);
+  const invitation = await invitationResponse.json<{ invitation: { id: string } }>();
+  expect(await notifications(invited.headers)).toMatchObject({ notifications: [{ type: 'invitation_received', invitationId: invitation.invitation.id, householdId: household.household.id, readAt: null }] });
+  expect(await unreadCount(owner.headers)).toBe(0);
+
+  const inviteToken = tokenFromUrl(fakeEmailSender.invitations.at(-1)!.url);
+  expect((await dispatch('/v1/invitations/accept', { token: inviteToken }, invited.headers)).status).toBe(200);
+  expect(await notifications(owner.headers)).toMatchObject({ notifications: [{ type: 'invitation_accepted', invitationId: invitation.invitation.id, householdId: household.household.id }] });
+
+  expect((await dispatch(`/v1/households/${household.household.id}/members/${invited.id}`, undefined, owner.headers, 'DELETE')).status).toBe(200);
+  expect(await notifications(invited.headers)).toMatchObject({ notifications: expect.arrayContaining([expect.objectContaining({ type: 'member_removed', householdId: household.household.id })]) });
+
+  const memberInvitation = await dispatch(`/v1/households/${household.household.id}/invitations`, { email: member.email }, owner.headers);
+  const memberToken = tokenFromUrl(fakeEmailSender.invitations.at(-1)!.url);
+  expect(memberInvitation.status).toBe(201);
+  expect((await dispatch('/v1/invitations/accept', { token: memberToken }, member.headers)).status).toBe(200);
+  expect((await dispatch('/v1/notifications/read-all', {}, member.headers)).status).toBe(200);
+  expect((await dispatch('/v1/notifications/read-all', {}, owner.headers)).status).toBe(200);
+
+  const createOperationId = crypto.randomUUID();
+  const itemRequest = { name: 'Pan', operationId: createOperationId };
+  const createdResponse = await dispatch(`/v1/lists/${household.defaultList.id}/items`, itemRequest, owner.headers);
+  const item = await createdResponse.json<{ item: { id: string; version: number } }>();
+  expect((await dispatch(`/v1/lists/${household.defaultList.id}/items`, itemRequest, owner.headers)).status).toBe(201);
+  expect((await dispatch(`/v1/items/${item.item.id}`, { name: 'Pan integral', expectedVersion: item.item.version, operationId: crypto.randomUUID() }, owner.headers, 'PATCH')).status).toBe(200);
+  expect((await dispatch(`/v1/items/${item.item.id}`, { quantity: 2, expectedVersion: item.item.version + 1, operationId: crypto.randomUUID() }, owner.headers, 'PATCH')).status).toBe(200);
+  expect((await dispatch(`/v1/items/${item.item.id}`, { isChecked: true, expectedVersion: item.item.version + 2, operationId: crypto.randomUUID() }, owner.headers, 'PATCH')).status).toBe(200);
+  expect((await dispatch(`/v1/items/${item.item.id}`, { note: 'Comprar hoy', expectedVersion: item.item.version + 3, operationId: crypto.randomUUID() }, member.headers, 'PATCH')).status).toBe(200);
+  expect(await unreadCount(owner.headers)).toBe(1);
+  expect((await dispatch(`/v1/items/${item.item.id}`, { expectedVersion: item.item.version + 4, operationId: crypto.randomUUID() }, owner.headers, 'DELETE')).status).toBe(200);
+
+  const memberNotifications = await notifications(member.headers);
+  expect(memberNotifications.notifications.filter(({ type }) => type === 'item_updated')).toHaveLength(1);
+  expect(memberNotifications.notifications.map(({ type }) => type)).toEqual(expect.arrayContaining(['item_created', 'item_updated', 'item_checked', 'item_deleted']));
+  expect(await unreadCount(owner.headers)).toBe(1);
+
+  const anotherList = await (await dispatch(`/v1/households/${household.household.id}/lists`, { name: 'Mercado' }, owner.headers)).json<{ list: { id: string } }>();
+  expect((await dispatch(`/v1/lists/${anotherList.list.id}/items`, { name: 'Leche', operationId: crypto.randomUUID() }, owner.headers)).status).toBe(201);
+  const afterOtherList = await notifications(member.headers);
+  expect(afterOtherList.notifications.filter(({ type }) => type === 'item_created')).toHaveLength(2);
+
+  const listed = await notifications(member.headers);
+  const unreadNotification = listed.notifications.find(({ readAt }) => readAt === null);
+  expect(unreadNotification).toBeDefined();
+  const firstId = unreadNotification!.id;
+  const beforeRead = await unreadCount(member.headers);
+  expect((await dispatch(`/v1/notifications/${firstId}/read`, {}, member.headers, 'PATCH')).status).toBe(200);
+  expect(await unreadCount(member.headers)).toBe(beforeRead - 1);
+  expect((await dispatch('/v1/notifications/read-all', {}, member.headers)).status).toBe(200);
+  expect(await unreadCount(member.headers)).toBe(0);
+  expect((await dispatch(`/v1/notifications/${firstId}/read`, {}, owner.headers, 'PATCH')).status).toBe(404);
 });
 
 it('creates a personal household with its default list in the same response', async () => {
@@ -365,6 +434,18 @@ function tokenFromUrl(url: string): string {
   const token = new URL(url).searchParams.get('token');
   if (!token) throw new Error('La invitacion no contiene un token.');
   return token;
+}
+
+async function notifications(headers: Record<string, string>): Promise<{ notifications: Array<{ id: string; type: string; householdId: string | null; invitationId: string | null; actorUserId?: string; readAt: string | null }> }> {
+  const response = await dispatch('/v1/notifications?limit=50', undefined, headers, 'GET');
+  expect(response.status).toBe(200);
+  return response.json();
+}
+
+async function unreadCount(headers: Record<string, string>): Promise<number> {
+  const response = await dispatch('/v1/notifications/unread-count', undefined, headers, 'GET');
+  expect(response.status).toBe(200);
+  return (await response.json<{ count: number }>()).count;
 }
 
 async function dispatch(path: string, body: unknown, headers: Record<string, string>, method = 'POST'): Promise<Response> {

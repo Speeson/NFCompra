@@ -7,6 +7,7 @@ import { errorResponse, notFound } from './shared/http';
 import { handleHouseholdRoute } from './households/routes';
 import { handleInvitationRoute } from './invitations/routes';
 import { handleListRoute } from './lists/routes';
+import { handleNotificationRoute } from './notifications/routes';
 
 export function createWorker(emailSender?: EmailSender): ExportedHandler<Env> {
   return {
@@ -37,6 +38,7 @@ export function createWorker(emailSender?: EmailSender): ExportedHandler<Env> {
           response = (await handleHouseholdRoute(request, env, user))
             ?? (await handleInvitationRoute(request, env, user, sender))
             ?? (await handleListRoute(request, env, user))
+            ?? (await handleNotificationRoute(request, env, user))
             ?? notFound();
         } else response = notFound();
       }
@@ -48,6 +50,10 @@ export function createWorker(emailSender?: EmailSender): ExportedHandler<Env> {
 function isShoppingRoute(path: string): boolean {
   return path === '/v1/households'
     || path === '/v1/invitations/accept'
+    || path === '/v1/notifications'
+    || path === '/v1/notifications/unread-count'
+    || path === '/v1/notifications/read-all'
+    || /^\/v1\/notifications\/[^/]+\/read$/.test(path)
     || /^\/v1\/households\/[^/]+\/(?:invitations|members)(?:\/[^/]+)?$/.test(path)
     || /^\/v1\/households\/[^/]+\/lists$/.test(path)
     || /^\/v1\/lists\/[^/]+\/items(?:\/checked)?$/.test(path)

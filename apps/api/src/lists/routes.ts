@@ -39,7 +39,7 @@ async function handleCheckedItemsRoute(request: Request, env: Env, user: AuthUse
   const replay = operationResponse(claimed);
   if (replay) return replay;
   if (claimed.state !== 'claimed') return errorResponse('OPERATION_LOST', 'La operación ya no tiene un lease válido.', 409);
-  const removed = await deleteCheckedShoppingItems(env, listId, claimed.leaseToken);
+  const removed = await deleteCheckedShoppingItems(env, listId, user.id, claimed.leaseToken);
   if (removed === null) return errorResponse('OPERATION_LOST', 'La operación ya no tiene un lease válido.', 409);
   const responseBody = JSON.stringify({ removed });
   if (!(await completeOperation(env, op, user.id, claimed.leaseToken, 200, responseBody))) return errorResponse('OPERATION_LOST', 'La operación ya no tiene un lease válido.', 409);
@@ -65,7 +65,7 @@ async function handleItemRoute(request: Request, env: Env, user: AuthUser, itemI
   if (replay) return replay;
   if (claimed.state !== 'claimed') return errorResponse('OPERATION_LOST', 'La operación ya no tiene un lease válido.', 409);
   if (request.method === 'DELETE') {
-    if (!(await deleteShoppingItem(env, itemId, expectedVersion as number, claimed.leaseToken))) {
+    if (!(await deleteShoppingItem(env, itemId, expectedVersion as number, user.id, claimed.leaseToken))) {
       const latest = await findShoppingItem(env, itemId);
       if (!latest) return missingItemResponse(env, op, user.id, claimed.leaseToken);
       const responseBody = JSON.stringify({ error: { code: 'ITEM_VERSION_CONFLICT', message: 'El producto ha cambiado.', details: { current: latest } } });
