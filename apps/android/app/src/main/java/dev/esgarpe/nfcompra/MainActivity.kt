@@ -6,7 +6,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,18 +38,18 @@ class MainActivity : ComponentActivity() {
     private var pendingInvitationToken by mutableStateOf<String?>(null)
     private var notificationViewModel: SharingViewModel? = null
     private var membersViewModel: SharingViewModel? = null
-    private val foregroundRefreshGate = AuthenticatedRefreshGate()
+    private var foregroundRefreshGate: AuthenticatedRefreshGate? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         receiveInvitationIntent(intent)
         val tokenStore = KeystoreTokenStore(applicationContext)
+        foregroundRefreshGate = AuthenticatedRefreshGate { tokenStore.current() != null }
         val authRepository = AuthRepository(NetworkClient.authApi(BuildConfig.AUTH_BASE_URL), tokenStore)
         val shoppingRepository = ShoppingListRepository(NetworkClient.authenticatedApi(BuildConfig.AUTH_BASE_URL, tokenStore, ShoppingListApi::class.java))
         val sharingRepository = SharingRepository(NetworkClient.authenticatedApi(BuildConfig.AUTH_BASE_URL, tokenStore, SharingApi::class.java))
         setContent {
             val session by tokenStore.session.collectAsState()
-            SideEffect { foregroundRefreshGate.setAuthenticated(session != null) }
             val authViewModel = remember { AuthViewModel(authRepository) }
             val shoppingViewModel = remember { ShoppingListViewModel(shoppingRepository) }
             val globalNotifications = remember { SharingViewModel(sharingRepository, null, null) }
@@ -112,7 +111,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); receiveInvitationIntent(intent) }
-    override fun onResume() { super.onResume(); foregroundRefreshGate.onForeground { notificationViewModel?.onForeground(); membersViewModel?.onForeground() } }
+    override fun onResume() { super.onResume(); foregroundRefreshGate?.onForeground { notificationViewModel?.onForeground(); membersViewModel?.onForeground() } }
 
     private fun receiveInvitationIntent(intent: Intent?) {
         invitationHandoff.receive(invitationToken(intent))

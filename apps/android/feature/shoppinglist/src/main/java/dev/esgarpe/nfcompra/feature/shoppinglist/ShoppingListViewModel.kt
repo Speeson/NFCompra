@@ -63,7 +63,7 @@ class ShoppingListViewModel(private val repository: ShoppingListRepository) : Vi
         try {
             val households = repository.households()
             if (households.isEmpty()) {
-                mutableState.value = ShoppingListViewState.NoHouseholds
+                if (generation == loadGeneration) mutableState.value = ShoppingListViewState.NoHouseholds
                 return@launch
             }
             val household = context?.let { requested -> households.firstOrNull { it.id == requested.householdId } }
