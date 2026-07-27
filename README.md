@@ -6,7 +6,7 @@ Base del monorepo de NFCompra. El cimiento actual contiene los workspaces de la 
 
 - Node.js LTS y npm.
 - Wrangler instalado para ejecutar la API local de Cloudflare Workers. La autenticacion solo sera necesaria cuando se realicen operaciones remotas autorizadas.
-- Android Studio y JDK 21 para el proyecto Android Compose.
+- Android Studio, JDK 21 y Android SDK disponible mediante `ANDROID_HOME` para el proyecto Android Compose.
 
 ## Comandos
 
@@ -47,13 +47,13 @@ La API local incluye registro, verificacion de correo, inicio de sesion, renovac
 
 La PWA local tiene una suite de 16 pruebas, chequeo de tipos y compilacion. Incluye manifest, iconos y service worker generados durante la compilacion. Cuenta con rutas de registro, inicio de sesion, verificacion de correo, recuperacion y restablecimiento de contrasena, cierre de sesion y una sesion protegida conectada a la API local. El token de acceso permanece solo en memoria y la cookie de renovacion la gestiona la API. La PWA autenticada permite crear y seleccionar hogares y listas, y gestionar productos reales de la API; la lista visible se consulta cada 15 segundos y las mutaciones de productos son optimistas. Los comandos de desarrollo no despliegan servicios.
 
-Para verificar la logica de lista y generar el APK Android de depuracion, desde `apps/android`:
+Para verificar la autenticacion Android y generar el APK de depuracion, desde `apps/android`:
 
 ```sh
-./gradlew :feature:shoppinglist:testDebugUnitTest :app:assembleDebug
+.\gradlew.bat :feature:auth:testDebugUnitTest :app:assembleDebug
 ```
 
-El APK generado queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`. La prueba instrumentada de Compose requiere un dispositivo o emulador ADB conectado; no se ejecuto aqui porque no habia ninguno conectado.
+El APK generado queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`. Android incluye pantallas locales de registro, inicio de sesion, verificacion y restablecimiento de contrasena; los tokens de sesion y renovacion se guardan con Android Keystore. La lista de compra Android continua siendo de demostracion y no esta conectada a hogares, listas ni productos reales. La prueba instrumentada de Compose requiere un dispositivo o emulador ADB conectado; no se ejecuto aqui porque no habia ninguno conectado.
 
 ## Estructura inicial
 
