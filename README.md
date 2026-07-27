@@ -45,7 +45,7 @@ Al iniciar la API local con `npm run api:dev`, `GET /health` responde `200` con 
 
 La API local incluye registro, verificacion de correo, inicio de sesion, renovacion y cierre de sesion, solicitud y restablecimiento de contrasena, y consulta y actualizacion de perfil. Tambien permite crear hogares personales con una lista predeterminada, anadir listas y gestionar productos autenticados, incluida la busqueda normalizada y el control de versiones de cada producto. En las mutaciones de productos, un `operationId` ya completado reproduce su respuesta; si la operacion sigue en curso, la API devuelve `409 OPERATION_IN_PROGRESS`. Las pruebas usan un remitente de correo falso: Resend no esta configurado y no se envian correos reales.
 
-La PWA local tiene pruebas, chequeo de tipos y compilacion. Incluye manifest, iconos y service worker generados durante la compilacion; su pantalla usa fixtures locales y no se conecta a la API ni incluye autenticacion. Los comandos de desarrollo no despliegan servicios.
+La PWA local tiene pruebas, chequeo de tipos y compilacion. Incluye manifest, iconos y service worker generados durante la compilacion. Cuenta con rutas de registro, inicio de sesion, verificacion de correo, recuperacion y restablecimiento de contrasena, cierre de sesion y una sesion protegida conectada a la API local. El token de acceso permanece solo en memoria y la cookie de renovacion la gestiona la API. La pantalla de lista aun usa fixtures locales: los hogares y las listas reales no estan conectados. Los comandos de desarrollo no despliegan servicios.
 
 Para verificar la logica de lista y generar el APK Android de depuracion, desde `apps/android`:
 
