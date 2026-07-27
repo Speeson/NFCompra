@@ -22,7 +22,7 @@ interface AuthContextValue {
   verifyEmail(token: string): Promise<void>;
   forgotPassword(email: string): Promise<void>;
   resetPassword(token: string, password: string): Promise<void>;
-  logout(): Promise<void>;
+  logout(): Promise<boolean>;
 }
 
 export const SessionContext = createContext<AuthContextValue | null>(null);
@@ -81,6 +81,9 @@ export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
     async logout() {
       try {
         await apiClient.request('/auth/logout', { method: 'POST', body: { clientType: 'web' }, retryOnUnauthorized: false });
+        return true;
+      } catch {
+        return false;
       } finally {
         apiClient.clearAccessToken();
         setUser(null);

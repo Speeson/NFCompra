@@ -28,6 +28,7 @@ export interface RequestOptions extends Omit<RequestInit, 'body' | 'headers'> {
 
 export class ApiClient {
   private accessToken: string | null = null;
+  private refreshPromise: Promise<boolean> | null = null;
 
   constructor(private readonly baseUrl = import.meta.env.VITE_API_BASE_URL ?? '/v1') {}
 
@@ -51,19 +52,34 @@ export class ApiClient {
   }
 
   async refresh(): Promise<boolean> {
-    const response = await this.fetch('/auth/refresh', {
-      method: 'POST',
-      body: { clientType: 'web' },
-    });
+    if (!this.refreshPromise) this.refreshPromise = this.refreshAccessToken();
 
-    if (!response.ok) {
+    try {
+      return await this.refreshPromise;
+    } finally {
+      this.refreshPromise = null;
+    }
+  }
+
+  private async refreshAccessToken(): Promise<boolean> {
+    try {
+      const response = await this.fetch('/auth/refresh', {
+        method: 'POST',
+        body: { clientType: 'web' },
+      });
+
+      if (!response.ok) {
+        this.clearAccessToken();
+        return false;
+      }
+
+      const body = await this.read<{ accessToken: string }>(response);
+      this.setAccessToken(body.accessToken);
+      return true;
+    } catch {
       this.clearAccessToken();
       return false;
     }
-
-    const body = await this.read<{ accessToken: string }>(response);
-    this.setAccessToken(body.accessToken);
-    return true;
   }
 
   private async fetch(path: string, options: Omit<RequestOptions, 'retryOnUnauthorized'>): Promise<Response> {

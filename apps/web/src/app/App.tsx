@@ -12,6 +12,7 @@ export function App(): JSX.Element {
 
 function AppRoute(): JSX.Element {
   const [location, setLocation] = useState(() => new URL(window.location.href));
+  const [logoutError, setLogoutError] = useState(false);
   const { status, user, logout } = useSession();
 
   useEffect(() => {
@@ -25,17 +26,25 @@ function AppRoute(): JSX.Element {
     setLocation(new URL(window.location.href));
   }
 
+  async function handleLogout(): Promise<void> {
+    setLogoutError(false);
+    if (!await logout()) setLogoutError(true);
+  }
+
   if (status === 'loading') return <main><p role="status">Comprobando tu sesión…</p></main>;
   if (location.pathname === '/register') return <RegisterPage onNavigate={navigate} />;
   if (location.pathname === '/auth/verify') return <VerifyEmailPage token={location.searchParams.get('token')} onNavigate={navigate} />;
   if (location.pathname === '/auth/reset-password') return <ResetPasswordPage token={location.searchParams.get('token')} onNavigate={navigate} />;
   if (location.pathname === '/auth/forgot-password') return <ForgotPasswordPage onNavigate={navigate} />;
-  if (status === 'anonymous') return <LoginPage onNavigate={navigate} />;
+  if (status === 'anonymous') return <>
+    {logoutError && <p role="alert">No se pudo cerrar sesión en el servidor. La sesión local se ha cerrado.</p>}
+    <LoginPage onNavigate={navigate} />
+  </>;
 
   return <>
     <header>
       <p>Sesión iniciada como {user?.name}</p>
-      <button type="button" onClick={() => void logout()}>Cerrar sesión</button>
+      <button type="button" onClick={() => void handleLogout()}>Cerrar sesión</button>
     </header>
     <ShoppingListScreen title="Mercadona" items={demoShoppingItems} isOffline={false} />
   </>;
