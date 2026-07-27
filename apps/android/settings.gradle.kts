@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "NFCompra"
-include(":app", ":core:designsystem", ":core:network", ":feature:auth", ":feature:shoppinglist")
+include(":app", ":core:designsystem", ":core:network", ":feature:auth", ":feature:shoppinglist", ":feature:sharing")

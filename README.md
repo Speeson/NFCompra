@@ -47,10 +47,10 @@ npm --workspace @nfcompra/web run typecheck
 npm --workspace @nfcompra/web run build
 ```
 
-Desde `apps/android`, para las pruebas unitarias de autenticacion y listas, y el APK de depuracion:
+Desde `apps/android`, para las pruebas unitarias de autenticacion, listas y colaboracion, la compilacion de las pruebas Compose y el APK de depuracion:
 
 ```sh
-.\gradlew.bat :feature:auth:testDebugUnitTest :feature:shoppinglist:testDebugUnitTest :app:assembleDebug
+.\gradlew.bat :feature:auth:testDebugUnitTest :feature:shoppinglist:testDebugUnitTest :feature:sharing:testDebugUnitTest :feature:sharing:compileDebugAndroidTestKotlin :app:assembleDebug
 ```
 
 El APK queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`.
@@ -65,6 +65,7 @@ El APK queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`.
 - Los propietarios administran miembros e invitaciones desde el hogar seleccionado. La ruta `/invitations/accept?token=...` conserva su continuación de inicio de sesión en `sessionStorage`, muestra errores de aceptación sin datos ajenos y abre el hogar aceptado. La cabecera autenticada incluye notificaciones con contador, lectura individual o total y navegación al hogar o lista relacionada; consulta actualizaciones solo mientras el documento está visible.
 - La PWA conserva un aviso de error de lectura de notificaciones tras una navegacion contextual y permite cerrarlo; una solicitud de hogar/lista en URL se aplica una sola vez para no bloquear la seleccion manual posterior.
 - Android ofrece las pantallas de autenticacion y conserva los tokens de sesion y renovacion mediante Android Keystore. La pantalla autenticada permite seleccionar y gestionar hogares, listas y productos, con estados de carga, error y datos, y reintento ante conflictos.
+- Android permite abrir los miembros del hogar seleccionado, invita, revoca y elimina miembros solo desde controles de propietario con confirmacion, y muestra el contenido en solo lectura al resto. Incluye una campana accesible con contador, lectura individual o total y navegacion contextual. La ruta `nfcompra://app/invitations/accept?token=...` conserva el token exclusivamente en memoria hasta aceptar o cancelar; no habilita push ni trabajo en segundo plano.
 
 ## Limites del MVP
 
