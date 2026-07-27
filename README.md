@@ -47,7 +47,7 @@ npm --workspace @nfcompra/web run typecheck
 npm --workspace @nfcompra/web run build
 ```
 
-Desde `apps/android`, para las pruebas unitarias de autenticacion, listas y colaboracion, la compilacion de las pruebas Compose y el APK de depuracion:
+Desde `apps/android`, con `ANDROID_HOME` apuntando al SDK instalado, para las pruebas unitarias de autenticacion, listas y colaboracion, la compilacion de las pruebas Compose y el APK de depuracion:
 
 ```sh
 .\gradlew.bat :feature:auth:testDebugUnitTest :feature:shoppinglist:testDebugUnitTest :feature:sharing:testDebugUnitTest :feature:sharing:compileDebugAndroidTestKotlin :app:assembleDebug
@@ -60,7 +60,7 @@ El APK queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`.
 - La API permite registro, verificacion y reenvio de verificacion de correo, inicio y cierre de sesion, renovacion, recuperacion y restablecimiento de contrasena, y consulta y edicion de perfil. Las pruebas usan un remitente falso; no se documentan claves ni se verifica el envio de correo real.
 - Una persona puede crear varios hogares manualmente; cada hogar obtiene una lista predeterminada y puede tener listas adicionales. Las mutaciones de productos requieren autenticacion y cubren alta, edicion, marcado, borrado, purga, busqueda normalizada y conflictos de version. Un `operationId` completado reproduce su respuesta y una operacion pendiente devuelve `409 OPERATION_IN_PROGRESS`.
 - Los propietarios de un hogar pueden crear, renovar, listar y revocar invitaciones en `/v1/households/:householdId/invitations`, y eliminar miembros. Cualquier miembro del hogar puede consultar `/v1/households/:householdId/members`. Las invitaciones se aceptan mediante `POST /v1/invitations/accept` o, desde una notificación, `POST /v1/invitations/:invitationId/accept`; ambas rutas requieren la cuenta verificada destinataria. Caducan a los siete dias y los tokens se guardan solo como hashes.
-- La API persiste notificaciones internas en `/v1/notifications`: lista reciente, contador de no leídas, marcado individual y marcado total. Las invitaciones, altas y bajas de miembros y cambios remotos de productos notifican solo a las otras personas afectadas; la actividad de una lista se agrupa por destinatario, autor, lista y tipo durante cinco minutos. No incluye notificaciones push.
+- Hito 3A: la API persiste notificaciones internas en `/v1/notifications`: lista reciente, contador de no leídas, marcado individual y marcado total. Las invitaciones, altas y bajas de miembros y cambios remotos de productos notifican solo a las otras personas afectadas; la actividad de una lista se agrupa por destinatario, autor, lista y tipo durante cinco minutos. No incluye notificaciones push.
 - La PWA tiene rutas de registro, acceso, verificacion, reenvio, recuperacion, restablecimiento y cierre de sesion. Conserva el token de acceso en memoria y la API gestiona la cookie de renovacion. Permite seleccionar hogares y listas, crear hogares/listas y gestionar productos; consulta la lista visible cada 15 segundos y aplica mutaciones optimistas con reintento ante conflictos.
 - Los propietarios administran miembros e invitaciones desde el hogar seleccionado. La ruta `/invitations/accept?token=...` conserva su continuación de inicio de sesión en `sessionStorage`, muestra errores de aceptación sin datos ajenos y abre el hogar aceptado. La cabecera autenticada incluye notificaciones con contador, lectura individual o total y navegación al hogar o lista relacionada; consulta actualizaciones solo mientras el documento está visible.
 - La PWA conserva un aviso de error de lectura de notificaciones tras una navegacion contextual y permite cerrarlo; una solicitud de hogar/lista en URL se aplica una sola vez para no bloquear la seleccion manual posterior.
@@ -70,11 +70,11 @@ El APK queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`.
 ## Limites del MVP
 
 - No hay despliegue ni operaciones remotas incluidas.
-- No hay persistencia ni cola de mutaciones offline, Room, NFC, WorkManager ni WebSockets.
+- La sincronizacion offline queda fuera del hito 3A y pertenece al hito 3B: no hay persistencia ni cola de mutaciones offline, Room, NFC, WorkManager ni WebSockets.
 
 ## Estructura
 
 - `apps/api`: Worker local, migraciones D1 y contrato `/v1`.
 - `apps/web`: PWA React con autenticacion y listas conectadas a la API local.
 - `apps/android`: aplicacion Compose con autenticacion y listas conectadas a la API configurada para `debug`.
-- `docs`: diseno, arquitectura y plan del MVP.
+- `docs`: diseno, arquitectura, contrato versionado de API y plan del MVP.

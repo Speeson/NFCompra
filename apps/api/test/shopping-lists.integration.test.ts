@@ -162,6 +162,49 @@ it('accepts a notification-linked invitation by id only for its verified recipie
   expect(await accepted.json()).toMatchObject({ householdId: household.household.id, invitation: { id: invitation.id, status: 'accepted' } });
 });
 
+it('keeps the end-to-end shared flow usable without exposing the emailed invitation token in JSON', async () => {
+  // This catches a regression that returns the externally delivered token from any API response.
+  const owner = await verifiedUser('Ana');
+  const invited = await verifiedUser('Bea');
+  const responseBodies: string[] = [];
+  const capture = async (response: Response): Promise<Response> => {
+    responseBodies.push(await response.clone().text());
+    return response;
+  };
+
+  const householdResponse = await capture(await dispatch('/v1/households', { name: 'Casa compartida' }, owner.headers));
+  expect(householdResponse.status).toBe(201);
+  const household = await householdResponse.json<{ household: { id: string }; defaultList: { id: string } }>();
+
+  const invitationResponse = await capture(await dispatch(`/v1/households/${household.household.id}/invitations`, { email: invited.email }, owner.headers));
+  expect(invitationResponse.status).toBe(201);
+  const { invitation } = await invitationResponse.json<{ invitation: { id: string; status: string } }>();
+  expect(invitation.status).toBe('pending');
+  const rawToken = tokenFromUrl(fakeEmailSender.invitations.at(-1)!.url);
+
+  const acceptanceResponse = await capture(await dispatch('/v1/invitations/accept', { token: rawToken }, invited.headers));
+  expect(acceptanceResponse.status).toBe(200);
+  expect(await acceptanceResponse.json()).toMatchObject({ householdId: household.household.id, invitation: { id: invitation.id, status: 'accepted' } });
+
+  const itemResponse = await capture(await dispatch(`/v1/lists/${household.defaultList.id}/items`, { name: 'Pan', operationId: crypto.randomUUID() }, owner.headers));
+  expect(itemResponse.status).toBe(201);
+  const item = await itemResponse.json<{ item: { id: string; name: string } }>();
+
+  const memberItemsResponse = await capture(await dispatch(`/v1/lists/${household.defaultList.id}/items`, undefined, invited.headers, 'GET'));
+  expect(memberItemsResponse.status).toBe(200);
+  expect(await memberItemsResponse.json()).toMatchObject({ items: [{ id: item.item.id, name: 'Pan' }] });
+
+  const memberNotificationsResponse = await capture(await dispatch('/v1/notifications?limit=50', undefined, invited.headers, 'GET'));
+  expect(memberNotificationsResponse.status).toBe(200);
+  expect(await memberNotificationsResponse.json()).toMatchObject({ notifications: expect.arrayContaining([expect.objectContaining({ type: 'item_created', householdId: household.household.id, listId: household.defaultList.id })]) });
+
+  const ownerNotificationsResponse = await capture(await dispatch('/v1/notifications?limit=50', undefined, owner.headers, 'GET'));
+  expect(ownerNotificationsResponse.status).toBe(200);
+  expect(await ownerNotificationsResponse.json()).toMatchObject({ notifications: expect.arrayContaining([expect.objectContaining({ type: 'invitation_accepted', invitationId: invitation.id, householdId: household.household.id })]) });
+
+  for (const body of responseBodies) expect(body).not.toContain(rawToken);
+});
+
 it('notifies only relevant users about sharing and grouped remote list activity', async () => {
   const owner = await verifiedUser('Ana');
   const invited = await verifiedUser('Bea');
