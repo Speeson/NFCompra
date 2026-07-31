@@ -5,9 +5,14 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.BackoffPolicy
 import androidx.work.Configuration
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import androidx.work.testing.WorkManagerTestInitHelper
 import dev.esgarpe.nfcompra.core.database.LocalHousehold
 import dev.esgarpe.nfcompra.core.database.LocalShoppingItem
@@ -40,7 +45,9 @@ import org.robolectric.RobolectricTestRunner
 import java.util.concurrent.TimeUnit
 import java.util.Base64
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(RobolectricTestRunner::class)
 class OperationSynchronizerTest {
@@ -519,6 +526,8 @@ class OperationSynchronizerTest {
         val accountId = "account-${UUID.randomUUID()}"
         val firstOwner = NfCompraDatabase.create(context, accountId)
         val secondOwner = NfCompraDatabase.create(context, accountId)
+        val firstState = ShoppingSyncCoordinator.acquireRepository(accountId)
+        val secondState = ShoppingSyncCoordinator.acquireRepository(accountId)
         try {
             WorkManagerTestInitHelper.initializeTestWorkManager(
                 context,
@@ -534,13 +543,13 @@ class OperationSynchronizerTest {
             assertEquals(1, work.size)
             assertEquals(NetworkType.CONNECTED, work.single().constraints.requiredNetworkType)
 
-            releaseShoppingDatabase(context, accountId, firstOwner)
+            releaseShoppingRepository(context, accountId, firstOwner, firstState)
             val afterFirstClose = workManager
                 .getWorkInfosForUniqueWork(SyncWorker.uniqueWorkName(accountId))
                 .get(2, TimeUnit.SECONDS)
             assertFalse(afterFirstClose.single().state == WorkInfo.State.CANCELLED)
 
-            releaseShoppingDatabase(context, accountId, secondOwner)
+            releaseShoppingRepository(context, accountId, secondOwner, secondState)
             val afterLastClose = workManager
                 .getWorkInfosForUniqueWork(SyncWorker.uniqueWorkName(accountId))
                 .get(2, TimeUnit.SECONDS)
@@ -548,6 +557,68 @@ class OperationSynchronizerTest {
         } finally {
             executor.shutdownNow()
         }
+    }
+
+    @Test
+    fun `last repository logout cancels an active worker and its appended successor`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val executor = Executors.newFixedThreadPool(4)
+        val accountId = "account-${UUID.randomUUID()}"
+        val repositoryDatabase = NfCompraDatabase.create(context, accountId)
+        val repositoryState = ShoppingSyncCoordinator.acquireRepository(accountId)
+        LogoutWorkProbe.reset()
+        try {
+            WorkManagerTestInitHelper.initializeTestWorkManager(
+                context,
+                Configuration.Builder().setExecutor(executor).build(),
+            )
+            val workManager = WorkManager.getInstance(context)
+            val uniqueName = SyncWorker.uniqueWorkName(accountId)
+            workManager.enqueueUniqueWork(
+                uniqueName,
+                ExistingWorkPolicy.APPEND_OR_REPLACE,
+                OneTimeWorkRequestBuilder<LogoutRetryWorker>()
+                    .setInputData(workDataOf(LogoutRetryWorker.ACCOUNT_ID to accountId))
+                    .build(),
+            ).result.get(2, TimeUnit.SECONDS)
+            assertTrue(LogoutWorkProbe.started.await(2, TimeUnit.SECONDS))
+            workManager.enqueueUniqueWork(
+                uniqueName,
+                ExistingWorkPolicy.APPEND_OR_REPLACE,
+                OneTimeWorkRequestBuilder<LogoutRetryWorker>()
+                    .setInputData(workDataOf(LogoutRetryWorker.ACCOUNT_ID to accountId))
+                    .build(),
+            ).result.get(2, TimeUnit.SECONDS)
+
+            releaseShoppingRepository(context, accountId, repositoryDatabase, repositoryState)
+            LogoutWorkProbe.release.countDown()
+
+            val terminal = awaitUniqueWork(workManager, uniqueName) { work ->
+                work.size == 2 && work.all { it.state == WorkInfo.State.CANCELLED }
+            }
+            assertTrue(terminal.all { it.state == WorkInfo.State.CANCELLED })
+            assertEquals(1, LogoutWorkProbe.attempts.get())
+        } finally {
+            LogoutWorkProbe.release.countDown()
+            WorkManager.getInstance(context).cancelUniqueWork(SyncWorker.uniqueWorkName(accountId)).result
+                .get(2, TimeUnit.SECONDS)
+            executor.shutdownNow()
+        }
+    }
+
+    private fun awaitUniqueWork(
+        workManager: WorkManager,
+        uniqueName: String,
+        condition: (List<WorkInfo>) -> Boolean,
+    ): List<WorkInfo> {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+        var latest = emptyList<WorkInfo>()
+        while (System.nanoTime() < deadline) {
+            latest = workManager.getWorkInfosForUniqueWork(uniqueName).get(2, TimeUnit.SECONDS)
+            if (condition(latest)) return latest
+            Thread.yield()
+        }
+        return latest
     }
 
     private fun synchronizer(operationIds: () -> String = { "unused-operation-id" }) = OperationSynchronizer(
@@ -625,6 +696,40 @@ class OperationSynchronizerTest {
         val payload = Base64.getUrlEncoder().withoutPadding()
             .encodeToString("""{"sub":"$accountId"}""".toByteArray())
         return SessionTokens("header.$payload.$suffix", "refresh-$suffix")
+    }
+}
+
+private object LogoutWorkProbe {
+    var started = CountDownLatch(1)
+    var release = CountDownLatch(1)
+    val attempts = AtomicInteger()
+
+    fun reset() {
+        started = CountDownLatch(1)
+        release = CountDownLatch(1)
+        attempts.set(0)
+    }
+}
+
+class LogoutRetryWorker(
+    appContext: Context,
+    workerParameters: WorkerParameters,
+) : CoroutineWorker(appContext, workerParameters) {
+    override suspend fun doWork(): Result {
+        val accountId = requireNotNull(inputData.getString(ACCOUNT_ID))
+        val database = NfCompraDatabase.create(applicationContext, accountId)
+        return try {
+            LogoutWorkProbe.attempts.incrementAndGet()
+            LogoutWorkProbe.started.countDown()
+            LogoutWorkProbe.release.await(5, TimeUnit.SECONDS)
+            Result.retry()
+        } finally {
+            NfCompraDatabase.release(accountId, database)
+        }
+    }
+
+    companion object {
+        const val ACCOUNT_ID = "accountId"
     }
 }
 

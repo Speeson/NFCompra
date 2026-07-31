@@ -405,28 +405,40 @@ class OfflineShoppingRepository(
         ): OfflineShoppingRepository {
             val database = NfCompraDatabase.create(context, accountId)
             val scheduleSync = { SyncWorker.enqueue(context, accountId, baseUrl) }
-            val syncState = ShoppingSyncCoordinator.forAccount(accountId)
-            return OfflineShoppingRepository(
-                api = api,
-                dao = database.shoppingDao(),
-                scheduleSync = scheduleSync,
-                syncMutex = syncState.syncMutex,
-                databaseMutex = syncState.databaseMutex,
-                itemAliases = syncState.itemAliases,
-                closeDatabase = {
-                    releaseShoppingDatabase(context, accountId, database)
-                },
-            ).also { scheduleSync() }
+            val syncState = ShoppingSyncCoordinator.acquireRepository(accountId)
+            return try {
+                OfflineShoppingRepository(
+                    api = api,
+                    dao = database.shoppingDao(),
+                    scheduleSync = scheduleSync,
+                    syncMutex = syncState.syncMutex,
+                    databaseMutex = syncState.databaseMutex,
+                    itemAliases = syncState.itemAliases,
+                    closeDatabase = {
+                        releaseShoppingRepository(context, accountId, database, syncState)
+                    },
+                ).also { scheduleSync() }
+            } catch (error: Throwable) {
+                releaseShoppingRepository(context, accountId, database, syncState)
+                throw error
+            }
         }
     }
 }
 
-internal fun releaseShoppingDatabase(
+internal fun releaseShoppingRepository(
     context: Context,
     accountId: String,
     database: NfCompraDatabase,
+    syncState: ShoppingSyncState,
 ) {
-    if (NfCompraDatabase.release(accountId, database)) SyncWorker.cancel(context, accountId)
+    try {
+        syncState.releaseRepository {
+            SyncWorker.cancel(context, accountId)
+        }
+    } finally {
+        NfCompraDatabase.release(accountId, database)
+    }
 }
 
 private fun HouseholdDto.toLocal() = LocalHousehold(

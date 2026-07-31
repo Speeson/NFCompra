@@ -113,13 +113,30 @@ internal object ShoppingSyncCoordinator {
     private val accountStates = ConcurrentHashMap<String, ShoppingSyncState>()
 
     fun forAccount(accountId: String): ShoppingSyncState = accountStates.getOrPut(accountId) { ShoppingSyncState() }
+
+    fun acquireRepository(accountId: String): ShoppingSyncState = forAccount(accountId).also {
+        it.acquireRepository()
+    }
 }
 
 internal class ShoppingSyncState(
     val syncMutex: Mutex = Mutex(),
     val databaseMutex: Mutex = Mutex(),
     val itemAliases: ItemIdAliases = ItemIdAliases(),
-)
+) {
+    private val ownershipLock = Any()
+    private var repositoryOwners = 0
+
+    fun acquireRepository() = synchronized(ownershipLock) {
+        repositoryOwners += 1
+    }
+
+    fun releaseRepository(onLastRepository: () -> Unit) = synchronized(ownershipLock) {
+        check(repositoryOwners > 0) { "No shopping repository ownership remains for this account." }
+        repositoryOwners -= 1
+        if (repositoryOwners == 0) onLastRepository()
+    }
+}
 
 internal class ReloadingAccountTokenStore(
     private val load: () -> TokenStore,
