@@ -140,7 +140,7 @@ class OfflineShoppingRepository(
             return@accountOperation dao.households().map { HouseholdUiModel(it.id, it.name) }
         }
         dao.replaceHouseholds(remote, clock())
-        remote.map { HouseholdUiModel(it.id, it.name) }
+        dao.households().map { HouseholdUiModel(it.id, it.name) }
     }
 
     override suspend fun lists(householdId: String): List<ShoppingListSummaryUiModel> = accountOperation {
@@ -157,7 +157,7 @@ class OfflineShoppingRepository(
             }
         }
         dao.replaceLists(householdId, remote, clock())
-        remote.map { ShoppingListSummaryUiModel(it.id, it.householdId, it.name) }
+        dao.lists(householdId).map { ShoppingListSummaryUiModel(it.id, it.householdId, it.name) }
     }
 
     override suspend fun refreshItems(listId: String) = accountOperation {

@@ -58,6 +58,30 @@ abstract class ShoppingDao {
     @Query("SELECT * FROM shopping_items")
     protected abstract suspend fun allItemsForReplacement(): List<LocalShoppingItem>
 
+    @Query(
+        """
+        DELETE FROM snapshot_metadata
+        WHERE collectionKey LIKE 'lists:%'
+          AND NOT EXISTS (
+              SELECT 1 FROM households
+              WHERE snapshot_metadata.collectionKey = 'lists:' || households.id
+          )
+        """,
+    )
+    protected abstract suspend fun deleteOrphanedListSnapshots()
+
+    @Query(
+        """
+        DELETE FROM snapshot_metadata
+        WHERE collectionKey LIKE 'items:%'
+          AND NOT EXISTS (
+              SELECT 1 FROM shopping_lists
+              WHERE snapshot_metadata.collectionKey = 'items:' || shopping_lists.id
+          )
+        """,
+    )
+    protected abstract suspend fun deleteOrphanedItemSnapshots()
+
     @Transaction
     open suspend fun replaceServerSnapshot(
         households: List<LocalHousehold>,
@@ -82,6 +106,7 @@ abstract class ShoppingDao {
         upsertHouseholds(mergedHouseholds)
         upsertLists(mergedLists)
         upsertItems(mergedItems)
+        deleteOrphanedSnapshotMetadata()
         upsertSnapshot(SnapshotMetadata(SnapshotCollection.HOUSEHOLDS, snapshotAt))
         households.forEach {
             upsertSnapshot(SnapshotMetadata(SnapshotCollection.lists(it.id), snapshotAt))
@@ -104,6 +129,7 @@ abstract class ShoppingDao {
         upsertHouseholds(households)
         if (retainedIds.isEmpty()) deleteAllHouseholds()
         else deleteHouseholdsNotIn(retainedIds.toList())
+        deleteOrphanedSnapshotMetadata()
         upsertSnapshot(SnapshotMetadata(SnapshotCollection.HOUSEHOLDS, snapshotAt))
     }
 
@@ -123,6 +149,7 @@ abstract class ShoppingDao {
         upsertLists(lists)
         if (retainedIds.isEmpty()) deleteLists(householdId)
         else deleteListsNotIn(householdId, retainedIds.toList())
+        deleteOrphanedSnapshotMetadata()
         upsertSnapshot(SnapshotMetadata(SnapshotCollection.lists(householdId), snapshotAt))
     }
 
@@ -138,6 +165,11 @@ abstract class ShoppingDao {
         deleteItems(listId)
         upsertItems(merged)
         upsertSnapshot(SnapshotMetadata(SnapshotCollection.items(listId), snapshotAt))
+    }
+
+    private suspend fun deleteOrphanedSnapshotMetadata() {
+        deleteOrphanedListSnapshots()
+        deleteOrphanedItemSnapshots()
     }
 
     @Query("SELECT * FROM snapshot_metadata WHERE collectionKey = :collectionKey")

@@ -23,17 +23,20 @@ sealed interface AuthResult {
 
 class AuthRepository(private val api: AuthApi, private val tokenStore: TokenStore) {
     fun login(email: String, password: String): Flow<AuthResult> = flow {
+        val expectedGeneration = tokenStore.generation()
         try {
             val session = api.login(LoginRequest(email, password))
             if (session.accessToken.isBlank() || session.refreshToken.isBlank()) {
                 emit(AuthResult.Failure("La sesión recibida no es válida."))
                 return@flow
             }
-            try {
-                tokenStore.save(SessionTokens(session.accessToken, session.refreshToken))
-            } catch (error: Exception) {
-                runCatching { tokenStore.clear() }
-                throw error
+            if (!tokenStore.compareAndStart(
+                    expectedGeneration,
+                    SessionTokens(session.accessToken, session.refreshToken),
+                )
+            ) {
+                emit(AuthResult.Failure("La sesión ha cambiado."))
+                return@flow
             }
             emit(AuthResult.SignedIn)
         } catch (error: Exception) {
@@ -53,23 +56,29 @@ class AuthRepository(private val api: AuthApi, private val tokenStore: TokenStor
         complete("Contraseña restablecida. Ya puedes iniciar sesión.") { api.resetPassword(ResetPasswordRequest(token, password)) }
 
     suspend fun refresh(): AuthResult {
-        val refreshToken = tokenStore.read()?.refreshToken ?: return AuthResult.Failure("No hay sesión.")
+        val snapshot = tokenStore.snapshot() ?: return AuthResult.Failure("No hay sesión.")
         return try {
-            val session = api.refresh(RefreshRequest(refreshToken = refreshToken))
-            tokenStore.save(SessionTokens(session.accessToken, session.refreshToken))
-            AuthResult.SignedIn
+            val session = api.refresh(RefreshRequest(refreshToken = snapshot.tokens.refreshToken))
+            if (session.accessToken.isBlank() || session.refreshToken.isBlank()) {
+                return AuthResult.Failure("La sesión recibida no es válida.")
+            }
+            if (tokenStore.compareAndSave(snapshot, SessionTokens(session.accessToken, session.refreshToken))) {
+                AuthResult.SignedIn
+            } else {
+                AuthResult.Failure("La sesión ha cambiado.")
+            }
         } catch (error: Exception) {
-            runCatching { tokenStore.clear() }
+            runCatching { tokenStore.compareAndClear(snapshot) }
             AuthResult.Failure(error.messageForUser())
         }
     }
 
     suspend fun logout() {
-        val refreshToken = tokenStore.read()?.refreshToken
+        val snapshot = tokenStore.snapshot()
         try {
-            if (refreshToken != null) api.logout(LogoutRequest(refreshToken = refreshToken))
+            if (snapshot != null) api.logout(LogoutRequest(refreshToken = snapshot.tokens.refreshToken))
         } finally {
-            tokenStore.clear()
+            if (snapshot != null) tokenStore.compareAndClear(snapshot)
         }
     }
 

@@ -2,6 +2,7 @@ package dev.esgarpe.nfcompra.feature.sharing
 
 import dev.esgarpe.nfcompra.core.network.NetworkClient
 import dev.esgarpe.nfcompra.core.network.SessionTokens
+import dev.esgarpe.nfcompra.core.network.SessionSnapshot
 import dev.esgarpe.nfcompra.core.network.TokenStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -69,9 +70,17 @@ class SharingRepositoryTest {
 private class TestTokenStore : TokenStore {
     private val flow = MutableStateFlow<SessionTokens?>(SessionTokens("access-token", "refresh-token"))
     override val session: StateFlow<SessionTokens?> = flow
+    private var identity = 1L
     override fun current() = flow.value
+    override fun generation() = identity
+    override fun snapshot() = current()?.let { SessionSnapshot(identity, it) }
     override suspend fun read() = flow.value
-    override suspend fun save(tokens: SessionTokens) { flow.value = tokens }
-    override suspend fun clear() { flow.value = null }
-    override suspend fun compareAndClear(expected: SessionTokens) = if (flow.value == expected) { flow.value = null; true } else false
+    override suspend fun save(tokens: SessionTokens) { identity++; flow.value = tokens }
+    override suspend fun clear() { identity++; flow.value = null }
+    override suspend fun compareAndStart(expectedGeneration: Long, tokens: SessionTokens) =
+        if (identity == expectedGeneration) { identity++; flow.value = tokens; true } else false
+    override suspend fun compareAndSave(expected: SessionSnapshot, tokens: SessionTokens) =
+        if (snapshot() == expected) { flow.value = tokens; true } else false
+    override suspend fun compareAndClear(expected: SessionSnapshot) =
+        if (snapshot() == expected) { identity++; flow.value = null; true } else false
 }

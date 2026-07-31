@@ -36,27 +36,54 @@ abstract class NfCompraDatabase : RoomDatabase() {
             }
         }
         val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2)
-        private val instances = mutableMapOf<String, NfCompraDatabase>()
+        private data class DatabaseReference(
+            val database: NfCompraDatabase,
+            var owners: Int,
+        )
+
+        private val instances = mutableMapOf<String, DatabaseReference>()
 
         fun create(context: Context, accountId: String): NfCompraDatabase {
             require(accountId.isNotBlank()) { "accountId no puede estar vacío." }
             val databaseName = databaseName(accountId)
+            return acquire(databaseName) {
+                context.applicationContext.getDatabasePath(databaseName).parentFile?.mkdirs()
+                Room.databaseBuilder(
+                    context.applicationContext,
+                    NfCompraDatabase::class.java,
+                    databaseName,
+                ).addMigrations(*MIGRATIONS).build()
+            }
+        }
+
+        internal fun acquire(
+            databaseName: String,
+            databaseFactory: () -> NfCompraDatabase,
+        ): NfCompraDatabase {
             return synchronized(this) {
-                instances.getOrPut(databaseName) {
-                    context.applicationContext.getDatabasePath(databaseName).parentFile?.mkdirs()
-                    Room.databaseBuilder(
-                        context.applicationContext,
-                        NfCompraDatabase::class.java,
-                        databaseName,
-                    ).addMigrations(*MIGRATIONS).build()
+                val existing = instances[databaseName]
+                if (existing != null) {
+                    existing.owners++
+                    existing.database
+                } else {
+                    val database = databaseFactory()
+                    instances[databaseName] = DatabaseReference(database, owners = 1)
+                    database
                 }
             }
         }
 
         fun release(accountId: String, database: NfCompraDatabase) {
-            val databaseName = databaseName(accountId)
+            releaseByName(databaseName(accountId), database)
+        }
+
+        internal fun releaseByName(databaseName: String, database: NfCompraDatabase) {
             synchronized(this) {
-                if (instances[databaseName] === database) {
+                val reference = instances[databaseName] ?: return@synchronized
+                if (reference.database === database) {
+                    reference.owners--
+                }
+                if (reference.database === database && reference.owners == 0) {
                     instances.remove(databaseName)
                     database.close()
                 }

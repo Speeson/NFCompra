@@ -84,6 +84,30 @@ class OfflineShoppingRepositoryTest {
     }
 
     @Test
+    fun `household refresh returns the Room state that retains pending local data`() = runTest {
+        seedItem()
+        database.shoppingDao().enqueue(pending("pending-local", createdAt = 500))
+        server.enqueue(json("""{"households":[]}"""))
+
+        val households = repository.households()
+
+        assertEquals(listOf("home-1"), households.map { it.id })
+        assertEquals(listOf("home-1"), database.shoppingDao().households().map { it.id })
+    }
+
+    @Test
+    fun `list refresh returns the Room state that retains pending local data`() = runTest {
+        seedItem()
+        database.shoppingDao().enqueue(pending("pending-local", createdAt = 500))
+        server.enqueue(json("""{"lists":[]}"""))
+
+        val lists = repository.lists("home-1")
+
+        assertEquals(listOf("list-1"), lists.map { it.id })
+        assertEquals(listOf("list-1"), database.shoppingDao().lists("home-1").map { it.id })
+    }
+
+    @Test
     fun `cached households do not hide HTTP authorization or server failures`() = runTest {
         seedList()
         server.enqueue(
@@ -162,6 +186,18 @@ class OfflineShoppingRepositoryTest {
     @Test
     fun `first item transport failure is not treated as an empty cached snapshot`() = runTest {
         seedListWithoutItemSnapshot()
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
+
+        val failure = runCatching { repository.refreshItems("list-1") }.exceptionOrNull()
+
+        assertTrue(failure is IOException)
+        assertEquals(null, database.shoppingDao().snapshot(SnapshotCollection.items("list-1")))
+    }
+
+    @Test
+    fun `item failure after its parent list was removed is not fabricated as cached empty data`() = runTest {
+        seedList()
+        database.shoppingDao().replaceLists("home-1", emptyList())
         server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
 
         val failure = runCatching { repository.refreshItems("list-1") }.exceptionOrNull()
@@ -368,8 +404,18 @@ private class InMemoryOfflineTestTokenStore :
     private val tokens = dev.esgarpe.nfcompra.core.network.SessionTokens("access", "refresh")
     override val session = kotlinx.coroutines.flow.MutableStateFlow(tokens)
     override fun current() = tokens
+    override fun generation() = 1L
+    override fun snapshot() = dev.esgarpe.nfcompra.core.network.SessionSnapshot(1L, tokens)
     override suspend fun read() = tokens
     override suspend fun save(tokens: dev.esgarpe.nfcompra.core.network.SessionTokens) = Unit
     override suspend fun clear() = Unit
-    override suspend fun compareAndClear(expected: dev.esgarpe.nfcompra.core.network.SessionTokens) = false
+    override suspend fun compareAndStart(
+        expectedGeneration: Long,
+        tokens: dev.esgarpe.nfcompra.core.network.SessionTokens,
+    ) = false
+    override suspend fun compareAndSave(
+        expected: dev.esgarpe.nfcompra.core.network.SessionSnapshot,
+        tokens: dev.esgarpe.nfcompra.core.network.SessionTokens,
+    ) = false
+    override suspend fun compareAndClear(expected: dev.esgarpe.nfcompra.core.network.SessionSnapshot) = false
 }

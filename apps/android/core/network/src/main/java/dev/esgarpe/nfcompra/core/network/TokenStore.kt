@@ -14,35 +14,80 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 data class SessionTokens(val accessToken: String, val refreshToken: String)
+data class SessionSnapshot(val identity: Long, val tokens: SessionTokens)
 
 interface TokenStore {
     val session: StateFlow<SessionTokens?>
     fun current(): SessionTokens?
+    fun generation(): Long
+    fun snapshot(): SessionSnapshot?
     suspend fun read(): SessionTokens?
     suspend fun save(tokens: SessionTokens)
     suspend fun clear()
-    suspend fun compareAndClear(expected: SessionTokens): Boolean
+    suspend fun compareAndStart(expectedGeneration: Long, tokens: SessionTokens): Boolean
+    suspend fun compareAndSave(expected: SessionSnapshot, tokens: SessionTokens): Boolean
+    suspend fun compareAndClear(expected: SessionSnapshot): Boolean
+}
+
+internal interface EncryptedSessionPreferences {
+    val access: String?
+    val refresh: String?
+    fun replace(access: String?, refresh: String?): Boolean
+}
+
+internal class SessionTokenPersistence(
+    private val preferences: EncryptedSessionPreferences,
+) {
+    fun save(access: String, refresh: String) {
+        replaceOrRollback(access, refresh, "No se pudo guardar la sesión.")
+    }
+
+    fun clear() {
+        replaceOrRollback(null, null, "No se pudo borrar la sesión.")
+    }
+
+    private fun replaceOrRollback(access: String?, refresh: String?, failureMessage: String) {
+        val previousAccess = preferences.access
+        val previousRefresh = preferences.refresh
+        if (preferences.replace(access, refresh)) return
+
+        // SharedPreferences updates its in-memory map before reporting a disk-write failure.
+        // Restore the prior values so a new TokenStore cannot observe an uncommitted session.
+        preferences.replace(previousAccess, previousRefresh)
+        throw IOException(failureMessage)
+    }
 }
 
 /** Tokens are encrypted before persisting; the encryption key never leaves Android Keystore. */
 class KeystoreTokenStore(context: Context) : TokenStore {
     private val preferences = context.getSharedPreferences("nfcompra.session", Context.MODE_PRIVATE)
+    private val persistence = SessionTokenPersistence(object : EncryptedSessionPreferences {
+        override val access: String?
+            get() = preferences.getString(ACCESS_TOKEN, null)
+        override val refresh: String?
+            get() = preferences.getString(REFRESH_TOKEN, null)
+
+        override fun replace(access: String?, refresh: String?): Boolean = preferences.edit().apply {
+            if (access == null) remove(ACCESS_TOKEN) else putString(ACCESS_TOKEN, access)
+            if (refresh == null) remove(REFRESH_TOKEN) else putString(REFRESH_TOKEN, refresh)
+        }.commit()
+    })
     private val sessionLock = Any()
     private val mutableSession = MutableStateFlow(readEncrypted())
+    private var sessionIdentity = if (mutableSession.value == null) 0L else 1L
     override val session: StateFlow<SessionTokens?> = mutableSession
 
-    override fun current(): SessionTokens? = session.value
-    override suspend fun read(): SessionTokens? = session.value
+    override fun current(): SessionTokens? = synchronized(sessionLock) { session.value }
+    override fun generation(): Long = synchronized(sessionLock) { sessionIdentity }
+    override fun snapshot(): SessionSnapshot? = synchronized(sessionLock) {
+        session.value?.let { SessionSnapshot(sessionIdentity, it) }
+    }
+    override suspend fun read(): SessionTokens? = current()
 
     override suspend fun save(tokens: SessionTokens) {
-        val access = encrypt(tokens.accessToken)
-        val refresh = encrypt(tokens.refreshToken)
         synchronized(sessionLock) {
-            if (!preferences.edit()
-                .putString(ACCESS_TOKEN, access)
-                .putString(REFRESH_TOKEN, refresh)
-                .commit()
-            ) throw IOException("No se pudo guardar la sesión.")
+            persistLocked(tokens)
+            sessionIdentity++
             mutableSession.value = tokens
         }
     }
@@ -53,16 +98,41 @@ class KeystoreTokenStore(context: Context) : TokenStore {
         }
     }
 
-    override suspend fun compareAndClear(expected: SessionTokens): Boolean = synchronized(sessionLock) {
-        if (session.value != expected) return@synchronized false
+    override suspend fun compareAndStart(expectedGeneration: Long, tokens: SessionTokens): Boolean =
+        synchronized(sessionLock) {
+            if (sessionIdentity != expectedGeneration) return@synchronized false
+            persistLocked(tokens)
+            sessionIdentity++
+            mutableSession.value = tokens
+            true
+        }
+
+    override suspend fun compareAndSave(expected: SessionSnapshot, tokens: SessionTokens): Boolean =
+        synchronized(sessionLock) {
+            if (!matchesLocked(expected)) return@synchronized false
+            persistLocked(tokens)
+            mutableSession.value = tokens
+            true
+        }
+
+    override suspend fun compareAndClear(expected: SessionSnapshot): Boolean = synchronized(sessionLock) {
+        if (!matchesLocked(expected)) return@synchronized false
         clearLocked()
         true
     }
 
+    private fun matchesLocked(expected: SessionSnapshot): Boolean =
+        sessionIdentity == expected.identity && session.value == expected.tokens
+
+    private fun persistLocked(tokens: SessionTokens) {
+        val access = encrypt(tokens.accessToken)
+        val refresh = encrypt(tokens.refreshToken)
+        persistence.save(access, refresh)
+    }
+
     private fun clearLocked() {
-        if (!preferences.edit().remove(ACCESS_TOKEN).remove(REFRESH_TOKEN).commit()) {
-            throw IOException("No se pudo borrar la sesión.")
-        }
+        persistence.clear()
+        sessionIdentity++
         mutableSession.value = null
     }
 

@@ -9,6 +9,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -90,6 +91,38 @@ class ShoppingDaoTest {
         assertEquals(202L, dao.snapshot(SnapshotCollection.lists("home-1"))?.updatedAt)
         assertEquals(301L, dao.snapshot(SnapshotCollection.items("list-1"))?.updatedAt)
         assertTrue(dao.items("list-1").isEmpty())
+    }
+
+    @Test
+    fun `removing a household cascade also removes its list and item snapshot metadata`() = runTest {
+        dao.replaceServerSnapshot(
+            households = listOf(household("home-1")),
+            lists = listOf(shoppingList("list-1", "home-1")),
+            items = listOf(item("item-1", "list-1", "Leche")),
+        )
+
+        dao.replaceHouseholds(emptyList())
+
+        assertTrue(dao.lists("home-1").isEmpty())
+        assertTrue(dao.items("list-1").isEmpty())
+        assertEquals(null, dao.snapshot(SnapshotCollection.lists("home-1")))
+        assertEquals(null, dao.snapshot(SnapshotCollection.items("list-1")))
+        assertNotNull(dao.snapshot(SnapshotCollection.HOUSEHOLDS))
+    }
+
+    @Test
+    fun `removing a list cascade also removes its item snapshot metadata`() = runTest {
+        dao.replaceServerSnapshot(
+            households = listOf(household("home-1")),
+            lists = listOf(shoppingList("list-1", "home-1")),
+            items = listOf(item("item-1", "list-1", "Leche")),
+        )
+
+        dao.replaceLists("home-1", emptyList())
+
+        assertTrue(dao.items("list-1").isEmpty())
+        assertEquals(null, dao.snapshot(SnapshotCollection.items("list-1")))
+        assertNotNull(dao.snapshot(SnapshotCollection.lists("home-1")))
     }
 
     @Test
@@ -264,6 +297,34 @@ class ShoppingDaoTest {
         assertEquals(777L, reopenedA.shoppingDao().snapshot(SnapshotCollection.HOUSEHOLDS)?.updatedAt)
         NfCompraDatabase.release("account-a-$suffix", reopenedA)
         NfCompraDatabase.release("account-b-$suffix", accountB)
+    }
+
+    @Test
+    fun `releasing one same-account owner keeps the shared database open for the other`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val databaseName = "shared-${UUID.randomUUID()}"
+        val shared = Room.inMemoryDatabaseBuilder(context, NfCompraDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val firstOwner = NfCompraDatabase.acquire(databaseName) { shared }
+        firstOwner.shoppingDao().replaceServerSnapshot(
+            households = listOf(household("home-shared")),
+            lists = emptyList(),
+            items = emptyList(),
+        )
+        val secondOwner = NfCompraDatabase.acquire(databaseName) {
+            error("No debe crear otra base para la misma cuenta.")
+        }
+
+        assertSame(firstOwner, secondOwner)
+        assertTrue(firstOwner.isOpen)
+        NfCompraDatabase.releaseByName(databaseName, firstOwner)
+
+        assertTrue(secondOwner.isOpen)
+        assertEquals(listOf("home-shared"), secondOwner.shoppingDao().households().map { it.id })
+
+        NfCompraDatabase.releaseByName(databaseName, secondOwner)
+        assertFalse(secondOwner.isOpen)
     }
 
     private fun household(id: String) = LocalHousehold(

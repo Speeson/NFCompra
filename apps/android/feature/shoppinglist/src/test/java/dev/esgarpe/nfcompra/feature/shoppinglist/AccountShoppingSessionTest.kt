@@ -7,6 +7,7 @@ import dev.esgarpe.nfcompra.core.database.LocalShoppingItem
 import dev.esgarpe.nfcompra.core.database.NfCompraDatabase
 import dev.esgarpe.nfcompra.core.network.NetworkClient
 import dev.esgarpe.nfcompra.core.network.SessionTokens
+import dev.esgarpe.nfcompra.core.network.SessionSnapshot
 import dev.esgarpe.nfcompra.core.network.TokenStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -179,16 +180,33 @@ class AccountShoppingSessionTest {
 
 private class MutableAccountTokenStore(initial: SessionTokens) : TokenStore {
     override val session = MutableStateFlow<SessionTokens?>(initial)
+    private var identity = 1L
     override fun current() = session.value
+    override fun generation() = identity
+    override fun snapshot() = session.value?.let { SessionSnapshot(identity, it) }
     override suspend fun read() = session.value
     override suspend fun save(tokens: SessionTokens) {
+        identity++
         session.value = tokens
     }
     override suspend fun clear() {
+        identity++
         session.value = null
     }
-    override suspend fun compareAndClear(expected: SessionTokens): Boolean {
-        if (session.value != expected) return false
+    override suspend fun compareAndStart(expectedGeneration: Long, tokens: SessionTokens): Boolean {
+        if (identity != expectedGeneration) return false
+        identity++
+        session.value = tokens
+        return true
+    }
+    override suspend fun compareAndSave(expected: SessionSnapshot, tokens: SessionTokens): Boolean {
+        if (snapshot() != expected) return false
+        session.value = tokens
+        return true
+    }
+    override suspend fun compareAndClear(expected: SessionSnapshot): Boolean {
+        if (snapshot() != expected) return false
+        identity++
         session.value = null
         return true
     }

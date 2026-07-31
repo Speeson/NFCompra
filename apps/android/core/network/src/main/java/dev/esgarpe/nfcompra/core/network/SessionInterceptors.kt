@@ -11,12 +11,17 @@ import okhttp3.Route
 
 class BearerInterceptor(private val tokenStore: TokenStore) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
-        val token = tokenStore.current()?.accessToken
-        val request = if (token == null || chain.request().header("Authorization") != null) chain.request()
-        else chain.request().newBuilder().header("Authorization", "Bearer $token").build()
+        val snapshot = tokenStore.snapshot()
+        val request = if (snapshot == null || chain.request().header("Authorization") != null) chain.request()
+        else chain.request().newBuilder()
+            .header("Authorization", "Bearer ${snapshot.tokens.accessToken}")
+            .tag(AuthenticatedRequestSession::class.java, AuthenticatedRequestSession(snapshot.identity))
+            .build()
         return chain.proceed(request)
     }
 }
+
+private data class AuthenticatedRequestSession(val identity: Long)
 
 class RefreshAuthenticator(
     private val authApi: AuthApi,
@@ -31,37 +36,43 @@ class RefreshAuthenticator(
             ?.takeIf { it.startsWith("Bearer ") }
             ?.removePrefix("Bearer ")
             ?: return null
+        val requestSession = response.request.tag(AuthenticatedRequestSession::class.java) ?: return null
         return runBlocking {
             refreshMutex.withLock {
-                val attemptedTokens = tokenStore.current() ?: return@withLock null
-                if (attemptedTokens.accessToken != failedAccessToken) {
-                    return@withLock retry(response, attemptedTokens.accessToken)
+                val attemptedSession = tokenStore.snapshot()
+                    ?.takeIf { it.identity == requestSession.identity }
+                    ?: return@withLock null
+                if (attemptedSession.tokens.accessToken != failedAccessToken) {
+                    return@withLock retry(response, attemptedSession)
                 }
 
                 val refreshed = runCatching {
-                    authApi.refresh(RefreshRequest(refreshToken = attemptedTokens.refreshToken))
+                    authApi.refresh(RefreshRequest(refreshToken = attemptedSession.tokens.refreshToken))
                 }.getOrElse {
-                    runCatching { tokenStore.compareAndClear(attemptedTokens) }
+                    runCatching { tokenStore.compareAndClear(attemptedSession) }
                     return@withLock null
                 }
                 if (refreshed.accessToken.isBlank() || refreshed.refreshToken.isBlank()) {
-                    runCatching { tokenStore.compareAndClear(attemptedTokens) }
+                    runCatching { tokenStore.compareAndClear(attemptedSession) }
                     return@withLock null
                 }
-                runCatching {
-                    tokenStore.save(SessionTokens(refreshed.accessToken, refreshed.refreshToken))
+                val refreshedTokens = SessionTokens(refreshed.accessToken, refreshed.refreshToken)
+                val saved = runCatching {
+                    tokenStore.compareAndSave(attemptedSession, refreshedTokens)
                 }.getOrElse {
-                    runCatching { tokenStore.compareAndClear(attemptedTokens) }
+                    runCatching { tokenStore.compareAndClear(attemptedSession) }
                     return@withLock null
                 }
-                retry(response, refreshed.accessToken)
+                if (!saved) return@withLock null
+                retry(response, attemptedSession.copy(tokens = refreshedTokens))
             }
         }
     }
 
-    private fun retry(response: Response, accessToken: String): Request = response.request.newBuilder()
-        .header("Authorization", "Bearer $accessToken")
+    private fun retry(response: Response, session: SessionSnapshot): Request = response.request.newBuilder()
+        .header("Authorization", "Bearer ${session.tokens.accessToken}")
         .header(REFRESH_ATTEMPT_HEADER, "true")
+        .tag(AuthenticatedRequestSession::class.java, AuthenticatedRequestSession(session.identity))
         .build()
 
     companion object { const val REFRESH_ATTEMPT_HEADER = "X-NFCompra-Refresh-Attempt" }

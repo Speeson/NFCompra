@@ -3,6 +3,7 @@ package dev.esgarpe.nfcompra.feature.shoppinglist
 import app.cash.turbine.test
 import dev.esgarpe.nfcompra.core.network.NetworkClient
 import dev.esgarpe.nfcompra.core.network.SessionTokens
+import dev.esgarpe.nfcompra.core.network.SessionSnapshot
 import dev.esgarpe.nfcompra.core.network.TokenStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -341,15 +342,30 @@ private class FlowShoppingRepository(
 private class InMemoryTokenStore(initialTokens: SessionTokens? = SessionTokens("access-token", "refresh-token")) : TokenStore {
     private val mutableSession = MutableStateFlow(initialTokens)
     override val session: StateFlow<SessionTokens?> = mutableSession
+    private var identity = if (initialTokens == null) 0L else 1L
     private var tokens: SessionTokens?
         get() = mutableSession.value
         set(value) { mutableSession.value = value }
     override fun current() = tokens
+    override fun generation() = identity
+    override fun snapshot() = tokens?.let { SessionSnapshot(identity, it) }
     override suspend fun read() = tokens
-    override suspend fun save(tokens: SessionTokens) { this.tokens = tokens }
-    override suspend fun clear() { tokens = null }
-    override suspend fun compareAndClear(expected: SessionTokens): Boolean {
-        if (tokens != expected) return false
+    override suspend fun save(tokens: SessionTokens) { identity++; this.tokens = tokens }
+    override suspend fun clear() { identity++; tokens = null }
+    override suspend fun compareAndStart(expectedGeneration: Long, tokens: SessionTokens): Boolean {
+        if (identity != expectedGeneration) return false
+        identity++
+        this.tokens = tokens
+        return true
+    }
+    override suspend fun compareAndSave(expected: SessionSnapshot, tokens: SessionTokens): Boolean {
+        if (snapshot() != expected) return false
+        this.tokens = tokens
+        return true
+    }
+    override suspend fun compareAndClear(expected: SessionSnapshot): Boolean {
+        if (snapshot() != expected) return false
+        identity++
         tokens = null
         return true
     }
