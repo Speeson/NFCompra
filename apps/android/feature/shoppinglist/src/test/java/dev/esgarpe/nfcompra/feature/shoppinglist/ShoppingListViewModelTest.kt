@@ -3,7 +3,9 @@ package dev.esgarpe.nfcompra.feature.shoppinglist
 import app.cash.turbine.test
 import dev.esgarpe.nfcompra.core.network.NetworkClient
 import dev.esgarpe.nfcompra.core.network.SessionTokens
+import dev.esgarpe.nfcompra.core.network.SessionSnapshot
 import dev.esgarpe.nfcompra.core.network.TokenStore
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
@@ -14,6 +16,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import okhttp3.mockwebserver.MockResponse
@@ -276,6 +279,83 @@ class ShoppingListViewModelTest {
         }
     }
 
+    @Test fun `delayed cached selection from an older context cannot replace the current context`() = runTest {
+        val repository = DelayedCachedContextRepository()
+        val viewModel = ShoppingListViewModel(repository)
+
+        viewModel.openContext("home-a", "list-a")
+        runCurrent()
+        repository.firstCacheStarted.await()
+
+        viewModel.openContext("home-b", "list-b")
+        advanceUntilIdle()
+        assertEquals(
+            "list-b",
+            (viewModel.state.value as ShoppingListViewState.Data).selectedListId,
+        )
+
+        repository.releaseFirstCache.complete(Unit)
+        advanceUntilIdle()
+
+        val current = viewModel.state.value as ShoppingListViewState.Data
+        assertEquals("home-b", current.selectedHouseholdId)
+        assertEquals("list-b", current.selectedListId)
+        assertEquals("Compra B", current.content.title)
+    }
+
+    @Test fun `an already loaded list keeps observing Room emissions`() = runTest {
+        val itemFlow = MutableStateFlow(
+            listOf(
+                ShoppingListItemUiModel(
+                    id = "item-1",
+                    name = "Leche",
+                    quantity = "1 litro",
+                    checked = false,
+                ),
+            ),
+        )
+        val viewModel = ShoppingListViewModel(FlowShoppingRepository(itemFlow))
+
+        viewModel.load()
+        advanceUntilIdle()
+        assertEquals("Leche", (viewModel.state.value as ShoppingListViewState.Data).content.pending.single().name)
+
+        itemFlow.value = listOf(
+            ShoppingListItemUiModel(
+                id = "item-1",
+                name = "Leche entera",
+                quantity = "1 litro",
+                checked = false,
+                pendingState = "pending",
+            ),
+        )
+        advanceUntilIdle()
+
+        val updated = viewModel.state.value as ShoppingListViewState.Data
+        assertEquals("Leche entera", updated.content.pending.single().name)
+        assertEquals("pending", updated.content.pending.single().pendingState)
+    }
+
+    @Test fun `conflict resolution actions are forwarded with the selected operation id`() = runTest {
+        val repository = ConflictShoppingRepository()
+        val viewModel = ShoppingListViewModel(repository)
+        viewModel.load()
+        advanceUntilIdle()
+
+        viewModel.onAction(ResolveConflict.UseServer("operation-1"))
+        advanceUntilIdle()
+        viewModel.onAction(ResolveConflict.RetryLocal("operation-2"))
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(
+                ResolveConflict.UseServer("operation-1"),
+                ResolveConflict.RetryLocal("operation-2"),
+            ),
+            repository.resolutions,
+        )
+    }
+
     private fun enqueueInitialList() {
         server.enqueue(json("{\"households\":[{\"id\":\"home-1\",\"name\":\"Casa\",\"ownerId\":\"user-1\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}"))
         server.enqueue(json("{\"lists\":[{\"id\":\"list-1\",\"householdId\":\"home-1\",\"name\":\"Compra\",\"isDefault\":true,\"version\":1,\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}"))
@@ -285,18 +365,120 @@ class ShoppingListViewModelTest {
     private fun json(body: String, status: Int = 200) = MockResponse().setResponseCode(status).setHeader("content-type", "application/json").setBody(body)
 }
 
+private class FlowShoppingRepository(
+    private val items: StateFlow<List<ShoppingListItemUiModel>>,
+) : ShoppingRepository {
+    override val continuouslyObservesItems = true
+    override suspend fun households() = listOf(HouseholdUiModel("home-1", "Casa"))
+    override suspend fun lists(householdId: String) =
+        listOf(ShoppingListSummaryUiModel("list-1", householdId, "Compra"))
+    override fun observeItems(listId: String) = items
+    override suspend fun createHousehold(name: String) =
+        error("No se usa en esta prueba.")
+    override suspend fun createList(householdId: String, name: String) =
+        error("No se usa en esta prueba.")
+    override suspend fun createItem(listId: String, name: String) =
+        error("No se usa en esta prueba.")
+    override suspend fun updateItem(item: ShoppingListItemUiModel, name: String?, checked: Boolean?) =
+        error("No se usa en esta prueba.")
+    override suspend fun deleteItem(item: ShoppingListItemUiModel) =
+        error("No se usa en esta prueba.")
+}
+
+private class ConflictShoppingRepository : ShoppingRepository {
+    val resolutions = mutableListOf<ResolveConflict>()
+    override suspend fun households() = listOf(HouseholdUiModel("home-1", "Casa"))
+    override suspend fun lists(householdId: String) =
+        listOf(ShoppingListSummaryUiModel("list-1", householdId, "Compra"))
+    override fun observeItems(listId: String) = MutableStateFlow(
+        listOf(
+            ShoppingListItemUiModel(
+                id = "item-1",
+                name = "Leche local",
+                quantity = "1 litro",
+                checked = false,
+                version = 1,
+                pendingState = "conflict",
+                pendingOperationId = "operation-1",
+                serverItemName = "Leche servidor",
+                serverItemVersion = 2,
+            ),
+        ),
+    )
+    override suspend fun createHousehold(name: String) = error("No se usa en esta prueba.")
+    override suspend fun createList(householdId: String, name: String) = error("No se usa en esta prueba.")
+    override suspend fun createItem(listId: String, name: String) = error("No se usa en esta prueba.")
+    override suspend fun updateItem(item: ShoppingListItemUiModel, name: String?, checked: Boolean?) =
+        error("No se usa en esta prueba.")
+    override suspend fun deleteItem(item: ShoppingListItemUiModel) = error("No se usa en esta prueba.")
+    override suspend fun resolveConflict(resolution: ResolveConflict) {
+        resolutions += resolution
+    }
+}
+
+private class DelayedCachedContextRepository : ShoppingRepository {
+    val firstCacheStarted = CompletableDeferred<Unit>()
+    val releaseFirstCache = CompletableDeferred<Unit>()
+    private var cachedHouseholdCalls = 0
+    private val households = listOf(
+        HouseholdUiModel("home-a", "Casa A"),
+        HouseholdUiModel("home-b", "Casa B"),
+    )
+
+    override suspend fun cachedHouseholds(): List<HouseholdUiModel> {
+        if (cachedHouseholdCalls++ == 0) {
+            firstCacheStarted.complete(Unit)
+            releaseFirstCache.await()
+        }
+        return households
+    }
+
+    override suspend fun cachedLists(householdId: String) = listOf(
+        if (householdId == "home-a") {
+            ShoppingListSummaryUiModel("list-a", "home-a", "Compra A")
+        } else {
+            ShoppingListSummaryUiModel("list-b", "home-b", "Compra B")
+        },
+    )
+
+    override suspend fun households() = households
+    override suspend fun lists(householdId: String) = cachedLists(householdId)
+    override fun observeItems(listId: String) = MutableStateFlow(emptyList<ShoppingListItemUiModel>())
+    override suspend fun createHousehold(name: String) = error("No se usa en esta prueba.")
+    override suspend fun createList(householdId: String, name: String) = error("No se usa en esta prueba.")
+    override suspend fun createItem(listId: String, name: String) = error("No se usa en esta prueba.")
+    override suspend fun updateItem(item: ShoppingListItemUiModel, name: String?, checked: Boolean?) =
+        error("No se usa en esta prueba.")
+    override suspend fun deleteItem(item: ShoppingListItemUiModel) = error("No se usa en esta prueba.")
+}
+
 private class InMemoryTokenStore(initialTokens: SessionTokens? = SessionTokens("access-token", "refresh-token")) : TokenStore {
     private val mutableSession = MutableStateFlow(initialTokens)
     override val session: StateFlow<SessionTokens?> = mutableSession
+    private var identity = if (initialTokens == null) 0L else 1L
     private var tokens: SessionTokens?
         get() = mutableSession.value
         set(value) { mutableSession.value = value }
     override fun current() = tokens
+    override fun generation() = identity
+    override fun snapshot() = tokens?.let { SessionSnapshot(identity, it) }
     override suspend fun read() = tokens
-    override suspend fun save(tokens: SessionTokens) { this.tokens = tokens }
-    override suspend fun clear() { tokens = null }
-    override suspend fun compareAndClear(expected: SessionTokens): Boolean {
-        if (tokens != expected) return false
+    override suspend fun save(tokens: SessionTokens) { identity++; this.tokens = tokens }
+    override suspend fun clear() { identity++; tokens = null }
+    override suspend fun compareAndStart(expectedGeneration: Long, tokens: SessionTokens): Boolean {
+        if (identity != expectedGeneration) return false
+        identity++
+        this.tokens = tokens
+        return true
+    }
+    override suspend fun compareAndSave(expected: SessionSnapshot, tokens: SessionTokens): Boolean {
+        if (snapshot() != expected) return false
+        this.tokens = tokens
+        return true
+    }
+    override suspend fun compareAndClear(expected: SessionSnapshot): Boolean {
+        if (snapshot() != expected) return false
+        identity++
         tokens = null
         return true
     }

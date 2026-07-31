@@ -6,6 +6,7 @@ import { HouseholdSetup } from '../households/HouseholdSetup';
 import { MembersPanel } from '../households/MembersPanel';
 import { notificationsQueryKey, unreadNotificationsQueryKey } from '../notifications/notification-api';
 import { ShoppingListScreen } from './ShoppingListScreen';
+import { loadOfflineList, saveOfflineList } from './offline-cache';
 import { createHousehold, createItem, createList, deleteItem, fetchHouseholds, fetchItems, fetchLists, householdQueryKey, itemQueryKey, listQueryKey, updateItem, type ApiShoppingItem } from './queries';
 
 type ItemPatch = Partial<Pick<ApiShoppingItem, 'name' | 'quantity' | 'unit' | 'isChecked'>>;
@@ -15,6 +16,7 @@ type OptimisticUpdate = { revision: number; patch: ItemPatch };
 type OptimisticItemState = { base: ApiShoppingItem; updates: OptimisticUpdate[] };
 type CreateContext = { listId: string; optimisticId: string };
 type DeleteContext = { listId: string; item: ApiShoppingItem };
+type OfflineSnapshot = { source: string; items: ApiShoppingItem[] };
 
 export function createWebQueryClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -27,15 +29,46 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
   const appliedRouteRequest = useRef<string | undefined>(undefined);
   const [message, setMessage] = useState<string>();
   const [conflict, setConflict] = useState<{ current: ApiShoppingItem; retry: () => void }>();
+  const [offlineSnapshot, setOfflineSnapshot] = useState<OfflineSnapshot | null>(null);
+  const activeOfflineSource = useRef(offlineSource(currentUserId, listId ?? ''));
+  const latestItemsRequest = useRef(0);
+  const currentOfflineSource = offlineSource(currentUserId, listId ?? '');
+  if (activeOfflineSource.current !== currentOfflineSource) activeOfflineSource.current = currentOfflineSource;
   const nextRevision = useRef(0);
   const optimisticItems = useRef(new Map<string, OptimisticItemState>());
   const householdsQuery = useQuery({ queryKey: householdQueryKey, queryFn: fetchHouseholds });
   const listsQuery = useQuery({ queryKey: listQueryKey(householdId ?? ''), queryFn: () => fetchLists(householdId!), enabled: Boolean(householdId) });
   const itemsQuery = useQuery({
-    queryKey: itemQueryKey(listId ?? ''), queryFn: () => fetchItems(listId!), enabled: Boolean(listId),
+    queryKey: itemQueryKey(listId ?? ''), queryFn: async () => {
+      const requestedUserId = currentUserId;
+      const requestedListId = listId!;
+      const source = offlineSource(requestedUserId, requestedListId);
+      const requestGeneration = ++latestItemsRequest.current;
+      const isCurrentRequest = () => activeOfflineSource.current === source && latestItemsRequest.current === requestGeneration;
+      try {
+        const items = await fetchItems(requestedListId);
+        if (requestedUserId) void saveOfflineList(requestedUserId, requestedListId, items).catch(() => undefined);
+        if (isCurrentRequest()) setOfflineSnapshot((snapshot) => snapshot?.source === source ? null : snapshot);
+        return items;
+      } catch (error) {
+        if (!navigator.onLine && requestedUserId) {
+          const cachedItems = await loadOfflineList(requestedUserId, requestedListId);
+          if (cachedItems) {
+            if (isCurrentRequest()) setOfflineSnapshot({ source, items: cachedItems });
+            return cachedItems;
+          }
+        }
+        throw error;
+      }
+    }, enabled: Boolean(listId),
     refetchInterval: 15_000, refetchIntervalInBackground: false,
   });
 
+  useEffect(() => {
+    const refresh = () => { void itemsQuery.refetch(); };
+    window.addEventListener('online', refresh);
+    return () => window.removeEventListener('online', refresh);
+  }, [itemsQuery.refetch]);
   useEffect(() => {
     if (!requestedHouseholdId) return;
     const routeRequest = `${requestedHouseholdId}:${requestedListId ?? ''}`;
@@ -55,6 +88,7 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
     if (first && !lists.some((list) => list.id === listId)) setListId(first.id);
   }, [listId, listsQuery.data]);
 
+  const isOffline = offlineSnapshot?.source === offlineSource(currentUserId, listId ?? '');
   function resetFeedback(): void { setMessage(undefined); setConflict(undefined); }
   function invalidateNotifications(): void {
     void queryClient.invalidateQueries({ queryKey: notificationsQueryKey, exact: true });
@@ -190,27 +224,28 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
 
   return <>
     <section className="list-selectors" aria-label="Seleccionar hogar y lista">
-      <label>Hogar<select value={householdId} onChange={(event) => { setHouseholdId(event.target.value); setListId(undefined); }}>{householdsQuery.data.map((household) => <option key={household.id} value={household.id}>{household.name}</option>)}</select></label>
-      <label>Lista<select value={listId} onChange={(event) => setListId(event.target.value)}>{listsQuery.data?.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}</select></label>
-      <NewListForm onCreate={(name) => listMutation.mutate({ targetHouseholdId: householdId, name })} />
+      <label>Hogar<select disabled={isOffline} value={householdId} onChange={(event) => { setHouseholdId(event.target.value); setListId(undefined); }}>{householdsQuery.data.map((household) => <option key={household.id} value={household.id}>{household.name}</option>)}</select></label>
+      <label>Lista<select disabled={isOffline} value={listId} onChange={(event) => setListId(event.target.value)}>{listsQuery.data?.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}</select></label>
+      <NewListForm disabled={isOffline} onCreate={(name) => { if (!isOffline) listMutation.mutate({ targetHouseholdId: householdId, name }); }} />
     </section>
     {message ? <p role="alert">{message}</p> : null}
-    {conflict ? <aside role="alert">El producto ha cambiado en el servidor: {conflict.current.name} (versión {conflict.current.version}). <button type="button" onClick={conflict.retry}>Reintentar</button></aside> : null}
-    <ShoppingListScreen title={listsQuery.data?.find((list) => list.id === listId)?.name ?? 'Lista'} items={(itemsQuery.data ?? []).map((item) => ({ ...item, unit: item.unit ?? undefined }))} isOffline={!navigator.onLine}
-      onAdd={(input) => createItemMutation.mutate({ listId, ...input })}
-      onToggle={(item) => updateMutation.mutate({ item: item as ApiShoppingItem, patch: { isChecked: !item.isChecked } })}
-      onUpdate={(item, input) => updateMutation.mutate({ item: item as ApiShoppingItem, patch: input })}
-      onDelete={(item) => deleteMutation.mutate(item as ApiShoppingItem)} />
-    {currentUserId ? <MembersPanel householdId={householdId} currentUserId={currentUserId} /> : null}
+    {conflict ? <aside role="alert">El producto ha cambiado en el servidor: {conflict.current.name} (versión {conflict.current.version}). <button type="button" disabled={isOffline} onClick={() => { if (!isOffline) conflict.retry(); }}>Reintentar</button></aside> : null}
+    <ShoppingListScreen title={listsQuery.data?.find((list) => list.id === listId)?.name ?? 'Lista'} items={(itemsQuery.data ?? []).map((item) => ({ ...item, unit: item.unit ?? undefined }))} isOffline={isOffline}
+      onAdd={(input) => { if (!isOffline) createItemMutation.mutate({ listId, ...input }); }}
+      onToggle={(item) => { if (!isOffline) updateMutation.mutate({ item: item as ApiShoppingItem, patch: { isChecked: !item.isChecked } }); }}
+      onUpdate={(item, input) => { if (!isOffline) updateMutation.mutate({ item: item as ApiShoppingItem, patch: input }); }}
+      onDelete={(item) => { if (!isOffline) deleteMutation.mutate(item as ApiShoppingItem); }} />
+    {currentUserId && !isOffline ? <MembersPanel householdId={householdId} currentUserId={currentUserId} /> : null}
   </>;
 }
 
-function NewListForm({ onCreate }: { onCreate(name: string): void }): JSX.Element {
+function NewListForm({ disabled, onCreate }: { disabled: boolean; onCreate(name: string): void }): JSX.Element {
   const [name, setName] = useState('');
-  return <form onSubmit={(event) => { event.preventDefault(); if (name.trim()) { onCreate(name.trim()); setName(''); } }}><label htmlFor="new-list-name">Nueva lista</label><input id="new-list-name" value={name} onChange={(event) => setName(event.target.value)} maxLength={100} /><button type="submit">Crear lista</button></form>;
+  return <form onSubmit={(event) => { event.preventDefault(); if (!disabled && name.trim()) { onCreate(name.trim()); setName(''); } }}><label htmlFor="new-list-name">Nueva lista</label><input id="new-list-name" disabled={disabled} value={name} onChange={(event) => setName(event.target.value)} maxLength={100} /><button type="submit" disabled={disabled}>Crear lista</button></form>;
 }
 
 function operationId(): string { return crypto.randomUUID(); }
+function offlineSource(userId: string, listId: string): string { return `${userId}:${listId}`; }
 function optimisticItem({ listId, name, quantity, unit }: { listId: string; name: string; quantity: number; unit: string | null }): ApiShoppingItem {
   const now = new Date().toISOString();
   return { id: `optimistic-${operationId()}`, listId, name, normalizedName: name.toLocaleLowerCase(), quantity, unit, category: null, note: null, isChecked: false, position: 0, version: 1, createdBy: '', updatedBy: '', createdAt: now, updatedAt: now };

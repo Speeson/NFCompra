@@ -138,3 +138,5 @@ Los tipos actuales son `invitation_received`, `invitation_accepted`, `member_rem
 | Fallo al entregar el correo de invitación | `503 EMAIL_DELIVERY_FAILED` |
 
 Las rutas de listas verifican que la cuenta sea miembro del hogar o de la lista antes de listar o mutar datos, y responden `403 FORBIDDEN` cuando no lo sea. Las mutaciones de productos validan el cuerpo (`422 VALIDATION_ERROR`), detectan versiones obsoletas (`409 ITEM_VERSION_CONFLICT`) y preservan la idempotencia mediante `operationId` (`409 OPERATION_IN_PROGRESS`, `OPERATION_ID_REUSED` u `OPERATION_LOST` cuando corresponda).
+
+El sincronizador offline de Android consume este contrato existente: conserva cada `operationId` mientras reintenta una operación y usa la versión devuelta en `ITEM_VERSION_CONFLICT` para una resolución explícita. No introduce rutas, cabeceras ni campos HTTP adicionales.

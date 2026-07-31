@@ -200,18 +200,72 @@ private fun ShoppingItem(item: ShoppingListItemUiModel, onAction: (ShoppingListA
     var editing by remember { mutableStateOf(false) }
     var editedName by remember(item.id) { mutableStateOf(item.name) }
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Column { Text(item.name); Text(item.quantity, style = MaterialTheme.typography.bodySmall) }
-        Checkbox(checked = item.checked, modifier = Modifier.semantics { contentDescription = "Marcar ${item.name}" }, onCheckedChange = { onAction(ShoppingListAction.ToggleItem(item.id)) })
+        Column {
+            Text(item.name)
+            Text(item.quantity, style = MaterialTheme.typography.bodySmall)
+            item.pendingState?.let { state ->
+                Text(
+                    when (state) {
+                        "pending" -> "Pendiente de sincronización"
+                        "syncing" -> "Sincronizando"
+                        "failed" -> "No se pudo sincronizar; requiere revisión manual"
+                        "conflict" -> "Conflicto de versiones"
+                        else -> state
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (state == "failed" || state == "conflict") {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                )
+            }
+        }
+        if (item.pendingOperationType != "delete") {
+            Checkbox(checked = item.checked, modifier = Modifier.semantics { contentDescription = "Marcar ${item.name}" }, onCheckedChange = { onAction(ShoppingListAction.ToggleItem(item.id)) })
+        }
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        TextButton(onClick = { editing = true }) { Text("Editar") }
-        TextButton(onClick = { onAction(ShoppingListAction.DeleteItem(item.id)) }) { Text("Borrar") }
+    if (item.pendingOperationType != "delete") {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { editing = true }) { Text("Editar") }
+            TextButton(onClick = { onAction(ShoppingListAction.DeleteItem(item.id)) }) { Text("Borrar") }
+        }
+    }
+    val conflictOperationId = item.pendingOperationId.takeIf { item.pendingState == "conflict" }
+    if (conflictOperationId != null) {
+        val localIntent = when {
+            item.pendingOperationType == "delete" -> "Eliminar ${item.serverItemName ?: item.name}"
+            item.pendingIsChecked != null -> "${item.name} · ${item.pendingIsChecked.checkedLabel()}"
+            else -> item.name
+        }
+        val serverIntent = buildString {
+            append(item.serverItemName ?: "No disponible")
+            if (item.pendingIsChecked != null && item.serverItemIsChecked != null) {
+                append(" · ")
+                append(item.serverItemIsChecked.checkedLabel())
+            }
+        }
+        val localVersion = item.pendingExpectedVersion ?: item.version
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Tu cambio (v$localVersion): $localIntent")
+            Text("Servidor (v${item.serverItemVersion ?: "?"}): $serverIntent")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { onAction(ResolveConflict.UseServer(conflictOperationId)) }) {
+                    Text("Usar versión del servidor")
+                }
+                TextButton(onClick = { onAction(ResolveConflict.RetryLocal(conflictOperationId)) }) {
+                    Text("Reintentar mi cambio")
+                }
+            }
+        }
     }
     if (editing) ItemNameDialog("Editar producto", editedName, { editedName = it }, {
         if (editedName.isNotBlank()) onAction(ShoppingListAction.EditItem(item.id, editedName.trim()))
         editing = false
     }) { editing = false }
 }
+
+private fun Boolean.checkedLabel(): String = if (this) "Comprado" else "Pendiente"
 
 @Composable
 private fun ItemNameDialog(title: String, value: String, onValueChange: (String) -> Unit, onConfirm: () -> Unit, onDismiss: () -> Unit) {

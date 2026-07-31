@@ -27,3 +27,9 @@ Las invitaciones y bajas no comparten grupo con actividad de lista. El listado, 
 PWA y Android muestran un contador y panel de notificaciones, permiten marcar una o todas como leídas y navegan con los IDs de contexto disponibles. La PWA consulta mientras el documento está visible; Android refresca al entrar y al volver a primer plano solo si la sesión continúa autenticada.
 
 El hito 3A no añade push, WebSockets, workers en segundo plano, Room ni cola de mutaciones. La sincronización offline pertenece explícitamente al hito 3B.
+
+## Persistencia offline del hito 3B
+
+La PWA guarda en IndexedDB solamente la última respuesta correcta de productos, separada por usuario autenticado y lista. Ante un fallo de lectura sin conexión puede presentar esa instantánea en modo de solo lectura: no crea una cola web ni permite mutaciones. Una respuesta posterior correcta sustituye la instantánea y abandona el modo de solo lectura; el cierre de sesión borra las instantáneas de esa persona. Ni tokens ni datos de invitaciones entran en IndexedDB.
+
+Android usa Room como fuente local de hogares, listas, productos y operaciones pendientes, aislada por cuenta; las credenciales permanecen en Android Keystore. Una mutación de producto actualiza la proyección Room y persiste una operación con `operationId`; WorkManager programa trabajo único que espera conectividad. El Worker procesa las operaciones de una en una en su orden de creación. Al confirmar una respuesta, actualiza la proyección y borra solo esa operación de forma transaccional. Ante `409 ITEM_VERSION_CONFLICT`, guarda la versión del servidor y conserva la intención local hasta que la persona elige usar el servidor o reintentar su cambio con una nueva operación.

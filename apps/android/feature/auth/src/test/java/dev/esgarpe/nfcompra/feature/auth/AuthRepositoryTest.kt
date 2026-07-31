@@ -2,10 +2,12 @@ package dev.esgarpe.nfcompra.feature.auth
 
 import app.cash.turbine.test
 import dev.esgarpe.nfcompra.core.network.NetworkClient
+import dev.esgarpe.nfcompra.core.network.SessionSnapshot
 import dev.esgarpe.nfcompra.core.network.SessionTokens
 import dev.esgarpe.nfcompra.core.network.TokenStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.single
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import okhttp3.Request
@@ -13,6 +15,7 @@ import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
+import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -198,6 +201,156 @@ class AuthRepositoryTest {
     }
 
     @Test
+    fun `a delayed login cannot replace the session established by a newer login`() {
+        val server = MockWebServer()
+        val firstLoginStarted = CountDownLatch(1)
+        val allowFirstLogin = CountDownLatch(1)
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val body = request.body.readUtf8()
+                return if (body.contains("a@example.test")) {
+                    firstLoginStarted.countDown()
+                    assertTrue(allowFirstLogin.await(5, TimeUnit.SECONDS))
+                    MockResponse().setBody("""{"accessToken":"access-a","refreshToken":"refresh-a"}""")
+                } else {
+                    MockResponse().setBody("""{"accessToken":"access-b","refreshToken":"refresh-b"}""")
+                }
+            }
+        }
+        server.start()
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val store = FakeTokenStore()
+            val repository = AuthRepository(NetworkClient.authApi(server.url("/").toString()), store)
+            val delayedA = executor.submit<AuthResult> {
+                runBlocking { repository.login("a@example.test", "password A").single() }
+            }
+            assertTrue(firstLoginStarted.await(5, TimeUnit.SECONDS))
+
+            val resultB = runBlocking { repository.login("b@example.test", "password B").single() }
+            allowFirstLogin.countDown()
+            val resultA = delayedA.get(10, TimeUnit.SECONDS)
+
+            assertEquals(AuthResult.SignedIn, resultB)
+            assertTrue(resultA is AuthResult.Failure)
+            assertEquals(SessionTokens("access-b", "refresh-b"), store.tokens)
+        } finally {
+            allowFirstLogin.countDown()
+            executor.shutdownNow()
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `login storage failure cannot clear a session saved concurrently`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("""{"accessToken":"access-a","refreshToken":"refresh-a"}"""))
+        server.start()
+        try {
+            val store = FakeTokenStore()
+            val accountB = SessionTokens("access-b", "refresh-b")
+            store.onSave = { saved ->
+                if (saved.accessToken == "access-a") {
+                    store.tokens = accountB
+                    throw IOException("disk full")
+                }
+            }
+            val repository = AuthRepository(NetworkClient.authApi(server.url("/").toString()), store)
+
+            val result = repository.login("a@example.test", "password A").single()
+
+            assertTrue(result is AuthResult.Failure)
+            assertEquals(accountB, store.tokens)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `delayed account A 401 and refresh cannot use or replace account B session`() {
+        val server = MockWebServer()
+        val refreshStarted = CountDownLatch(1)
+        val allowRefreshResponse = CountDownLatch(1)
+        val lateRequestStarted = CountDownLatch(1)
+        val accountSwitched = CountDownLatch(1)
+        val protectedHeaders = mutableListOf<Pair<String, String?>>()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
+                "/v1/auth/refresh" -> {
+                    refreshStarted.countDown()
+                    assertTrue(allowRefreshResponse.await(5, TimeUnit.SECONDS))
+                    MockResponse().setBody("""{"accessToken":"refreshed-a","refreshToken":"refreshed-refresh-a"}""")
+                }
+                "/v1/refreshing" -> {
+                    synchronized(protectedHeaders) {
+                        protectedHeaders += request.path!! to request.getHeader("Authorization")
+                    }
+                    if (request.getHeader("X-NFCompra-Refresh-Attempt") == null) {
+                        MockResponse().setResponseCode(401)
+                    } else {
+                        MockResponse().setBody("unexpected retry")
+                    }
+                }
+                "/v1/late-401" -> {
+                    synchronized(protectedHeaders) {
+                        protectedHeaders += request.path!! to request.getHeader("Authorization")
+                    }
+                    if (request.getHeader("X-NFCompra-Refresh-Attempt") == null) {
+                        lateRequestStarted.countDown()
+                        assertTrue(accountSwitched.await(5, TimeUnit.SECONDS))
+                        MockResponse().setResponseCode(401)
+                    } else {
+                        MockResponse().setBody("unexpected retry")
+                    }
+                }
+                else -> throw AssertionError("Unexpected path: ${request.path}")
+            }
+        }
+        server.start()
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val store = FakeTokenStore().apply {
+                tokens = SessionTokens("access-a", "refresh-a")
+            }
+            val refreshingClient = NetworkClient.authenticatedClient(server.url("/").toString(), store)
+            val lateClient = NetworkClient.authenticatedClient(server.url("/").toString(), store)
+            val refreshingRequest = executor.submit<Int> {
+                refreshingClient.newCall(Request.Builder().url(server.url("/v1/refreshing")).build())
+                    .execute().use { it.code }
+            }
+            assertTrue(refreshStarted.await(5, TimeUnit.SECONDS))
+            val lateRequest = executor.submit<Int> {
+                lateClient.newCall(Request.Builder().url(server.url("/v1/late-401")).build())
+                    .execute().use { it.code }
+            }
+            assertTrue(lateRequestStarted.await(5, TimeUnit.SECONDS))
+
+            runBlocking {
+                store.clear()
+                store.save(SessionTokens("access-b", "refresh-b"))
+            }
+            accountSwitched.countDown()
+
+            assertEquals(401, lateRequest.get(10, TimeUnit.SECONDS))
+            allowRefreshResponse.countDown()
+            assertEquals(401, refreshingRequest.get(10, TimeUnit.SECONDS))
+            assertEquals(SessionTokens("access-b", "refresh-b"), store.tokens)
+            assertEquals(
+                listOf(
+                    "/v1/refreshing" to "Bearer access-a",
+                    "/v1/late-401" to "Bearer access-a",
+                ),
+                synchronized(protectedHeaders) { protectedHeaders.toList() },
+            )
+        } finally {
+            accountSwitched.countDown()
+            allowRefreshResponse.countDown()
+            executor.shutdownNow()
+            server.shutdown()
+        }
+    }
+
+    @Test
     fun `refresh failure does not clear a newer session`() {
         val server = MockWebServer()
         val store = FakeTokenStore().apply { tokens = SessionTokens("old-access", "old-refresh") }
@@ -371,14 +524,25 @@ class AuthRepositoryTest {
     }
 
     private class FakeTokenStore : TokenStore {
+        private val lock = Any()
         private val mutableSession = MutableStateFlow<SessionTokens?>(null)
         override val session: StateFlow<SessionTokens?> = mutableSession
+        private var identity = 0L
         var tokens: SessionTokens?
-            get() = mutableSession.value
-            set(value) { mutableSession.value = value }
+            get() = synchronized(lock) { mutableSession.value }
+            set(value) {
+                synchronized(lock) {
+                    identity++
+                    mutableSession.value = value
+                }
+            }
         var onSave: ((SessionTokens) -> Unit)? = null
 
         override fun current(): SessionTokens? = tokens
+        override fun generation(): Long = synchronized(lock) { identity }
+        override fun snapshot(): SessionSnapshot? = synchronized(lock) {
+            mutableSession.value?.let { SessionSnapshot(identity, it) }
+        }
 
         override suspend fun read(): SessionTokens? = tokens
 
@@ -391,22 +555,73 @@ class AuthRepositoryTest {
             tokens = null
         }
 
-        override suspend fun compareAndClear(expected: SessionTokens): Boolean =
-            if (tokens == expected) {
-                tokens = null
+        override suspend fun compareAndStart(expectedGeneration: Long, tokens: SessionTokens): Boolean =
+            synchronized(lock) {
+                if (identity != expectedGeneration) return@synchronized false
+                identity++
+                mutableSession.value = tokens
+                onSave?.invoke(tokens)
                 true
-            } else {
-                false
             }
+
+        override suspend fun compareAndSave(expected: SessionSnapshot, tokens: SessionTokens): Boolean =
+            synchronized(lock) {
+                if (identity != expected.identity || mutableSession.value != expected.tokens) return@synchronized false
+                mutableSession.value = tokens
+                onSave?.invoke(tokens)
+                true
+            }
+
+        override suspend fun compareAndClear(expected: SessionSnapshot): Boolean = synchronized(lock) {
+            if (identity != expected.identity || mutableSession.value != expected.tokens) {
+                false
+            } else {
+                identity++
+                mutableSession.value = null
+                true
+            }
+        }
+    }
+
+    @Test
+    fun `a transient refresh disconnect keeps the observable session and its offline queue owner`() {
+        val server = MockWebServer()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse =
+                if (request.path == "/v1/auth/refresh") {
+                    MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START)
+                } else {
+                    MockResponse().setResponseCode(401)
+                }
+        }
+        server.start()
+        try {
+            val tokens = SessionTokens("expired-access", "refresh-still-valid")
+            val store = FakeTokenStore().apply { this.tokens = tokens }
+            val client = NetworkClient.authenticatedClient(server.url("/").toString(), store)
+
+            client.newCall(Request.Builder().url(server.url("/v1/protected")).build()).execute().use { response ->
+                assertEquals(401, response.code)
+            }
+
+            assertEquals(tokens, store.session.value)
+        } finally {
+            server.shutdown()
+        }
     }
 
     private class FailingTokenStore : TokenStore {
         override val session = MutableStateFlow<SessionTokens?>(null)
         override fun current(): SessionTokens? = null
+        override fun generation() = 0L
+        override fun snapshot(): SessionSnapshot? = null
         override suspend fun read(): SessionTokens? = null
         override suspend fun save(tokens: SessionTokens): Nothing = throw IOException("disk full")
         override suspend fun clear() = Unit
-        override suspend fun compareAndClear(expected: SessionTokens) = false
+        override suspend fun compareAndStart(expectedGeneration: Long, tokens: SessionTokens): Nothing =
+            throw IOException("disk full")
+        override suspend fun compareAndSave(expected: SessionSnapshot, tokens: SessionTokens) = false
+        override suspend fun compareAndClear(expected: SessionSnapshot) = false
     }
 
     private class PausingTokenStore(
@@ -418,26 +633,51 @@ class AuthRepositoryTest {
         private val lock = Any()
         private val mutableSession = MutableStateFlow<SessionTokens?>(initial)
         override val session: StateFlow<SessionTokens?> = mutableSession
+        private var identity = 1L
         private var tokens: SessionTokens?
             get() = mutableSession.value
             set(value) { mutableSession.value = value }
 
         override fun current(): SessionTokens? = synchronized(lock) { tokens }
+        override fun generation(): Long = synchronized(lock) { identity }
+        override fun snapshot(): SessionSnapshot? = synchronized(lock) {
+            tokens?.let { SessionSnapshot(identity, it) }
+        }
         override suspend fun read(): SessionTokens? = current()
 
         override suspend fun save(tokens: SessionTokens) {
             saveStarted.countDown()
-            synchronized(lock) { this.tokens = tokens }
+            synchronized(lock) {
+                identity++
+                this.tokens = tokens
+            }
         }
 
         override suspend fun clear() {
-            synchronized(lock) { tokens = null }
+            synchronized(lock) {
+                identity++
+                tokens = null
+            }
         }
 
-        override suspend fun compareAndClear(expected: SessionTokens): Boolean = synchronized(lock) {
+        override suspend fun compareAndStart(expectedGeneration: Long, tokens: SessionTokens): Boolean = synchronized(lock) {
+            if (identity != expectedGeneration) return@synchronized false
+            identity++
+            this.tokens = tokens
+            true
+        }
+
+        override suspend fun compareAndSave(expected: SessionSnapshot, tokens: SessionTokens): Boolean = synchronized(lock) {
+            if (identity != expected.identity || this.tokens != expected.tokens) return@synchronized false
+            this.tokens = tokens
+            true
+        }
+
+        override suspend fun compareAndClear(expected: SessionSnapshot): Boolean = synchronized(lock) {
             cleanupStarted.countDown()
             assertTrue(allowCleanup.await(5, TimeUnit.SECONDS))
-            if (tokens != expected) return@synchronized false
+            if (identity != expected.identity || tokens != expected.tokens) return@synchronized false
+            identity++
             tokens = null
             true
         }

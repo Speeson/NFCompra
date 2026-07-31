@@ -12,6 +12,12 @@ object NetworkClient {
     fun <T> authenticatedApi(baseUrl: String, tokenStore: TokenStore, api: Class<T>): T =
         retrofit(baseUrl, authenticatedClient(baseUrl, tokenStore)).create(api)
 
+    fun <T> bearerApi(baseUrl: String, tokenStore: TokenStore, api: Class<T>): T =
+        retrofit(
+            baseUrl,
+            OkHttpClient.Builder().addInterceptor(BearerInterceptor(tokenStore)).build(),
+        ).create(api)
+
     fun authenticatedClient(baseUrl: String, tokenStore: TokenStore): OkHttpClient =
         OkHttpClient.Builder()
             .addInterceptor(BearerInterceptor(tokenStore))
