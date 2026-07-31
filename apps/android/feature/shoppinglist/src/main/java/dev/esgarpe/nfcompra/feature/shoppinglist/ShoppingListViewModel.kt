@@ -79,12 +79,14 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         viewModelScope.launch {
         try {
             cachedSelection(context)?.let { cached ->
+                if (generation != loadGeneration) return@launch
                 publish(
                     cached.households,
                     cached.lists,
                     cached.household.id,
                     cached.list.id,
                     refreshFromServer = false,
+                    expectedGeneration = generation,
                 )
             }
             val households = repository.households()
@@ -218,9 +220,11 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         householdId: String,
         listId: String,
         refreshFromServer: Boolean = true,
+        expectedGeneration: Int? = null,
     ) {
         if (refreshFromServer) repository.refreshItems(listId)
         val items = repository.observeItems(listId).first()
+        if (expectedGeneration != null && expectedGeneration != loadGeneration) return
         val selected = lists.first { it.id == listId }
         mutableState.value = ShoppingListViewState.Data(
             content = ShoppingListUiState(

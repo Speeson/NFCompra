@@ -5,6 +5,7 @@ import dev.esgarpe.nfcompra.core.network.NetworkClient
 import dev.esgarpe.nfcompra.core.network.SessionTokens
 import dev.esgarpe.nfcompra.core.network.SessionSnapshot
 import dev.esgarpe.nfcompra.core.network.TokenStore
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
@@ -15,6 +16,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import okhttp3.mockwebserver.MockResponse
@@ -277,6 +279,30 @@ class ShoppingListViewModelTest {
         }
     }
 
+    @Test fun `delayed cached selection from an older context cannot replace the current context`() = runTest {
+        val repository = DelayedCachedContextRepository()
+        val viewModel = ShoppingListViewModel(repository)
+
+        viewModel.openContext("home-a", "list-a")
+        runCurrent()
+        repository.firstCacheStarted.await()
+
+        viewModel.openContext("home-b", "list-b")
+        advanceUntilIdle()
+        assertEquals(
+            "list-b",
+            (viewModel.state.value as ShoppingListViewState.Data).selectedListId,
+        )
+
+        repository.releaseFirstCache.complete(Unit)
+        advanceUntilIdle()
+
+        val current = viewModel.state.value as ShoppingListViewState.Data
+        assertEquals("home-b", current.selectedHouseholdId)
+        assertEquals("list-b", current.selectedListId)
+        assertEquals("Compra B", current.content.title)
+    }
+
     @Test fun `an already loaded list keeps observing Room emissions`() = runTest {
         val itemFlow = MutableStateFlow(
             listOf(
@@ -388,6 +414,42 @@ private class ConflictShoppingRepository : ShoppingRepository {
     override suspend fun resolveConflict(resolution: ResolveConflict) {
         resolutions += resolution
     }
+}
+
+private class DelayedCachedContextRepository : ShoppingRepository {
+    val firstCacheStarted = CompletableDeferred<Unit>()
+    val releaseFirstCache = CompletableDeferred<Unit>()
+    private var cachedHouseholdCalls = 0
+    private val households = listOf(
+        HouseholdUiModel("home-a", "Casa A"),
+        HouseholdUiModel("home-b", "Casa B"),
+    )
+
+    override suspend fun cachedHouseholds(): List<HouseholdUiModel> {
+        if (cachedHouseholdCalls++ == 0) {
+            firstCacheStarted.complete(Unit)
+            releaseFirstCache.await()
+        }
+        return households
+    }
+
+    override suspend fun cachedLists(householdId: String) = listOf(
+        if (householdId == "home-a") {
+            ShoppingListSummaryUiModel("list-a", "home-a", "Compra A")
+        } else {
+            ShoppingListSummaryUiModel("list-b", "home-b", "Compra B")
+        },
+    )
+
+    override suspend fun households() = households
+    override suspend fun lists(householdId: String) = cachedLists(householdId)
+    override fun observeItems(listId: String) = MutableStateFlow(emptyList<ShoppingListItemUiModel>())
+    override suspend fun createHousehold(name: String) = error("No se usa en esta prueba.")
+    override suspend fun createList(householdId: String, name: String) = error("No se usa en esta prueba.")
+    override suspend fun createItem(listId: String, name: String) = error("No se usa en esta prueba.")
+    override suspend fun updateItem(item: ShoppingListItemUiModel, name: String?, checked: Boolean?) =
+        error("No se usa en esta prueba.")
+    override suspend fun deleteItem(item: ShoppingListItemUiModel) = error("No se usa en esta prueba.")
 }
 
 private class InMemoryTokenStore(initialTokens: SessionTokens? = SessionTokens("access-token", "refresh-token")) : TokenStore {

@@ -16,8 +16,11 @@ class AccountShoppingSession(
     }
 
     fun revoke() {
-        revokeSync()
-        close()
+        try {
+            close()
+        } finally {
+            revokeSync()
+        }
     }
 
     companion object {

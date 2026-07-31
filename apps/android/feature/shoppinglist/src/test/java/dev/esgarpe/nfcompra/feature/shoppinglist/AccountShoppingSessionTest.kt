@@ -3,6 +3,10 @@ package dev.esgarpe.nfcompra.feature.shoppinglist
 import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import androidx.work.Configuration
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.testing.WorkManagerTestInitHelper
 import dev.esgarpe.nfcompra.core.database.LocalShoppingItem
 import dev.esgarpe.nfcompra.core.database.LocalHousehold
 import dev.esgarpe.nfcompra.core.database.LocalShoppingList
@@ -32,8 +36,10 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import java.util.concurrent.TimeUnit
+import java.util.UUID
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -163,6 +169,71 @@ class AccountShoppingSessionTest {
         }
     }
 
+    @Test
+    fun `revoke cancels unique work after an in flight repository operation finishes scheduling`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val workExecutor = Executors.newFixedThreadPool(2)
+        val callerExecutor = Executors.newFixedThreadPool(2)
+        val accountId = "account-${UUID.randomUUID()}"
+        val scheduleStarted = CountDownLatch(1)
+        val releaseSchedule = CountDownLatch(1)
+        val finalCancelCalled = CountDownLatch(1)
+        WorkManagerTestInitHelper.initializeTestWorkManager(
+            context,
+            Configuration.Builder().setExecutor(workExecutor).build(),
+        )
+        databaseA.shoppingDao().replaceServerSnapshot(
+            households = listOf(household("Casa")),
+            lists = listOf(shoppingList("Compra")),
+            items = emptyList(),
+        )
+        val repository = OfflineShoppingRepository(
+            api = NetworkClient.authenticatedApi(
+                server.url("/").toString(),
+                MutableAccountTokenStore(SessionTokens("access", "refresh")),
+                ShoppingListApi::class.java,
+            ),
+            dao = databaseA.shoppingDao(),
+            scheduleSync = {
+                scheduleStarted.countDown()
+                releaseSchedule.await(2, TimeUnit.SECONDS)
+                SyncWorker.enqueue(context, accountId, server.url("/").toString())
+            },
+        )
+        val session = AccountShoppingSession(
+            repository = repository,
+            revokeSync = {
+                revokeShoppingAccount(context, accountId)
+                finalCancelCalled.countDown()
+            },
+        )
+
+        try {
+            val mutation = callerExecutor.submit {
+                runCatching { runBlocking { repository.createItem("list-1", "Pan") } }
+            }
+            assertTrue(scheduleStarted.await(2, TimeUnit.SECONDS))
+            val revoke = callerExecutor.submit { session.revoke() }
+
+            finalCancelCalled.await(200, TimeUnit.MILLISECONDS)
+            releaseSchedule.countDown()
+            mutation.get(2, TimeUnit.SECONDS)
+            revoke.get(2, TimeUnit.SECONDS)
+
+            val terminal = awaitUniqueWork(context, accountId)
+            assertEquals(0, finalCancelCalled.count)
+            assertTrue(terminal.isNotEmpty())
+            assertTrue(terminal.all { it.state == WorkInfo.State.CANCELLED })
+        } finally {
+            releaseSchedule.countDown()
+            WorkManager.getInstance(context)
+                .cancelUniqueWork(SyncWorker.uniqueWorkName(accountId))
+                .result.get(2, TimeUnit.SECONDS)
+            callerExecutor.shutdownNow()
+            workExecutor.shutdownNow()
+        }
+    }
+
     private fun session(
         database: NfCompraDatabase,
         tokens: TokenStore,
@@ -251,6 +322,20 @@ class AccountShoppingSessionTest {
             .setResponseCode(200)
             .setHeader("content-type", "application/json")
             .setBody(body)
+
+    private fun awaitUniqueWork(context: Context, accountId: String): List<WorkInfo> {
+        val workManager = WorkManager.getInstance(context)
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+        var latest = emptyList<WorkInfo>()
+        while (System.nanoTime() < deadline) {
+            latest = workManager
+                .getWorkInfosForUniqueWork(SyncWorker.uniqueWorkName(accountId))
+                .get(2, TimeUnit.SECONDS)
+            if (latest.isNotEmpty() && latest.all { it.state.isFinished }) return latest
+            Thread.yield()
+        }
+        return latest
+    }
 }
 
 private class MutableAccountTokenStore(initial: SessionTokens) : TokenStore {
