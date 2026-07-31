@@ -126,4 +126,67 @@ class ShoppingListScreenTest {
         composeTestRule.onNodeWithText("Tu cambio (v1): Eliminar Leche servidor").assertExists()
         composeTestRule.onNodeWithText("Servidor (v4): Leche servidor").assertExists()
     }
+
+    @Test
+    fun toggleConflictShowsLocalAndServerCheckedValues() {
+        composeTestRule.setContent {
+            NFCompraTheme {
+                ShoppingListScreen(
+                    ShoppingListUiState(
+                        title = "Compra",
+                        pending = listOf(
+                            ShoppingListItemUiModel(
+                                id = "item-1",
+                                name = "Leche",
+                                quantity = "1 litro",
+                                checked = true,
+                                version = 1,
+                                pendingState = "conflict",
+                                pendingOperationId = "toggle-operation",
+                                pendingOperationType = "update",
+                                pendingExpectedVersion = 1,
+                                pendingIsChecked = true,
+                                serverItemName = "Leche",
+                                serverItemVersion = 4,
+                                serverItemIsChecked = false,
+                            ),
+                        ),
+                        checked = emptyList(),
+                        isOffline = false,
+                    ),
+                    onAction = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Tu cambio (v1): Leche · Comprado").assertExists()
+        composeTestRule.onNodeWithText("Servidor (v4): Leche · Pendiente").assertExists()
+    }
+
+    @Test
+    fun failedOperationExplainsThatManualReviewIsRequired() {
+        composeTestRule.setContent {
+            NFCompraTheme {
+                ShoppingListScreen(
+                    ShoppingListUiState(
+                        title = "Compra",
+                        pending = listOf(
+                            ShoppingListItemUiModel(
+                                id = "item-1",
+                                name = "Leche",
+                                quantity = "1 litro",
+                                checked = false,
+                                pendingState = "failed",
+                            ),
+                        ),
+                        checked = emptyList(),
+                        isOffline = false,
+                    ),
+                    onAction = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("No se pudo sincronizar; requiere revisión manual").assertExists()
+    }
 }

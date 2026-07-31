@@ -11,8 +11,10 @@ data class ShoppingListItemUiModel(
     val pendingOperationId: String? = null,
     val pendingOperationType: String? = null,
     val pendingExpectedVersion: Int? = null,
+    val pendingIsChecked: Boolean? = null,
     val serverItemName: String? = null,
     val serverItemVersion: Int? = null,
+    val serverItemIsChecked: Boolean? = null,
 )
 
 data class ShoppingListUiState(

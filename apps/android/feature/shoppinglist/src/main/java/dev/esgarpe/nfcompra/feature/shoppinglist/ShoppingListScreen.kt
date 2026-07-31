@@ -208,7 +208,7 @@ private fun ShoppingItem(item: ShoppingListItemUiModel, onAction: (ShoppingListA
                     when (state) {
                         "pending" -> "Pendiente de sincronización"
                         "syncing" -> "Sincronizando"
-                        "failed" -> "No se pudo sincronizar"
+                        "failed" -> "No se pudo sincronizar; requiere revisión manual"
                         "conflict" -> "Conflicto de versiones"
                         else -> state
                     },
@@ -233,15 +233,22 @@ private fun ShoppingItem(item: ShoppingListItemUiModel, onAction: (ShoppingListA
     }
     val conflictOperationId = item.pendingOperationId.takeIf { item.pendingState == "conflict" }
     if (conflictOperationId != null) {
-        val localIntent = if (item.pendingOperationType == "delete") {
-            "Eliminar ${item.serverItemName ?: item.name}"
-        } else {
-            item.name
+        val localIntent = when {
+            item.pendingOperationType == "delete" -> "Eliminar ${item.serverItemName ?: item.name}"
+            item.pendingIsChecked != null -> "${item.name} · ${item.pendingIsChecked.checkedLabel()}"
+            else -> item.name
+        }
+        val serverIntent = buildString {
+            append(item.serverItemName ?: "No disponible")
+            if (item.pendingIsChecked != null && item.serverItemIsChecked != null) {
+                append(" · ")
+                append(item.serverItemIsChecked.checkedLabel())
+            }
         }
         val localVersion = item.pendingExpectedVersion ?: item.version
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Tu cambio (v$localVersion): $localIntent")
-            Text("Servidor (v${item.serverItemVersion ?: "?"}): ${item.serverItemName ?: "No disponible"}")
+            Text("Servidor (v${item.serverItemVersion ?: "?"}): $serverIntent")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = { onAction(ResolveConflict.UseServer(conflictOperationId)) }) {
                     Text("Usar versión del servidor")
@@ -257,6 +264,8 @@ private fun ShoppingItem(item: ShoppingListItemUiModel, onAction: (ShoppingListA
         editing = false
     }) { editing = false }
 }
+
+private fun Boolean.checkedLabel(): String = if (this) "Comprado" else "Pendiente"
 
 @Composable
 private fun ItemNameDialog(title: String, value: String, onValueChange: (String) -> Unit, onConfirm: () -> Unit, onDismiss: () -> Unit) {

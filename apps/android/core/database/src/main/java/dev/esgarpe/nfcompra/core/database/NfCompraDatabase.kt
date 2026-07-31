@@ -73,22 +73,23 @@ abstract class NfCompraDatabase : RoomDatabase() {
             }
         }
 
-        fun release(accountId: String, database: NfCompraDatabase) {
+        fun release(accountId: String, database: NfCompraDatabase): Boolean =
             releaseByName(databaseName(accountId), database)
-        }
 
-        internal fun releaseByName(databaseName: String, database: NfCompraDatabase) {
+        internal fun releaseByName(databaseName: String, database: NfCompraDatabase): Boolean =
             synchronized(this) {
-                val reference = instances[databaseName] ?: return@synchronized
+                val reference = instances[databaseName] ?: return@synchronized false
                 if (reference.database === database) {
                     reference.owners--
                 }
                 if (reference.database === database && reference.owners == 0) {
                     instances.remove(databaseName)
                     database.close()
+                    true
+                } else {
+                    false
                 }
             }
-        }
 
         private fun databaseName(accountId: String): String {
             val digest = MessageDigest.getInstance("SHA-256")

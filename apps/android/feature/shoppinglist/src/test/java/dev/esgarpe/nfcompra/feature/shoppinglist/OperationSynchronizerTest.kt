@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.work.BackoffPolicy
 import androidx.work.Configuration
 import androidx.work.NetworkType
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.testing.WorkManagerTestInitHelper
 import dev.esgarpe.nfcompra.core.database.LocalHousehold
@@ -38,6 +39,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.util.concurrent.TimeUnit
 import java.util.Base64
+import java.util.UUID
 import java.util.concurrent.Executors
 
 @RunWith(RobolectricTestRunner::class)
@@ -139,6 +141,82 @@ class OperationSynchronizerTest {
         val retained = dao.pendingOperations().single()
         assertEquals(PendingOperationState.PENDING, retained.state)
         assertEquals(2, retained.attempts)
+    }
+
+    @Test
+    fun `operation in progress remains pending for the same idempotent request`() = runTest {
+        dao.upsertItemAndEnqueue(
+            item("item-1", "Leche"),
+            updateOperation("operation-progress", state = PendingOperationState.PENDING),
+        )
+        server.enqueue(json("""{"error":{"code":"OPERATION_IN_PROGRESS","message":"En curso","details":{}}}""", 409))
+
+        assertEquals(SyncResult.Retry, synchronizer().syncNext())
+
+        val retained = dao.pendingOperations().single()
+        assertEquals(PendingOperationState.PENDING, retained.state)
+        assertEquals("operation-progress", retained.operationId)
+        assertEquals(1, retained.attempts)
+    }
+
+    @Test
+    fun `operation id reused fails permanently and the ordered queue advances`() = runTest {
+        dao.upsertItemAndEnqueue(
+            item("item-1", "Leche"),
+            updateOperation("operation-reused", state = PendingOperationState.PENDING),
+        )
+        dao.upsertItemAndEnqueue(
+            item("local-later", "Pan"),
+            createOperation("operation-later", "local-later", "Pan", createdAt = 2_000),
+        )
+        server.enqueue(json("""{"error":{"code":"OPERATION_ID_REUSED","message":"UUID reutilizado","details":{}}}""", 409))
+        server.enqueue(itemResponse("server-later", "Pan", version = 1, status = 201))
+
+        assertEquals(SyncResult.Failed, synchronizer().syncNext())
+        assertEquals(SyncResult.Succeeded, synchronizer().syncNext())
+
+        val failed = dao.pendingOperations().single()
+        assertEquals("operation-reused", failed.operationId)
+        assertEquals(PendingOperationState.FAILED, failed.state)
+        assertEquals("server-later", dao.item("server-later")?.id)
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun `operation lost becomes failed instead of retrying forever`() = runTest {
+        dao.upsertItemAndEnqueue(
+            item("item-1", "Leche"),
+            updateOperation("operation-lost", state = PendingOperationState.PENDING),
+        )
+        server.enqueue(json("""{"error":{"code":"OPERATION_LOST","message":"Lease perdido","details":{}}}""", 409))
+
+        assertEquals(SyncResult.Failed, synchronizer().syncNext())
+
+        val retained = dao.pendingOperations().single()
+        assertEquals(PendingOperationState.FAILED, retained.state)
+        assertEquals(1, retained.attempts)
+    }
+
+    @Test
+    fun `a malformed unknown conflict fails and does not block the next operation`() = runTest {
+        dao.upsertItemAndEnqueue(
+            item("item-1", "Leche"),
+            updateOperation("operation-unknown", state = PendingOperationState.PENDING),
+        )
+        dao.upsertItemAndEnqueue(
+            item("local-later", "Pan"),
+            createOperation("operation-later", "local-later", "Pan", createdAt = 2_000),
+        )
+        server.enqueue(json("<html>conflict</html>", 409))
+        server.enqueue(itemResponse("server-later", "Pan", version = 1, status = 201))
+
+        assertEquals(SyncResult.Failed, synchronizer().syncNext())
+        assertEquals(SyncResult.Succeeded, synchronizer().syncNext())
+
+        val failed = dao.pendingOperations().single()
+        assertEquals("operation-unknown", failed.operationId)
+        assertEquals(PendingOperationState.FAILED, failed.state)
+        assertEquals("server-later", dao.item("server-later")?.id)
     }
 
     @Test
@@ -435,22 +513,38 @@ class OperationSynchronizerTest {
     }
 
     @Test
-    fun `scheduling creates account scoped unique work`() {
+    fun `shared account ownership keeps unique work until the last repository closes`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val executor = Executors.newSingleThreadExecutor()
+        val accountId = "account-${UUID.randomUUID()}"
+        val firstOwner = NfCompraDatabase.create(context, accountId)
+        val secondOwner = NfCompraDatabase.create(context, accountId)
         try {
             WorkManagerTestInitHelper.initializeTestWorkManager(
                 context,
                 Configuration.Builder().setExecutor(executor).build(),
             )
 
-            SyncWorker.enqueue(context, "account-queue", "http://localhost/")
+            SyncWorker.enqueue(context, accountId, "http://localhost/")
 
-            val work = WorkManager.getInstance(context)
-                .getWorkInfosForUniqueWork(SyncWorker.uniqueWorkName("account-queue"))
+            val workManager = WorkManager.getInstance(context)
+            val work = workManager
+                .getWorkInfosForUniqueWork(SyncWorker.uniqueWorkName(accountId))
                 .get(2, TimeUnit.SECONDS)
             assertEquals(1, work.size)
             assertEquals(NetworkType.CONNECTED, work.single().constraints.requiredNetworkType)
+
+            releaseShoppingDatabase(context, accountId, firstOwner)
+            val afterFirstClose = workManager
+                .getWorkInfosForUniqueWork(SyncWorker.uniqueWorkName(accountId))
+                .get(2, TimeUnit.SECONDS)
+            assertFalse(afterFirstClose.single().state == WorkInfo.State.CANCELLED)
+
+            releaseShoppingDatabase(context, accountId, secondOwner)
+            val afterLastClose = workManager
+                .getWorkInfosForUniqueWork(SyncWorker.uniqueWorkName(accountId))
+                .get(2, TimeUnit.SECONDS)
+            assertEquals(WorkInfo.State.CANCELLED, afterLastClose.single().state)
         } finally {
             executor.shutdownNow()
         }

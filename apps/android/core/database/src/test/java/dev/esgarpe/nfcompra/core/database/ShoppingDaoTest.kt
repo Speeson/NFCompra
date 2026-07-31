@@ -394,12 +394,12 @@ class ShoppingDaoTest {
 
         assertSame(firstOwner, secondOwner)
         assertTrue(firstOwner.isOpen)
-        NfCompraDatabase.releaseByName(databaseName, firstOwner)
+        assertFalse(NfCompraDatabase.releaseByName(databaseName, firstOwner))
 
         assertTrue(secondOwner.isOpen)
         assertEquals(listOf("home-shared"), secondOwner.shoppingDao().households().map { it.id })
 
-        NfCompraDatabase.releaseByName(databaseName, secondOwner)
+        assertTrue(NfCompraDatabase.releaseByName(databaseName, secondOwner))
         assertFalse(secondOwner.isOpen)
     }
 

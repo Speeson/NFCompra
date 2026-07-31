@@ -414,12 +414,19 @@ class OfflineShoppingRepository(
                 databaseMutex = syncState.databaseMutex,
                 itemAliases = syncState.itemAliases,
                 closeDatabase = {
-                    SyncWorker.cancel(context, accountId)
-                    NfCompraDatabase.release(accountId, database)
+                    releaseShoppingDatabase(context, accountId, database)
                 },
             ).also { scheduleSync() }
         }
     }
+}
+
+internal fun releaseShoppingDatabase(
+    context: Context,
+    accountId: String,
+    database: NfCompraDatabase,
+) {
+    if (NfCompraDatabase.release(accountId, database)) SyncWorker.cancel(context, accountId)
 }
 
 private fun HouseholdDto.toLocal() = LocalHousehold(
@@ -460,6 +467,7 @@ private fun ShoppingItemDto.toLocal() = LocalShoppingItem(
 
 private fun LocalShoppingItem.toUiModel(operation: PendingOperation?): ShoppingListItemUiModel {
     val server = operation?.serverItemJson?.let(shoppingItemJsonAdapter::fromJson)
+    val pendingUpdate = operation?.updateRequest()
     return ShoppingListItemUiModel(
         id = id,
         name = name,
@@ -470,9 +478,11 @@ private fun LocalShoppingItem.toUiModel(operation: PendingOperation?): ShoppingL
         serverItemJson = operation?.serverItemJson,
         pendingOperationId = operation?.operationId,
         pendingOperationType = operation?.type,
-        pendingExpectedVersion = operation?.expectedVersion(),
+        pendingExpectedVersion = pendingUpdate?.expectedVersion ?: operation?.expectedVersion(),
+        pendingIsChecked = pendingUpdate?.isChecked,
         serverItemName = server?.name,
         serverItemVersion = server?.version,
+        serverItemIsChecked = server?.isChecked,
     )
 }
 
@@ -497,8 +507,13 @@ private fun PendingOperation.toTombstoneUiModel(): ShoppingListItemUiModel {
         pendingOperationId = operationId,
         pendingOperationType = type,
         pendingExpectedVersion = update?.expectedVersion ?: delete?.expectedVersion,
+        pendingIsChecked = update?.isChecked,
     )
 }
+
+private fun PendingOperation.updateRequest(): UpdateItemRequest? = runCatching {
+    if (type == PendingOperationType.UPDATE) updateItemJsonAdapter.fromJson(payloadJson) else null
+}.getOrNull()
 
 private fun PendingOperation.expectedVersion(): Int? = runCatching {
     when (type) {

@@ -371,6 +371,32 @@ class OfflineShoppingRepositoryTest {
     }
 
     @Test
+    fun `a toggle conflict exposes the requested and server checked values`() = runTest {
+        seedItem()
+        val conflictId = database.shoppingDao().enqueue(
+            dev.esgarpe.nfcompra.core.database.PendingOperation(
+                operationId = "toggle-operation",
+                type = PendingOperationType.UPDATE,
+                listId = "list-1",
+                itemId = "item-1",
+                payloadJson = """{"isChecked":true,"expectedVersion":7,"operationId":"toggle-operation"}""",
+                createdAt = 1_000,
+            ),
+        )
+        database.shoppingDao().transitionOperation(
+            id = conflictId,
+            state = PendingOperationState.CONFLICT,
+            attempts = 1,
+            serverItemJson = """{"id":"item-1","listId":"list-1","name":"Leche","normalizedName":"leche","quantity":1.0,"unit":"litro","category":null,"note":null,"isChecked":false,"position":0,"version":8,"createdBy":"user-1","updatedBy":"user-2","createdAt":"created","updatedAt":"updated"}""",
+        )
+
+        val visible = repository.observeItems("list-1").first().single()
+
+        assertEquals(true, visible.pendingIsChecked)
+        assertEquals(false, visible.serverItemIsChecked)
+    }
+
+    @Test
     fun `the first successful refresh after an offline fallback schedules synchronization`() = runTest {
         seedList()
         var scheduled = 0

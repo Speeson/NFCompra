@@ -114,7 +114,9 @@ class OperationSynchronizer(
             return SyncResult.Succeeded
         }
 
-        val error = response.errorBody()?.string()?.let { errorAdapter.fromJson(it) }
+        val error = response.errorBody()?.string()?.let { body ->
+            runCatching { errorAdapter.fromJson(body) }.getOrNull()
+        }
         val current = error?.error?.details?.current
         if (response.code() == 409 && error?.error?.code == ITEM_VERSION_CONFLICT && current != null) {
             dao.transitionOperation(
@@ -129,7 +131,7 @@ class OperationSynchronizer(
             response.code() >= 500 ||
             response.code() == 401 ||
             response.code() == 408 ||
-            response.code() == 409 ||
+            (response.code() == 409 && error?.error?.code == OPERATION_IN_PROGRESS) ||
             response.code() == 429
         ) {
             dao.transitionOperation(operation.id, PendingOperationState.PENDING, attempts)
@@ -222,6 +224,7 @@ class OperationSynchronizer(
 
     private companion object {
         const val ITEM_VERSION_CONFLICT = "ITEM_VERSION_CONFLICT"
+        const val OPERATION_IN_PROGRESS = "OPERATION_IN_PROGRESS"
         val moshi: Moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
         val createAdapter = moshi.adapter(CreateItemRequest::class.java)
         val updateAdapter = moshi.adapter(UpdateItemRequest::class.java)
