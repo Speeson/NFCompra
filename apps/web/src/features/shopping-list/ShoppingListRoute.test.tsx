@@ -144,6 +144,34 @@ describe('ShoppingListRoute', () => {
     await waitFor(() => expect(saveOfflineList).toHaveBeenCalledWith('user-1', 'list-1', [serverItem]));
   });
 
+  it('leaves cached reading mode after the next successful list request', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    const serverItem = shoppingItem('Pan del servidor');
+    let itemReads = 0;
+    vi.mocked(loadOfflineList).mockResolvedValue([shoppingItem('Pan guardado')]);
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'household-1', name: 'Casa' }] }));
+      if (url.endsWith('/households/household-1/lists')) return Promise.resolve(Response.json({ lists: [shoppingList()] }));
+      if (url.endsWith('/lists/list-1/items')) {
+        itemReads += 1;
+        return itemReads === 1 ? Promise.reject(new Error('Sin conexi\u00f3n')) : Promise.resolve(Response.json({ items: [serverItem] }));
+      }
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+
+    render(<QueryClientProvider client={createWebQueryClient()}><ShoppingListRoute currentUserId="user-1" /></QueryClientProvider>);
+
+    expect(await screen.findByText('Pan guardado')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'A\u00f1adir' })).toBeDisabled();
+
+    Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
+    window.dispatchEvent(new Event('online'));
+
+    expect(await screen.findByText('Pan del servidor')).toBeVisible();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'A\u00f1adir' })).toBeEnabled());
+  });
+
   it('refreshes notification queries after a local product mutation', async () => {
     let notificationReads = 0;
     vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000008' });

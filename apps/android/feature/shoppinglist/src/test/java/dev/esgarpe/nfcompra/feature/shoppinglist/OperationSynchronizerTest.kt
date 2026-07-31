@@ -347,6 +347,30 @@ class OperationSynchronizerTest {
     }
 
     @Test
+    fun `cached Room data queues offline changes, syncs them in order, and resolves the conflict explicitly`() = runTest {
+        dao.replaceServerSnapshot(listOf(household()), listOf(shoppingList()), listOf(item("item-1", "Leche guardada", version = 1)))
+        dao.upsertItemAndEnqueue(
+            item("item-1", "Leche local", version = 1),
+            updateOperation("operation-first", state = PendingOperationState.PENDING, createdAt = 100),
+        )
+        dao.enqueue(updateOperation("operation-conflict", state = PendingOperationState.PENDING, createdAt = 200))
+        server.enqueue(itemResponse("item-1", "Leche sincronizada", version = 2, status = 200))
+        server.enqueue(conflictResponse("Leche servidor", version = 4))
+
+        assertEquals(listOf("operation-first", "operation-conflict"), dao.pendingOperations().map { it.operationId })
+        assertEquals(SyncResult.Succeeded, synchronizer().syncNext())
+        assertTrue(server.takeRequest(1, TimeUnit.SECONDS)?.body?.readUtf8()?.contains("\"operationId\":\"operation-first\"") == true)
+        assertEquals(SyncResult.Conflict, synchronizer().syncNext())
+        assertTrue(server.takeRequest(1, TimeUnit.SECONDS)?.body?.readUtf8()?.contains("\"operationId\":\"operation-conflict\"") == true)
+
+        assertTrue(synchronizer().resolve(ResolveConflict.UseServer("operation-conflict")))
+
+        assertTrue(dao.pendingOperations().isEmpty())
+        assertEquals("Leche servidor", dao.item("item-1")?.name)
+        assertEquals(4, dao.item("item-1")?.version)
+    }
+
+    @Test
     fun `an unresolved older conflict blocks later operations in the ordered queue`() = runTest {
         dao.enqueue(
             updateOperation(
@@ -641,13 +665,14 @@ class OperationSynchronizerTest {
         operationId: String,
         state: String,
         serverItemJson: String? = null,
+        createdAt: Long = 1_000,
     ) = PendingOperation(
         operationId = operationId,
         type = PendingOperationType.UPDATE,
         listId = "list-1",
         itemId = "item-1",
         payloadJson = """{"name":"Leche local","expectedVersion":1,"operationId":"$operationId"}""",
-        createdAt = 1_000,
+        createdAt = createdAt,
         state = state,
         serverItemJson = serverItemJson,
     )
