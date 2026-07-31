@@ -9,6 +9,8 @@ import dev.esgarpe.nfcompra.core.database.LocalShoppingList
 import dev.esgarpe.nfcompra.core.database.NfCompraDatabase
 import dev.esgarpe.nfcompra.core.database.PendingOperationState
 import dev.esgarpe.nfcompra.core.database.PendingOperationType
+import dev.esgarpe.nfcompra.core.database.SnapshotCollection
+import java.io.IOException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
@@ -119,6 +121,77 @@ class OfflineShoppingRepositoryTest {
     }
 
     @Test
+    fun `valid empty item snapshot remains available after a transport failure`() = runTest {
+        seedListWithoutItemSnapshot()
+        server.enqueue(json("""{"items":[]}"""))
+        repository.refreshItems("list-1")
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
+
+        repository.refreshItems("list-1")
+
+        assertTrue(repository.observeItems("list-1").first().isEmpty())
+        assertEquals(1_000L, database.shoppingDao().snapshot(SnapshotCollection.items("list-1"))?.updatedAt)
+        assertTrue(repository.isOffline)
+    }
+
+    @Test
+    fun `valid empty household and list snapshots remain available after transport failures`() = runTest {
+        server.enqueue(json("""{"households":[]}"""))
+        assertTrue(repository.households().isEmpty())
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
+        assertTrue(repository.households().isEmpty())
+
+        database.shoppingDao().replaceHouseholds(
+            listOf(
+                LocalHousehold(
+                    id = "home-1",
+                    name = "Casa",
+                    ownerId = "owner-1",
+                    createdAt = "2026-07-27T00:00:00Z",
+                    updatedAt = "2026-07-27T00:00:00Z",
+                ),
+            ),
+        )
+        server.enqueue(json("""{"lists":[]}"""))
+        assertTrue(repository.lists("home-1").isEmpty())
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
+        assertTrue(repository.lists("home-1").isEmpty())
+        assertTrue(repository.isOffline)
+    }
+
+    @Test
+    fun `first item transport failure is not treated as an empty cached snapshot`() = runTest {
+        seedListWithoutItemSnapshot()
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
+
+        val failure = runCatching { repository.refreshItems("list-1") }.exceptionOrNull()
+
+        assertTrue(failure is IOException)
+        assertEquals(null, database.shoppingDao().snapshot(SnapshotCollection.items("list-1")))
+    }
+
+    @Test
+    fun `a partial create response does not claim a complete collection snapshot`() = runTest {
+        server.enqueue(
+            json(
+                """
+                {
+                  "household":{"id":"home-1","name":"Casa","ownerId":"owner-1","createdAt":"2026-07-27T00:00:00Z","updatedAt":"2026-07-27T00:00:00Z"},
+                  "defaultList":{"id":"list-1","householdId":"home-1","name":"Compra","isDefault":true,"version":1,"createdAt":"2026-07-27T00:00:00Z","updatedAt":"2026-07-27T00:00:00Z"}
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        repository.createHousehold("Casa")
+
+        assertEquals("home-1", database.shoppingDao().households().single().id)
+        assertEquals("list-1", database.shoppingDao().lists("home-1").single().id)
+        assertEquals(null, database.shoppingDao().snapshot(SnapshotCollection.HOUSEHOLDS))
+        assertEquals(null, database.shoppingDao().snapshot(SnapshotCollection.lists("home-1")))
+    }
+
+    @Test
     fun `local create persists an item and one pending operation without calling the API`() = runTest {
         seedList()
 
@@ -209,6 +282,34 @@ class OfflineShoppingRepositoryTest {
                 ),
             ),
             items = emptyList(),
+        )
+    }
+
+    private suspend fun seedListWithoutItemSnapshot() {
+        database.shoppingDao().replaceHouseholds(
+            listOf(
+                LocalHousehold(
+                    id = "home-1",
+                    name = "Casa",
+                    ownerId = "owner-1",
+                    createdAt = "2026-07-27T00:00:00Z",
+                    updatedAt = "2026-07-27T00:00:00Z",
+                ),
+            ),
+        )
+        database.shoppingDao().replaceLists(
+            "home-1",
+            listOf(
+                LocalShoppingList(
+                    id = "list-1",
+                    householdId = "home-1",
+                    name = "Compra",
+                    isDefault = true,
+                    version = 1,
+                    createdAt = "2026-07-27T00:00:00Z",
+                    updatedAt = "2026-07-27T00:00:00Z",
+                ),
+            ),
         )
     }
 

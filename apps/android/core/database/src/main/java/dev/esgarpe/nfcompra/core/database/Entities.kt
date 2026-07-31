@@ -88,6 +88,19 @@ data class PendingOperation(
     val serverItemJson: String? = null,
 )
 
+@Entity(tableName = "snapshot_metadata")
+data class SnapshotMetadata(
+    @PrimaryKey val collectionKey: String,
+    val updatedAt: Long,
+)
+
+object SnapshotCollection {
+    const val HOUSEHOLDS = "households"
+
+    fun lists(householdId: String) = "lists:$householdId"
+    fun items(listId: String) = "items:$listId"
+}
+
 object PendingOperationType {
     const val CREATE = "create"
     const val UPDATE = "update"

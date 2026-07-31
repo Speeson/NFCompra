@@ -11,10 +11,22 @@ import dev.esgarpe.nfcompra.core.database.PendingOperation
 import dev.esgarpe.nfcompra.core.database.PendingOperationState
 import dev.esgarpe.nfcompra.core.database.PendingOperationType
 import dev.esgarpe.nfcompra.core.database.ShoppingDao
+import dev.esgarpe.nfcompra.core.database.SnapshotCollection
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import retrofit2.Response
+import java.io.Closeable
 import java.io.IOException
 import java.util.UUID
 
@@ -105,12 +117,18 @@ class OfflineShoppingRepository(
     private val dao: ShoppingDao,
     private val clock: () -> Long = System::currentTimeMillis,
     private val operationId: () -> String = { UUID.randomUUID().toString() },
-) : ShoppingRepository {
+    private val closeDatabase: () -> Unit = {},
+) : ShoppingRepository, Closeable {
     override val continuouslyObservesItems = true
+    private val lifecycleLock = Any()
+    private val activeJobs = mutableSetOf<Job>()
+    private var closed = false
+
+    @Volatile
     override var isOffline: Boolean = false
         private set
 
-    override suspend fun households(): List<HouseholdUiModel> {
+    override suspend fun households(): List<HouseholdUiModel> = accountOperation {
         val remote = try {
             api.households().also { isOffline = false }.bodyOrThrow().households.map(HouseholdDto::toLocal)
         } catch (error: ShoppingListApiException) {
@@ -118,15 +136,14 @@ class OfflineShoppingRepository(
             throw error
         } catch (error: IOException) {
             isOffline = true
-            return dao.households()
-                .ifEmpty { throw error }
-                .map { HouseholdUiModel(it.id, it.name) }
+            if (dao.snapshot(SnapshotCollection.HOUSEHOLDS) == null) throw error
+            return@accountOperation dao.households().map { HouseholdUiModel(it.id, it.name) }
         }
-        dao.replaceHouseholds(remote)
-        return remote.map { HouseholdUiModel(it.id, it.name) }
+        dao.replaceHouseholds(remote, clock())
+        remote.map { HouseholdUiModel(it.id, it.name) }
     }
 
-    override suspend fun lists(householdId: String): List<ShoppingListSummaryUiModel> {
+    override suspend fun lists(householdId: String): List<ShoppingListSummaryUiModel> = accountOperation {
         val remote = try {
             api.lists(householdId).also { isOffline = false }.bodyOrThrow().lists.map(ShoppingListDto::toLocal)
         } catch (error: ShoppingListApiException) {
@@ -134,15 +151,16 @@ class OfflineShoppingRepository(
             throw error
         } catch (error: IOException) {
             isOffline = true
-            return dao.lists(householdId)
-                .ifEmpty { throw error }
-                .map { ShoppingListSummaryUiModel(it.id, it.householdId, it.name) }
+            if (dao.snapshot(SnapshotCollection.lists(householdId)) == null) throw error
+            return@accountOperation dao.lists(householdId).map {
+                ShoppingListSummaryUiModel(it.id, it.householdId, it.name)
+            }
         }
-        dao.replaceLists(householdId, remote)
-        return remote.map { ShoppingListSummaryUiModel(it.id, it.householdId, it.name) }
+        dao.replaceLists(householdId, remote, clock())
+        remote.map { ShoppingListSummaryUiModel(it.id, it.householdId, it.name) }
     }
 
-    override suspend fun refreshItems(listId: String) {
+    override suspend fun refreshItems(listId: String) = accountOperation {
         val remote = try {
             api.items(listId).also { isOffline = false }.bodyOrThrow().items.map(ShoppingItemDto::toLocal)
         } catch (error: ShoppingListApiException) {
@@ -150,49 +168,56 @@ class OfflineShoppingRepository(
             throw error
         } catch (error: IOException) {
             isOffline = true
-            if (dao.list(listId) == null) throw error
-            return
+            if (dao.snapshot(SnapshotCollection.items(listId)) == null) throw error
+            return@accountOperation
         }
-        dao.replaceItems(listId, remote)
+        dao.replaceItems(listId, remote, clock())
     }
 
     override fun observeItems(listId: String): Flow<List<ShoppingListItemUiModel>> =
-        combine(
-            dao.observeItems(listId),
-            dao.observeOperations(listId),
-        ) { items, operations ->
-            items.map { item ->
-                val latest = operations.lastOrNull { operation -> operation.itemId == item.id }
-                item.toUiModel(latest)
+        channelFlow {
+            val collector = launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
+                combine(
+                    dao.observeItems(listId),
+                    dao.observeOperations(listId),
+                ) { items, operations ->
+                    items.map { item ->
+                        val latest = operations.lastOrNull { operation -> operation.itemId == item.id }
+                        item.toUiModel(latest)
+                    }
+                }.collect(::send)
             }
+            if (!register(collector)) {
+                close()
+                return@channelFlow
+            }
+            collector.invokeOnCompletion {
+                unregister(collector)
+                close()
+            }
+            collector.start()
+            awaitClose { collector.cancel() }
         }
 
     override suspend fun createHousehold(
         name: String,
-    ): Pair<HouseholdUiModel, ShoppingListSummaryUiModel> {
+    ): Pair<HouseholdUiModel, ShoppingListSummaryUiModel> = accountOperation {
         val response = api.createHousehold(CreateHouseholdRequest(name)).also { isOffline = false }.bodyOrThrow()
-        val households = dao.households()
-        dao.replaceHouseholds(households.filterNot { it.id == response.household.id } + response.household.toLocal())
-        val lists = dao.lists(response.household.id)
-        dao.replaceLists(
-            response.household.id,
-            lists.filterNot { it.id == response.defaultList.id } + response.defaultList.toLocal(),
-        )
-        return HouseholdUiModel(response.household.id, response.household.name) to
+        dao.upsertHouseholdAndList(response.household.toLocal(), response.defaultList.toLocal())
+        HouseholdUiModel(response.household.id, response.household.name) to
             ShoppingListSummaryUiModel(response.defaultList.id, response.defaultList.householdId, response.defaultList.name)
     }
 
     override suspend fun createList(
         householdId: String,
         name: String,
-    ): ShoppingListSummaryUiModel {
+    ): ShoppingListSummaryUiModel = accountOperation {
         val remote = api.createList(householdId, CreateListRequest(name)).also { isOffline = false }.bodyOrThrow().list
-        val lists = dao.lists(householdId)
-        dao.replaceLists(householdId, lists.filterNot { it.id == remote.id } + remote.toLocal())
-        return ShoppingListSummaryUiModel(remote.id, remote.householdId, remote.name)
+        dao.upsertList(remote.toLocal())
+        ShoppingListSummaryUiModel(remote.id, remote.householdId, remote.name)
     }
 
-    override suspend fun createItem(listId: String, name: String) {
+    override suspend fun createItem(listId: String, name: String) = accountOperation {
         val operationId = operationId()
         val now = clock()
         val item = LocalShoppingItem(
@@ -224,13 +249,14 @@ class OfflineShoppingRepository(
                 createdAt = now,
             ),
         )
+        Unit
     }
 
     override suspend fun updateItem(
         item: ShoppingListItemUiModel,
         name: String?,
         checked: Boolean?,
-    ) {
+    ) = accountOperation {
         val local = requireNotNull(dao.item(item.id)) { "No existe el producto local ${item.id}." }
         val operationId = operationId()
         val now = clock()
@@ -257,9 +283,10 @@ class OfflineShoppingRepository(
                 createdAt = now,
             ),
         )
+        Unit
     }
 
-    override suspend fun deleteItem(item: ShoppingListItemUiModel) {
+    override suspend fun deleteItem(item: ShoppingListItemUiModel) = accountOperation {
         val local = requireNotNull(dao.item(item.id)) { "No existe el producto local ${item.id}." }
         val operationId = operationId()
         val request = DeleteItemRequest(expectedVersion = item.version, operationId = operationId)
@@ -274,6 +301,40 @@ class OfflineShoppingRepository(
                 createdAt = clock(),
             ),
         )
+        Unit
+    }
+
+    override fun close() {
+        val jobs = synchronized(lifecycleLock) {
+            if (closed) return
+            closed = true
+            activeJobs.toList()
+        }
+        runBlocking {
+            jobs.forEach { it.cancelAndJoin() }
+        }
+        closeDatabase()
+    }
+
+    private suspend fun <T> accountOperation(block: suspend () -> T): T = coroutineScope {
+        val operation = async(Dispatchers.IO, start = CoroutineStart.LAZY) { block() }
+        check(register(operation)) { "La sesión de compras ya está cerrada." }
+        try {
+            operation.start()
+            operation.await()
+        } finally {
+            unregister(operation)
+        }
+    }
+
+    private fun register(job: Job): Boolean = synchronized(lifecycleLock) {
+        if (closed) false else activeJobs.add(job)
+    }
+
+    private fun unregister(job: Job) {
+        synchronized(lifecycleLock) {
+            activeJobs.remove(job)
+        }
     }
 
     companion object {
@@ -288,7 +349,11 @@ class OfflineShoppingRepository(
             accountId: String,
         ): OfflineShoppingRepository {
             val database = NfCompraDatabase.create(context, accountId)
-            return OfflineShoppingRepository(api, database.shoppingDao())
+            return OfflineShoppingRepository(
+                api = api,
+                dao = database.shoppingDao(),
+                closeDatabase = { NfCompraDatabase.release(accountId, database) },
+            )
         }
     }
 }

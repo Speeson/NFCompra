@@ -2,7 +2,9 @@ package dev.esgarpe.nfcompra.feature.shoppinglist
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,6 +48,8 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
                 val current = error.current
                 val conflicted = current?.let { data.withCurrent(it) } ?: data
                 mutableState.value = conflicted.copy(message = error.message, conflict = current, retryAction = action)
+            } catch (error: CancellationException) {
+                throw error
             } catch (_: Exception) {
                 mutableState.value = data.copy(message = "No se pudo conectar con el servidor.")
             }
@@ -57,6 +61,13 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
     fun openContext(householdId: String, listId: String? = null) {
         pendingContext = ShoppingContext(householdId, listId)
         loadForCurrentIntent()
+    }
+
+    fun dispose() {
+        loadGeneration++
+        pendingContext = null
+        itemObservation?.cancel()
+        viewModelScope.cancel()
     }
 
     private fun loadForCurrentIntent() {
@@ -94,6 +105,8 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
             if (pendingContext == context) pendingContext = null
         } catch (error: ShoppingListApiException) {
             if (generation == loadGeneration) mutableState.value = ShoppingListViewState.Error(error.message)
+        } catch (error: CancellationException) {
+            throw error
         } catch (_: Exception) {
             if (generation == loadGeneration) mutableState.value = ShoppingListViewState.Error("No se pudo conectar con el servidor.")
         }
@@ -122,6 +135,8 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
                 retryAction = ShoppingListAction.CreateHousehold(name),
             )
             return
+        } catch (error: CancellationException) {
+            throw error
         } catch (_: Exception) {
             mutableState.value = ShoppingListViewState.InitialHouseholdError(
                 message = "No se pudo conectar con el servidor.",
@@ -140,6 +155,8 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
                 message = error.message,
                 retryAction = ShoppingListAction.RetryInitialHouseholdLoad(household, list),
             )
+        } catch (error: CancellationException) {
+            throw error
         } catch (_: Exception) {
             mutableState.value = ShoppingListViewState.InitialHouseholdLoadError(
                 message = "No se pudo conectar con el servidor.",

@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -19,10 +20,8 @@ import dev.esgarpe.nfcompra.core.network.NetworkClient
 import dev.esgarpe.nfcompra.feature.auth.AuthApp
 import dev.esgarpe.nfcompra.feature.auth.AuthRepository
 import dev.esgarpe.nfcompra.feature.auth.AuthViewModel
-import dev.esgarpe.nfcompra.feature.shoppinglist.ShoppingListApi
+import dev.esgarpe.nfcompra.feature.shoppinglist.AccountShoppingSession
 import dev.esgarpe.nfcompra.feature.shoppinglist.ShoppingListApp
-import dev.esgarpe.nfcompra.feature.shoppinglist.OfflineShoppingRepository
-import dev.esgarpe.nfcompra.feature.shoppinglist.ShoppingListViewModel
 import dev.esgarpe.nfcompra.feature.sharing.AcceptInvitationScreen
 import dev.esgarpe.nfcompra.feature.sharing.AuthenticatedRefreshGate
 import dev.esgarpe.nfcompra.feature.sharing.InvitationTokenHandoff
@@ -51,19 +50,25 @@ class MainActivity : ComponentActivity() {
         val tokenStore = KeystoreTokenStore(applicationContext)
         foregroundRefreshGate = AuthenticatedRefreshGate { tokenStore.current() != null }
         val authRepository = AuthRepository(NetworkClient.authApi(BuildConfig.AUTH_BASE_URL), tokenStore)
-        val shoppingApi = NetworkClient.authenticatedApi(BuildConfig.AUTH_BASE_URL, tokenStore, ShoppingListApi::class.java)
         val sharingRepository = SharingRepository(NetworkClient.authenticatedApi(BuildConfig.AUTH_BASE_URL, tokenStore, SharingApi::class.java))
         setContent {
             val session by tokenStore.session.collectAsState()
             val authViewModel = remember { AuthViewModel(authRepository) }
             val accountId = session?.accessToken?.let(::userIdFromJwt)
-            val shoppingViewModel = remember(accountId) {
+            val shoppingSession = remember(accountId) {
                 accountId?.let {
-                    ShoppingListViewModel(
-                        OfflineShoppingRepository.create(applicationContext, shoppingApi, it),
+                    AccountShoppingSession.create(
+                        context = applicationContext,
+                        baseUrl = BuildConfig.AUTH_BASE_URL,
+                        tokenStore = tokenStore,
+                        accountId = it,
                     )
                 }
             }
+            DisposableEffect(shoppingSession) {
+                onDispose { shoppingSession?.close() }
+            }
+            val shoppingViewModel = shoppingSession?.viewModel
             val globalNotifications = remember { SharingViewModel(sharingRepository, null, null) }
             notificationViewModel = globalNotifications
             val notificationState by globalNotifications.notifications.collectAsState()
@@ -90,6 +95,9 @@ class MainActivity : ComponentActivity() {
             NFCompraTheme {
                 if (session == null) AuthApp(authViewModel)
                 else Column {
+                    val authenticatedShoppingSession = requireNotNull(shoppingSession) {
+                        "La sesión autenticada no contiene un identificador de cuenta."
+                    }
                     val authenticatedShoppingViewModel = requireNotNull(shoppingViewModel) {
                         "La sesión autenticada no contiene un identificador de cuenta."
                     }
@@ -132,7 +140,14 @@ class MainActivity : ComponentActivity() {
                         else -> {
                             membersViewModel = null
                             NotificationBell(notificationState, globalBellOpen, { globalBellOpen = !globalBellOpen }, globalNotifications::onAction)
-                            ShoppingListApp(authenticatedShoppingViewModel, authViewModel::logout, { selectedHouseholdId = it })
+                            ShoppingListApp(
+                                authenticatedShoppingViewModel,
+                                {
+                                    authenticatedShoppingSession.close()
+                                    authViewModel.logout()
+                                },
+                                { selectedHouseholdId = it },
+                            )
                         }
                     }
                 }

@@ -13,15 +13,29 @@ import java.security.MessageDigest
         LocalShoppingList::class,
         LocalShoppingItem::class,
         PendingOperation::class,
+        SnapshotMetadata::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class NfCompraDatabase : RoomDatabase() {
     abstract fun shoppingDao(): ShoppingDao
 
     companion object {
-        val MIGRATIONS: Array<Migration> = emptyArray()
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `snapshot_metadata` (
+                        `collectionKey` TEXT NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`collectionKey`)
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2)
         private val instances = mutableMapOf<String, NfCompraDatabase>()
 
         fun create(context: Context, accountId: String): NfCompraDatabase {
@@ -35,6 +49,16 @@ abstract class NfCompraDatabase : RoomDatabase() {
                         NfCompraDatabase::class.java,
                         databaseName,
                     ).addMigrations(*MIGRATIONS).build()
+                }
+            }
+        }
+
+        fun release(accountId: String, database: NfCompraDatabase) {
+            val databaseName = databaseName(accountId)
+            synchronized(this) {
+                if (instances[databaseName] === database) {
+                    instances.remove(databaseName)
+                    database.close()
                 }
             }
         }

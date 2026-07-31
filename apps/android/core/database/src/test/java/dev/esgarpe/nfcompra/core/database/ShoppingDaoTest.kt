@@ -75,6 +75,24 @@ class ShoppingDaoTest {
     }
 
     @Test
+    fun `empty replacements persist freshness for each collection scope`() = runTest {
+        dao.replaceHouseholds(emptyList(), snapshotAt = 101L)
+        dao.replaceHouseholds(listOf(household("home-1")), snapshotAt = 102L)
+        dao.replaceLists("home-1", emptyList(), snapshotAt = 201L)
+        dao.replaceLists(
+            "home-1",
+            listOf(shoppingList("list-1", "home-1")),
+            snapshotAt = 202L,
+        )
+        dao.replaceItems("list-1", emptyList(), snapshotAt = 301L)
+
+        assertEquals(102L, dao.snapshot(SnapshotCollection.HOUSEHOLDS)?.updatedAt)
+        assertEquals(202L, dao.snapshot(SnapshotCollection.lists("home-1"))?.updatedAt)
+        assertEquals(301L, dao.snapshot(SnapshotCollection.items("list-1"))?.updatedAt)
+        assertTrue(dao.items("list-1").isEmpty())
+    }
+
+    @Test
     fun `server item replacement preserves pending local creates updates and deletes`() = runTest {
         dao.replaceServerSnapshot(
             households = listOf(household("home-1")),
@@ -228,6 +246,7 @@ class ShoppingDaoTest {
             households = listOf(household("home-a")),
             lists = listOf(shoppingList("list-a", "home-a")),
             items = listOf(item("item-a", "list-a", "Privado A")),
+            snapshotAt = 777L,
         )
         accountA.shoppingDao().enqueue(
             operation("operation-a", createdAt = 100).copy(
@@ -238,6 +257,13 @@ class ShoppingDaoTest {
 
         assertTrue(accountB.shoppingDao().households().isEmpty())
         assertTrue(accountB.shoppingDao().pendingOperations().isEmpty())
+
+        NfCompraDatabase.release("account-a-$suffix", accountA)
+        val reopenedA = NfCompraDatabase.create(context, "account-a-$suffix")
+        assertEquals(listOf("home-a"), reopenedA.shoppingDao().households().map { it.id })
+        assertEquals(777L, reopenedA.shoppingDao().snapshot(SnapshotCollection.HOUSEHOLDS)?.updatedAt)
+        NfCompraDatabase.release("account-a-$suffix", reopenedA)
+        NfCompraDatabase.release("account-b-$suffix", accountB)
     }
 
     private fun household(id: String) = LocalHousehold(

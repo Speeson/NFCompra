@@ -19,6 +19,9 @@ abstract class ShoppingDao {
     @Upsert
     protected abstract suspend fun upsertItems(items: List<LocalShoppingItem>)
 
+    @Upsert
+    protected abstract suspend fun upsertSnapshot(snapshot: SnapshotMetadata)
+
     @Query("DELETE FROM shopping_items")
     protected abstract suspend fun deleteAllItems()
 
@@ -60,6 +63,7 @@ abstract class ShoppingDao {
         households: List<LocalHousehold>,
         lists: List<LocalShoppingList>,
         items: List<LocalShoppingItem>,
+        snapshotAt: Long = System.currentTimeMillis(),
     ) {
         val operations = pendingOperations()
         val protectedItemIds = operations.mapTo(mutableSetOf()) { it.itemId }
@@ -78,10 +82,20 @@ abstract class ShoppingDao {
         upsertHouseholds(mergedHouseholds)
         upsertLists(mergedLists)
         upsertItems(mergedItems)
+        upsertSnapshot(SnapshotMetadata(SnapshotCollection.HOUSEHOLDS, snapshotAt))
+        households.forEach {
+            upsertSnapshot(SnapshotMetadata(SnapshotCollection.lists(it.id), snapshotAt))
+        }
+        lists.forEach {
+            upsertSnapshot(SnapshotMetadata(SnapshotCollection.items(it.id), snapshotAt))
+        }
     }
 
     @Transaction
-    open suspend fun replaceHouseholds(households: List<LocalHousehold>) {
+    open suspend fun replaceHouseholds(
+        households: List<LocalHousehold>,
+        snapshotAt: Long = System.currentTimeMillis(),
+    ) {
         val protectedListIds = pendingOperations().mapTo(mutableSetOf()) { it.listId }
         val protectedHouseholdIds = allListsForReplacement()
             .filter { it.id in protectedListIds }
@@ -90,10 +104,15 @@ abstract class ShoppingDao {
         upsertHouseholds(households)
         if (retainedIds.isEmpty()) deleteAllHouseholds()
         else deleteHouseholdsNotIn(retainedIds.toList())
+        upsertSnapshot(SnapshotMetadata(SnapshotCollection.HOUSEHOLDS, snapshotAt))
     }
 
     @Transaction
-    open suspend fun replaceLists(householdId: String, lists: List<LocalShoppingList>) {
+    open suspend fun replaceLists(
+        householdId: String,
+        lists: List<LocalShoppingList>,
+        snapshotAt: Long = System.currentTimeMillis(),
+    ) {
         val localListIds = allListsForReplacement()
             .filter { it.householdId == householdId }
             .mapTo(mutableSetOf()) { it.id }
@@ -104,15 +123,38 @@ abstract class ShoppingDao {
         upsertLists(lists)
         if (retainedIds.isEmpty()) deleteLists(householdId)
         else deleteListsNotIn(householdId, retainedIds.toList())
+        upsertSnapshot(SnapshotMetadata(SnapshotCollection.lists(householdId), snapshotAt))
     }
 
     @Transaction
-    open suspend fun replaceItems(listId: String, items: List<LocalShoppingItem>) {
+    open suspend fun replaceItems(
+        listId: String,
+        items: List<LocalShoppingItem>,
+        snapshotAt: Long = System.currentTimeMillis(),
+    ) {
         val protectedIds = operationsForReplacement(listId).mapTo(mutableSetOf()) { it.itemId }
         val localPendingItems = cachedItemsForReplacement(listId).filter { it.id in protectedIds }
         val merged = items.filterNot { it.id in protectedIds } + localPendingItems
         deleteItems(listId)
         upsertItems(merged)
+        upsertSnapshot(SnapshotMetadata(SnapshotCollection.items(listId), snapshotAt))
+    }
+
+    @Query("SELECT * FROM snapshot_metadata WHERE collectionKey = :collectionKey")
+    abstract suspend fun snapshot(collectionKey: String): SnapshotMetadata?
+
+    @Transaction
+    open suspend fun upsertHouseholdAndList(
+        household: LocalHousehold,
+        list: LocalShoppingList,
+    ) {
+        upsertHouseholds(listOf(household))
+        upsertLists(listOf(list))
+    }
+
+    @Transaction
+    open suspend fun upsertList(list: LocalShoppingList) {
+        upsertLists(listOf(list))
     }
 
     @Query("SELECT * FROM households ORDER BY name, id")
