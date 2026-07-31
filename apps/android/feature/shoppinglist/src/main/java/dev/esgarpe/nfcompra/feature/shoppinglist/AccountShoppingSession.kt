@@ -27,7 +27,7 @@ class AccountShoppingSession(
                 ShoppingListApi::class.java,
             )
             return AccountShoppingSession(
-                OfflineShoppingRepository.create(context, api, accountId),
+                OfflineShoppingRepository.create(context, api, accountId, baseUrl),
             )
         }
     }

@@ -8,6 +8,11 @@ import androidx.room.Transaction
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
+data class OperationReconciliation(
+    val serverItem: LocalShoppingItem?,
+    val replacementOperations: List<PendingOperation> = emptyList(),
+)
+
 @Dao
 abstract class ShoppingDao {
     @Upsert
@@ -231,6 +236,9 @@ abstract class ShoppingDao {
     @Upsert
     protected abstract suspend fun upsertItem(item: LocalShoppingItem)
 
+    @Upsert
+    protected abstract suspend fun upsertOperations(operations: List<PendingOperation>)
+
     @Query("DELETE FROM shopping_items WHERE id = :itemId")
     protected abstract suspend fun deleteItem(itemId: String)
 
@@ -268,4 +276,47 @@ abstract class ShoppingDao {
 
     @Query("DELETE FROM pending_operations WHERE id = :id")
     abstract suspend fun deleteOperation(id: Long)
+
+    @Transaction
+    open suspend fun completeOperation(
+        operationId: Long,
+        localItemId: String,
+        serverItem: LocalShoppingItem?,
+        replacementOperations: List<PendingOperation> = emptyList(),
+    ) {
+        if (serverItem == null) {
+            deleteItem(localItemId)
+        } else {
+            if (serverItem.id != localItemId) deleteItem(localItemId)
+            upsertItem(serverItem)
+        }
+        upsertOperations(replacementOperations)
+        deleteOperation(operationId)
+    }
+
+    @Transaction
+    open suspend fun reconcileOperation(
+        operationId: Long,
+        localItemId: String,
+        reconcile: (List<PendingOperation>) -> OperationReconciliation,
+    ) {
+        val result = reconcile(pendingOperations())
+        if (result.serverItem == null) {
+            deleteItem(localItemId)
+        } else {
+            if (result.serverItem.id != localItemId) deleteItem(localItemId)
+            upsertItem(result.serverItem)
+        }
+        upsertOperations(result.replacementOperations)
+        deleteOperation(operationId)
+    }
+
+    @Transaction
+    open suspend fun replaceOperation(
+        operationId: Long,
+        replacement: PendingOperation,
+    ): Long {
+        deleteOperation(operationId)
+        return enqueue(replacement)
+    }
 }

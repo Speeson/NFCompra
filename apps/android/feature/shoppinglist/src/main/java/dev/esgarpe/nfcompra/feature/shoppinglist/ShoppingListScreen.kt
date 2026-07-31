@@ -200,12 +200,57 @@ private fun ShoppingItem(item: ShoppingListItemUiModel, onAction: (ShoppingListA
     var editing by remember { mutableStateOf(false) }
     var editedName by remember(item.id) { mutableStateOf(item.name) }
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Column { Text(item.name); Text(item.quantity, style = MaterialTheme.typography.bodySmall) }
-        Checkbox(checked = item.checked, modifier = Modifier.semantics { contentDescription = "Marcar ${item.name}" }, onCheckedChange = { onAction(ShoppingListAction.ToggleItem(item.id)) })
+        Column {
+            Text(item.name)
+            Text(item.quantity, style = MaterialTheme.typography.bodySmall)
+            item.pendingState?.let { state ->
+                Text(
+                    when (state) {
+                        "pending" -> "Pendiente de sincronización"
+                        "syncing" -> "Sincronizando"
+                        "failed" -> "No se pudo sincronizar"
+                        "conflict" -> "Conflicto de versiones"
+                        else -> state
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (state == "failed" || state == "conflict") {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                )
+            }
+        }
+        if (item.pendingOperationType != "delete") {
+            Checkbox(checked = item.checked, modifier = Modifier.semantics { contentDescription = "Marcar ${item.name}" }, onCheckedChange = { onAction(ShoppingListAction.ToggleItem(item.id)) })
+        }
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        TextButton(onClick = { editing = true }) { Text("Editar") }
-        TextButton(onClick = { onAction(ShoppingListAction.DeleteItem(item.id)) }) { Text("Borrar") }
+    if (item.pendingOperationType != "delete") {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { editing = true }) { Text("Editar") }
+            TextButton(onClick = { onAction(ShoppingListAction.DeleteItem(item.id)) }) { Text("Borrar") }
+        }
+    }
+    val conflictOperationId = item.pendingOperationId.takeIf { item.pendingState == "conflict" }
+    if (conflictOperationId != null) {
+        val localIntent = if (item.pendingOperationType == "delete") {
+            "Eliminar ${item.serverItemName ?: item.name}"
+        } else {
+            item.name
+        }
+        val localVersion = item.pendingExpectedVersion ?: item.version
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Tu cambio (v$localVersion): $localIntent")
+            Text("Servidor (v${item.serverItemVersion ?: "?"}): ${item.serverItemName ?: "No disponible"}")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { onAction(ResolveConflict.UseServer(conflictOperationId)) }) {
+                    Text("Usar versión del servidor")
+                }
+                TextButton(onClick = { onAction(ResolveConflict.RetryLocal(conflictOperationId)) }) {
+                    Text("Reintentar mi cambio")
+                }
+            }
+        }
     }
     if (editing) ItemNameDialog("Editar producto", editedName, { editedName = it }, {
         if (editedName.isNotBlank()) onAction(ShoppingListAction.EditItem(item.id, editedName.trim()))

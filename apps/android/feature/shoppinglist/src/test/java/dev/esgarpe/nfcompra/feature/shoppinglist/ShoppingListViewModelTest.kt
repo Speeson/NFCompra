@@ -310,6 +310,26 @@ class ShoppingListViewModelTest {
         assertEquals("pending", updated.content.pending.single().pendingState)
     }
 
+    @Test fun `conflict resolution actions are forwarded with the selected operation id`() = runTest {
+        val repository = ConflictShoppingRepository()
+        val viewModel = ShoppingListViewModel(repository)
+        viewModel.load()
+        advanceUntilIdle()
+
+        viewModel.onAction(ResolveConflict.UseServer("operation-1"))
+        advanceUntilIdle()
+        viewModel.onAction(ResolveConflict.RetryLocal("operation-2"))
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(
+                ResolveConflict.UseServer("operation-1"),
+                ResolveConflict.RetryLocal("operation-2"),
+            ),
+            repository.resolutions,
+        )
+    }
+
     private fun enqueueInitialList() {
         server.enqueue(json("{\"households\":[{\"id\":\"home-1\",\"name\":\"Casa\",\"ownerId\":\"user-1\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}"))
         server.enqueue(json("{\"lists\":[{\"id\":\"list-1\",\"householdId\":\"home-1\",\"name\":\"Compra\",\"isDefault\":true,\"version\":1,\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}"))
@@ -337,6 +357,37 @@ private class FlowShoppingRepository(
         error("No se usa en esta prueba.")
     override suspend fun deleteItem(item: ShoppingListItemUiModel) =
         error("No se usa en esta prueba.")
+}
+
+private class ConflictShoppingRepository : ShoppingRepository {
+    val resolutions = mutableListOf<ResolveConflict>()
+    override suspend fun households() = listOf(HouseholdUiModel("home-1", "Casa"))
+    override suspend fun lists(householdId: String) =
+        listOf(ShoppingListSummaryUiModel("list-1", householdId, "Compra"))
+    override fun observeItems(listId: String) = MutableStateFlow(
+        listOf(
+            ShoppingListItemUiModel(
+                id = "item-1",
+                name = "Leche local",
+                quantity = "1 litro",
+                checked = false,
+                version = 1,
+                pendingState = "conflict",
+                pendingOperationId = "operation-1",
+                serverItemName = "Leche servidor",
+                serverItemVersion = 2,
+            ),
+        ),
+    )
+    override suspend fun createHousehold(name: String) = error("No se usa en esta prueba.")
+    override suspend fun createList(householdId: String, name: String) = error("No se usa en esta prueba.")
+    override suspend fun createItem(listId: String, name: String) = error("No se usa en esta prueba.")
+    override suspend fun updateItem(item: ShoppingListItemUiModel, name: String?, checked: Boolean?) =
+        error("No se usa en esta prueba.")
+    override suspend fun deleteItem(item: ShoppingListItemUiModel) = error("No se usa en esta prueba.")
+    override suspend fun resolveConflict(resolution: ResolveConflict) {
+        resolutions += resolution
+    }
 }
 
 private class InMemoryTokenStore(initialTokens: SessionTokens? = SessionTokens("access-token", "refresh-token")) : TokenStore {

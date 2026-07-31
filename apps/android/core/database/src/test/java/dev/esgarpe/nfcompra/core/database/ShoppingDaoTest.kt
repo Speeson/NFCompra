@@ -270,6 +270,82 @@ class ShoppingDaoTest {
     }
 
     @Test
+    fun `completing an operation rolls back the item and queue when the server item cannot be stored`() = runTest {
+        dao.replaceServerSnapshot(
+            households = listOf(household("home-1")),
+            lists = listOf(shoppingList("list-1", "home-1")),
+            items = listOf(item("item-local", "list-1", "Leche local")),
+        )
+        val operationId = dao.enqueue(
+            operation("operation-1", createdAt = 100).copy(itemId = "item-local"),
+        )
+
+        val failure = runCatching {
+            dao.completeOperation(
+                operationId = operationId,
+                localItemId = "item-local",
+                serverItem = item("item-server", "missing-list", "Leche servidor"),
+            )
+        }
+
+        assertTrue(failure.isFailure)
+        assertEquals("Leche local", dao.item("item-local")?.name)
+        assertEquals(listOf("operation-1"), dao.pendingOperations().map { it.operationId })
+    }
+
+    @Test
+    fun `reconciling dependent operations rolls back the item remap and queue together`() = runTest {
+        dao.replaceServerSnapshot(
+            households = listOf(household("home-1")),
+            lists = listOf(shoppingList("list-1", "home-1")),
+            items = listOf(item("item-local", "list-1", "Leche local")),
+        )
+        val completedId = dao.enqueue(
+            operation("operation-create", createdAt = 100).copy(itemId = "item-local"),
+        )
+        dao.enqueue(
+            operation("operation-update", createdAt = 200).copy(itemId = "item-local"),
+        )
+
+        val failure = runCatching {
+            dao.reconcileOperation(completedId, "item-local") { queued ->
+                OperationReconciliation(
+                    serverItem = item("item-server", "missing-list", "Leche servidor"),
+                    replacementOperations = queued.drop(1).map { it.copy(itemId = "item-server") },
+                )
+            }
+        }
+
+        assertTrue(failure.isFailure)
+        assertEquals("Leche local", dao.item("item-local")?.name)
+        assertEquals(
+            listOf("operation-create" to "item-local", "operation-update" to "item-local"),
+            dao.pendingOperations().map { it.operationId to it.itemId },
+        )
+    }
+
+    @Test
+    fun `replacing a conflict rolls back deletion when the new operation cannot be inserted`() = runTest {
+        val conflictedId = dao.enqueue(
+            operation("operation-conflict", createdAt = 100).copy(state = PendingOperationState.CONFLICT),
+        )
+        dao.enqueue(operation("operation-existing", createdAt = 200))
+
+        val failure = runCatching {
+            dao.replaceOperation(
+                operationId = conflictedId,
+                replacement = operation("operation-existing", createdAt = 300),
+            )
+        }
+
+        assertTrue(failure.isFailure)
+        assertEquals(
+            listOf("operation-conflict", "operation-existing"),
+            dao.pendingOperations().map { it.operationId },
+        )
+    }
+
+    @Test
     fun `persistent databases isolate cached rows and operations by account`() = runTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val suffix = UUID.randomUUID().toString()

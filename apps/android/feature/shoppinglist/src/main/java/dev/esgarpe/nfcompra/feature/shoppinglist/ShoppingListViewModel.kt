@@ -42,6 +42,8 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
                     is ShoppingListAction.EditItem -> mutateAfter(data) { repository.updateItem(data.item(action.id), name = action.name) }
                     is ShoppingListAction.ToggleItem -> mutateItem(data, action.id) { repository.updateItem(it, checked = !it.checked) }
                     is ShoppingListAction.DeleteItem -> mutateAfter(data) { repository.deleteItem(data.item(action.id)) }
+                    is ResolveConflict.UseServer -> repository.resolveConflict(action)
+                    is ResolveConflict.RetryLocal -> repository.resolveConflict(action)
                     ShoppingListAction.RetryConflict -> data.retryAction?.let(::onAction)
                 }
             } catch (error: ShoppingListApiException) {

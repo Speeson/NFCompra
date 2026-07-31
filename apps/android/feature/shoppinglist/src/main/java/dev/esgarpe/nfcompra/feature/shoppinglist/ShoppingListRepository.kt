@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import retrofit2.Response
 import java.io.Closeable
 import java.io.IOException
@@ -52,6 +54,7 @@ interface ShoppingRepository {
     suspend fun createItem(listId: String, name: String)
     suspend fun updateItem(item: ShoppingListItemUiModel, name: String? = null, checked: Boolean? = null)
     suspend fun deleteItem(item: ShoppingListItemUiModel)
+    suspend fun resolveConflict(resolution: ResolveConflict) = Unit
 }
 
 class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingRepository {
@@ -117,7 +120,11 @@ class OfflineShoppingRepository(
     private val dao: ShoppingDao,
     private val clock: () -> Long = System::currentTimeMillis,
     private val operationId: () -> String = { UUID.randomUUID().toString() },
+    private val scheduleSync: () -> Unit = {},
     private val closeDatabase: () -> Unit = {},
+    private val syncMutex: Mutex = Mutex(),
+    private val databaseMutex: Mutex = Mutex(),
+    private val itemAliases: ItemIdAliases = ItemIdAliases(),
 ) : ShoppingRepository, Closeable {
     override val continuouslyObservesItems = true
     private val lifecycleLock = Any()
@@ -130,7 +137,7 @@ class OfflineShoppingRepository(
 
     override suspend fun households(): List<HouseholdUiModel> = accountOperation {
         val remote = try {
-            api.households().also { isOffline = false }.bodyOrThrow().households.map(HouseholdDto::toLocal)
+            api.households().also { markOnline() }.bodyOrThrow().households.map(HouseholdDto::toLocal)
         } catch (error: ShoppingListApiException) {
             isOffline = false
             throw error
@@ -145,7 +152,7 @@ class OfflineShoppingRepository(
 
     override suspend fun lists(householdId: String): List<ShoppingListSummaryUiModel> = accountOperation {
         val remote = try {
-            api.lists(householdId).also { isOffline = false }.bodyOrThrow().lists.map(ShoppingListDto::toLocal)
+            api.lists(householdId).also { markOnline() }.bodyOrThrow().lists.map(ShoppingListDto::toLocal)
         } catch (error: ShoppingListApiException) {
             isOffline = false
             throw error
@@ -161,17 +168,19 @@ class OfflineShoppingRepository(
     }
 
     override suspend fun refreshItems(listId: String) = accountOperation {
-        val remote = try {
-            api.items(listId).also { isOffline = false }.bodyOrThrow().items.map(ShoppingItemDto::toLocal)
-        } catch (error: ShoppingListApiException) {
-            isOffline = false
-            throw error
-        } catch (error: IOException) {
-            isOffline = true
-            if (dao.snapshot(SnapshotCollection.items(listId)) == null) throw error
-            return@accountOperation
+        syncMutex.withLock {
+            val remote = try {
+                api.items(listId).also { markOnline() }.bodyOrThrow().items.map(ShoppingItemDto::toLocal)
+            } catch (error: ShoppingListApiException) {
+                isOffline = false
+                throw error
+            } catch (error: IOException) {
+                isOffline = true
+                if (dao.snapshot(SnapshotCollection.items(listId)) == null) throw error
+                return@accountOperation
+            }
+            databaseMutex.withLock { dao.replaceItems(listId, remote, clock()) }
         }
-        dao.replaceItems(listId, remote, clock())
     }
 
     override fun observeItems(listId: String): Flow<List<ShoppingListItemUiModel>> =
@@ -181,10 +190,20 @@ class OfflineShoppingRepository(
                     dao.observeItems(listId),
                     dao.observeOperations(listId),
                 ) { items, operations ->
-                    items.map { item ->
-                        val latest = operations.lastOrNull { operation -> operation.itemId == item.id }
-                        item.toUiModel(latest)
+                    val mapped = items.map { item ->
+                        val itemOperations = operations.filter { operation -> operation.itemId == item.id }
+                        val visibleOperation = itemOperations.firstOrNull {
+                            it.state == PendingOperationState.CONFLICT
+                        } ?: itemOperations.lastOrNull()
+                        item.toUiModel(visibleOperation)
                     }
+                    val itemIds = items.mapTo(mutableSetOf()) { it.id }
+                    val orphanedOperations = operations.mapNotNull { operation ->
+                        if (operation.itemId in itemIds) return@mapNotNull null
+                        operation.serverItemJson?.let(serverItemAdapter::fromJson)?.toLocal()?.toUiModel(operation)
+                            ?: operation.toTombstoneUiModel()
+                    }
+                    mapped + orphanedOperations
                 }.collect(::send)
             }
             if (!register(collector)) {
@@ -218,37 +237,40 @@ class OfflineShoppingRepository(
     }
 
     override suspend fun createItem(listId: String, name: String) = accountOperation {
-        val operationId = operationId()
-        val now = clock()
-        val item = LocalShoppingItem(
-            id = "local-$operationId",
-            listId = listId,
-            name = name,
-            normalizedName = name.trim().lowercase(),
-            quantity = 1.0,
-            unit = null,
-            category = null,
-            note = null,
-            isChecked = false,
-            position = dao.maxItemPosition(listId) + 1,
-            version = 0,
-            createdBy = "",
-            updatedBy = "",
-            createdAt = now.toString(),
-            updatedAt = now.toString(),
-        )
-        val request = CreateItemRequest(name = name, operationId = operationId)
-        dao.upsertItemAndEnqueue(
-            item,
-            PendingOperation(
-                operationId = operationId,
-                type = PendingOperationType.CREATE,
+        databaseMutex.withLock {
+            val operationId = operationId()
+            val now = clock()
+            val item = LocalShoppingItem(
+                id = "local-$operationId",
                 listId = listId,
-                itemId = item.id,
-                payloadJson = createItemAdapter.toJson(request),
-                createdAt = now,
-            ),
-        )
+                name = name,
+                normalizedName = name.trim().lowercase(),
+                quantity = 1.0,
+                unit = null,
+                category = null,
+                note = null,
+                isChecked = false,
+                position = dao.maxItemPosition(listId) + 1,
+                version = 0,
+                createdBy = "",
+                updatedBy = "",
+                createdAt = now.toString(),
+                updatedAt = now.toString(),
+            )
+            val request = CreateItemRequest(name = name, operationId = operationId)
+            dao.upsertItemAndEnqueue(
+                item,
+                PendingOperation(
+                    operationId = operationId,
+                    type = PendingOperationType.CREATE,
+                    listId = listId,
+                    itemId = item.id,
+                    payloadJson = createItemAdapter.toJson(request),
+                    createdAt = now,
+                ),
+            )
+        }
+        scheduleSync()
         Unit
     }
 
@@ -257,51 +279,76 @@ class OfflineShoppingRepository(
         name: String?,
         checked: Boolean?,
     ) = accountOperation {
-        val local = requireNotNull(dao.item(item.id)) { "No existe el producto local ${item.id}." }
-        val operationId = operationId()
-        val now = clock()
-        val updated = local.copy(
-            name = name ?: local.name,
-            normalizedName = name?.trim()?.lowercase() ?: local.normalizedName,
-            isChecked = checked ?: local.isChecked,
-            updatedAt = now.toString(),
-        )
-        val request = UpdateItemRequest(
-            name = name,
-            isChecked = checked,
-            expectedVersion = item.version,
-            operationId = operationId,
-        )
-        dao.upsertItemAndEnqueue(
-            updated,
-            PendingOperation(
+        databaseMutex.withLock {
+            val resolvedItemId = itemAliases.resolve(item.id)
+            val local = requireNotNull(dao.item(resolvedItemId)) { "No existe el producto local $resolvedItemId." }
+            val operationId = operationId()
+            val now = clock()
+            val updated = local.copy(
+                name = name ?: local.name,
+                normalizedName = name?.trim()?.lowercase() ?: local.normalizedName,
+                isChecked = checked ?: local.isChecked,
+                updatedAt = now.toString(),
+            )
+            val request = UpdateItemRequest(
+                name = name,
+                isChecked = checked,
+                expectedVersion = if (resolvedItemId == item.id) item.version else local.version,
                 operationId = operationId,
-                type = PendingOperationType.UPDATE,
-                listId = local.listId,
-                itemId = local.id,
-                payloadJson = updateItemAdapter.toJson(request),
-                createdAt = now,
-            ),
-        )
+            )
+            dao.upsertItemAndEnqueue(
+                updated,
+                PendingOperation(
+                    operationId = operationId,
+                    type = PendingOperationType.UPDATE,
+                    listId = local.listId,
+                    itemId = local.id,
+                    payloadJson = updateItemAdapter.toJson(request),
+                    createdAt = now,
+                ),
+            )
+        }
+        scheduleSync()
         Unit
     }
 
     override suspend fun deleteItem(item: ShoppingListItemUiModel) = accountOperation {
-        val local = requireNotNull(dao.item(item.id)) { "No existe el producto local ${item.id}." }
-        val operationId = operationId()
-        val request = DeleteItemRequest(expectedVersion = item.version, operationId = operationId)
-        dao.deleteItemAndEnqueue(
-            local.id,
-            PendingOperation(
+        databaseMutex.withLock {
+            val resolvedItemId = itemAliases.resolve(item.id)
+            val local = requireNotNull(dao.item(resolvedItemId)) { "No existe el producto local $resolvedItemId." }
+            val operationId = operationId()
+            val request = DeleteItemRequest(
+                expectedVersion = if (resolvedItemId == item.id) item.version else local.version,
                 operationId = operationId,
-                type = PendingOperationType.DELETE,
-                listId = local.listId,
-                itemId = local.id,
-                payloadJson = deleteItemAdapter.toJson(request),
-                createdAt = clock(),
-            ),
-        )
+            )
+            dao.deleteItemAndEnqueue(
+                local.id,
+                PendingOperation(
+                    operationId = operationId,
+                    type = PendingOperationType.DELETE,
+                    listId = local.listId,
+                    itemId = local.id,
+                    payloadJson = deleteItemAdapter.toJson(request),
+                    createdAt = clock(),
+                ),
+            )
+        }
+        scheduleSync()
         Unit
+    }
+
+    override suspend fun resolveConflict(resolution: ResolveConflict) = accountOperation {
+        if (
+            OperationSynchronizer(
+                api = api,
+                dao = dao,
+                clock = clock,
+                operationId = operationId,
+                syncMutex = syncMutex,
+                databaseMutex = databaseMutex,
+                itemAliases = itemAliases,
+            ).resolve(resolution)
+        ) scheduleSync()
     }
 
     override fun close() {
@@ -337,23 +384,40 @@ class OfflineShoppingRepository(
         }
     }
 
+    private fun markOnline() {
+        val recovered = isOffline
+        isOffline = false
+        if (recovered) scheduleSync()
+    }
+
     companion object {
         private val moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
         private val createItemAdapter = moshi.adapter(CreateItemRequest::class.java)
         private val updateItemAdapter = moshi.adapter(UpdateItemRequest::class.java)
         private val deleteItemAdapter = moshi.adapter(DeleteItemRequest::class.java)
+        private val serverItemAdapter = moshi.adapter(ShoppingItemDto::class.java)
 
         fun create(
             context: Context,
             api: ShoppingListApi,
             accountId: String,
+            baseUrl: String,
         ): OfflineShoppingRepository {
             val database = NfCompraDatabase.create(context, accountId)
+            val scheduleSync = { SyncWorker.enqueue(context, accountId, baseUrl) }
+            val syncState = ShoppingSyncCoordinator.forAccount(accountId)
             return OfflineShoppingRepository(
                 api = api,
                 dao = database.shoppingDao(),
-                closeDatabase = { NfCompraDatabase.release(accountId, database) },
-            )
+                scheduleSync = scheduleSync,
+                syncMutex = syncState.syncMutex,
+                databaseMutex = syncState.databaseMutex,
+                itemAliases = syncState.itemAliases,
+                closeDatabase = {
+                    SyncWorker.cancel(context, accountId)
+                    NfCompraDatabase.release(accountId, database)
+                },
+            ).also { scheduleSync() }
         }
     }
 }
@@ -394,15 +458,55 @@ private fun ShoppingItemDto.toLocal() = LocalShoppingItem(
     updatedAt = updatedAt,
 )
 
-private fun LocalShoppingItem.toUiModel(operation: PendingOperation?) = ShoppingListItemUiModel(
-    id = id,
-    name = name,
-    quantity = quantity.toString().removeSuffix(".0") + (unit?.let { " $it" } ?: ""),
-    checked = isChecked,
-    version = version,
-    pendingState = operation?.state,
-    serverItemJson = operation?.serverItemJson,
-)
+private fun LocalShoppingItem.toUiModel(operation: PendingOperation?): ShoppingListItemUiModel {
+    val server = operation?.serverItemJson?.let(shoppingItemJsonAdapter::fromJson)
+    return ShoppingListItemUiModel(
+        id = id,
+        name = name,
+        quantity = quantity.toString().removeSuffix(".0") + (unit?.let { " $it" } ?: ""),
+        checked = isChecked,
+        version = version,
+        pendingState = operation?.state,
+        serverItemJson = operation?.serverItemJson,
+        pendingOperationId = operation?.operationId,
+        pendingOperationType = operation?.type,
+        pendingExpectedVersion = operation?.expectedVersion(),
+        serverItemName = server?.name,
+        serverItemVersion = server?.version,
+    )
+}
+
+private fun PendingOperation.toTombstoneUiModel(): ShoppingListItemUiModel {
+    val create = runCatching {
+        if (type == PendingOperationType.CREATE) createItemJsonAdapter.fromJson(payloadJson) else null
+    }.getOrNull()
+    val update = runCatching {
+        if (type == PendingOperationType.UPDATE) updateItemJsonAdapter.fromJson(payloadJson) else null
+    }.getOrNull()
+    val delete = runCatching {
+        if (type == PendingOperationType.DELETE) deleteItemJsonAdapter.fromJson(payloadJson) else null
+    }.getOrNull()
+    return ShoppingListItemUiModel(
+        id = itemId,
+        name = create?.name ?: update?.name ?: "Producto eliminado",
+        quantity = "",
+        checked = false,
+        version = update?.expectedVersion ?: delete?.expectedVersion ?: 0,
+        pendingState = state,
+        serverItemJson = serverItemJson,
+        pendingOperationId = operationId,
+        pendingOperationType = type,
+        pendingExpectedVersion = update?.expectedVersion ?: delete?.expectedVersion,
+    )
+}
+
+private fun PendingOperation.expectedVersion(): Int? = runCatching {
+    when (type) {
+        PendingOperationType.UPDATE -> updateItemJsonAdapter.fromJson(payloadJson)?.expectedVersion
+        PendingOperationType.DELETE -> deleteItemJsonAdapter.fromJson(payloadJson)?.expectedVersion
+        else -> null
+    }
+}.getOrNull()
 
 private fun <T> Response<T>.bodyOrThrow(): T {
     body()?.let { return it }
@@ -426,3 +530,11 @@ private fun <T> Response<T>.bodyOrThrow(): T {
 
 private val offlineErrorAdapter =
     Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build().adapter(ErrorResponse::class.java)
+private val shoppingItemJsonAdapter =
+    Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build().adapter(ShoppingItemDto::class.java)
+private val createItemJsonAdapter =
+    Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build().adapter(CreateItemRequest::class.java)
+private val updateItemJsonAdapter =
+    Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build().adapter(UpdateItemRequest::class.java)
+private val deleteItemJsonAdapter =
+    Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build().adapter(DeleteItemRequest::class.java)

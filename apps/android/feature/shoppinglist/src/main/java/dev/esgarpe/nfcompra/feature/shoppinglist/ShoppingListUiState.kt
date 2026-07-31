@@ -8,6 +8,11 @@ data class ShoppingListItemUiModel(
     val version: Int = 1,
     val pendingState: String? = null,
     val serverItemJson: String? = null,
+    val pendingOperationId: String? = null,
+    val pendingOperationType: String? = null,
+    val pendingExpectedVersion: Int? = null,
+    val serverItemName: String? = null,
+    val serverItemVersion: Int? = null,
 )
 
 data class ShoppingListUiState(

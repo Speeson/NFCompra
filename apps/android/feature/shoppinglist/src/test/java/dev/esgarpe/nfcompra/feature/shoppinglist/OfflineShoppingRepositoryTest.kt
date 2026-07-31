@@ -11,10 +11,15 @@ import dev.esgarpe.nfcompra.core.database.PendingOperationState
 import dev.esgarpe.nfcompra.core.database.PendingOperationType
 import dev.esgarpe.nfcompra.core.database.SnapshotCollection
 import java.io.IOException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.test.runTest
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import okhttp3.mockwebserver.SocketPolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -26,6 +31,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 class OfflineShoppingRepositoryTest {
@@ -293,6 +300,289 @@ class OfflineShoppingRepositoryTest {
         assertEquals("item-1", operation.itemId)
         assertTrue(operation.payloadJson.contains("\"expectedVersion\":7"))
         assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun `a local mutation schedules synchronization after the Room transaction`() = runTest {
+        seedList()
+        var scheduled = 0
+        repository = OfflineShoppingRepository(
+            api = retrofitApi(server),
+            dao = database.shoppingDao(),
+            clock = { 1_000L },
+            scheduleSync = { scheduled++ },
+        )
+
+        repository.createItem("list-1", "Pan")
+
+        assertEquals(1, scheduled)
+        assertEquals(1, database.shoppingDao().pendingOperations().size)
+    }
+
+    @Test
+    fun `a deleted item keeps its queue failure visible as a tombstone`() = runTest {
+        seedList()
+        database.shoppingDao().enqueue(
+            dev.esgarpe.nfcompra.core.database.PendingOperation(
+                operationId = "delete-operation",
+                type = PendingOperationType.DELETE,
+                listId = "list-1",
+                itemId = "item-deleted",
+                payloadJson = """{"expectedVersion":7,"operationId":"delete-operation"}""",
+                createdAt = 1_000,
+                state = PendingOperationState.FAILED,
+            ),
+        )
+
+        val tombstone = repository.observeItems("list-1").first().single()
+
+        assertEquals("Producto eliminado", tombstone.name)
+        assertEquals(7, tombstone.version)
+        assertEquals(PendingOperationState.FAILED, tombstone.pendingState)
+        assertEquals(PendingOperationType.DELETE, tombstone.pendingOperationType)
+    }
+
+    @Test
+    fun `an older blocking conflict stays visible when the same item has a later pending change`() = runTest {
+        seedItem()
+        val conflictId = database.shoppingDao().enqueue(
+            dev.esgarpe.nfcompra.core.database.PendingOperation(
+                operationId = "conflict-operation",
+                type = PendingOperationType.UPDATE,
+                listId = "list-1",
+                itemId = "item-1",
+                payloadJson = """{"name":"Leche local","expectedVersion":7,"operationId":"conflict-operation"}""",
+                createdAt = 1_000,
+            ),
+        )
+        database.shoppingDao().transitionOperation(
+            id = conflictId,
+            state = PendingOperationState.CONFLICT,
+            attempts = 1,
+            serverItemJson = """{"id":"item-1","listId":"list-1","name":"Leche servidor","normalizedName":"leche servidor","quantity":1.0,"unit":"litro","category":null,"note":null,"isChecked":false,"position":0,"version":8,"createdBy":"user-1","updatedBy":"user-2","createdAt":"created","updatedAt":"updated"}""",
+        )
+        database.shoppingDao().enqueue(pending("later-operation", createdAt = 2_000))
+
+        val visible = repository.observeItems("list-1").first().single()
+
+        assertEquals(PendingOperationState.CONFLICT, visible.pendingState)
+        assertEquals("conflict-operation", visible.pendingOperationId)
+        assertEquals("Leche servidor", visible.serverItemName)
+    }
+
+    @Test
+    fun `the first successful refresh after an offline fallback schedules synchronization`() = runTest {
+        seedList()
+        var scheduled = 0
+        repository = OfflineShoppingRepository(
+            api = retrofitApi(server),
+            dao = database.shoppingDao(),
+            clock = { 1_000L },
+            scheduleSync = { scheduled++ },
+        )
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
+        repository.refreshItems("list-1")
+        assertTrue(repository.isOffline)
+        server.enqueue(json("""{"items":[]}"""))
+
+        repository.refreshItems("list-1")
+
+        assertFalse(repository.isOffline)
+        assertEquals(1, scheduled)
+    }
+
+    @Test
+    fun `create followed by edit rebases the generated update and preserves the optimistic projection`() = runTest {
+        seedList()
+        val ids = ArrayDeque(listOf("create-operation", "update-operation"))
+        repository = OfflineShoppingRepository(
+            api = retrofitApi(server),
+            dao = database.shoppingDao(),
+            clock = { if (ids.size == 2) 1_000L else 2_000L },
+            operationId = { ids.removeFirst() },
+        )
+        repository.createItem("list-1", "Pan")
+        val created = repository.observeItems("list-1").first().single()
+        repository.updateItem(created, name = "Pan integral")
+        server.enqueue(
+            json(
+                """{"item":{"id":"server-item","listId":"list-1","name":"Pan","normalizedName":"pan","quantity":1.0,"unit":null,"category":null,"note":null,"isChecked":false,"position":0,"version":1,"createdBy":"user-1","updatedBy":"user-1","createdAt":"created","updatedAt":"updated"}}""",
+            ),
+        )
+
+        assertEquals(SyncResult.Succeeded, OperationSynchronizer(retrofitApi(server), database.shoppingDao()).syncNext())
+
+        val pendingUpdate = database.shoppingDao().pendingOperations().single()
+        assertEquals("server-item", pendingUpdate.itemId)
+        assertTrue(pendingUpdate.payloadJson.contains("\"expectedVersion\":1"))
+        assertEquals("Pan integral", database.shoppingDao().item("server-item")?.name)
+        assertEquals(2, database.shoppingDao().item("server-item")?.version)
+    }
+
+    @Test
+    fun `an edit enqueued while create response is in flight is rebased with the create completion`() = runTest {
+        seedList()
+        val ids = ArrayDeque(listOf("create-operation", "update-operation"))
+        val mutex = Mutex()
+        val databaseMutex = Mutex()
+        val aliases = ItemIdAliases()
+        repository = OfflineShoppingRepository(
+            api = retrofitApi(server),
+            dao = database.shoppingDao(),
+            clock = { if (ids.size == 2) 1_000L else 2_000L },
+            operationId = { ids.removeFirst() },
+            syncMutex = mutex,
+            databaseMutex = databaseMutex,
+            itemAliases = aliases,
+        )
+        repository.createItem("list-1", "Pan")
+        val created = repository.observeItems("list-1").first().single()
+        val responseStarted = CountDownLatch(1)
+        val releaseResponse = CountDownLatch(1)
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                responseStarted.countDown()
+                releaseResponse.await(2, TimeUnit.SECONDS)
+                return json(
+                    """{"item":{"id":"server-item","listId":"list-1","name":"Pan","normalizedName":"pan","quantity":1.0,"unit":null,"category":null,"note":null,"isChecked":false,"position":0,"version":1,"createdBy":"user-1","updatedBy":"user-1","createdAt":"created","updatedAt":"updated"}}""",
+                )
+            }
+        }
+        val sync = launch(Dispatchers.IO) {
+            OperationSynchronizer(
+                retrofitApi(server),
+                database.shoppingDao(),
+                syncMutex = mutex,
+                databaseMutex = databaseMutex,
+                itemAliases = aliases,
+            ).syncNext()
+        }
+        assertTrue(responseStarted.await(1, TimeUnit.SECONDS))
+
+        repository.updateItem(created, name = "Pan integral")
+        releaseResponse.countDown()
+        sync.join()
+
+        val pendingUpdate = database.shoppingDao().pendingOperations().single()
+        assertEquals("server-item", pendingUpdate.itemId)
+        assertTrue(pendingUpdate.payloadJson.contains("\"expectedVersion\":1"))
+        assertEquals("Pan integral", database.shoppingDao().item("server-item")?.name)
+        assertEquals(null, database.shoppingDao().item(created.id))
+    }
+
+    @Test
+    fun `a stale temporary item action resolves the server id when create reconciliation wins`() = runTest {
+        seedList()
+        val ids = ArrayDeque(listOf("create-operation", "update-operation"))
+        val syncMutex = Mutex()
+        val databaseMutex = Mutex()
+        val aliases = ItemIdAliases()
+        repository = OfflineShoppingRepository(
+            api = retrofitApi(server),
+            dao = database.shoppingDao(),
+            clock = { if (ids.size == 2) 1_000L else 2_000L },
+            operationId = { ids.removeFirst() },
+            syncMutex = syncMutex,
+            databaseMutex = databaseMutex,
+            itemAliases = aliases,
+        )
+        repository.createItem("list-1", "Pan")
+        val staleTemporaryItem = repository.observeItems("list-1").first().single()
+        server.enqueue(
+            json(
+                """{"item":{"id":"server-item","listId":"list-1","name":"Pan","normalizedName":"pan","quantity":1.0,"unit":null,"category":null,"note":null,"isChecked":false,"position":0,"version":1,"createdBy":"user-1","updatedBy":"user-1","createdAt":"created","updatedAt":"updated"}}""",
+            ),
+        )
+        val synchronizer = OperationSynchronizer(
+            api = retrofitApi(server),
+            dao = database.shoppingDao(),
+            syncMutex = syncMutex,
+            databaseMutex = databaseMutex,
+            itemAliases = aliases,
+        )
+        assertEquals(SyncResult.Succeeded, synchronizer.syncNext())
+
+        repository.updateItem(staleTemporaryItem, name = "Pan integral")
+
+        val pendingUpdate = database.shoppingDao().pendingOperations().single()
+        assertEquals("server-item", pendingUpdate.itemId)
+        assertTrue(pendingUpdate.payloadJson.contains("\"expectedVersion\":1"))
+        assertEquals("Pan integral", database.shoppingDao().item("server-item")?.name)
+        assertEquals(null, database.shoppingDao().item(staleTemporaryItem.id))
+    }
+
+    @Test
+    fun `create followed by delete keeps the projection deleted and rebases the generated delete`() = runTest {
+        seedList()
+        val ids = ArrayDeque(listOf("create-operation", "delete-operation"))
+        repository = OfflineShoppingRepository(
+            api = retrofitApi(server),
+            dao = database.shoppingDao(),
+            clock = { if (ids.size == 2) 1_000L else 2_000L },
+            operationId = { ids.removeFirst() },
+        )
+        repository.createItem("list-1", "Pan")
+        val created = repository.observeItems("list-1").first().single()
+        repository.deleteItem(created)
+        server.enqueue(
+            json(
+                """{"item":{"id":"server-item","listId":"list-1","name":"Pan","normalizedName":"pan","quantity":1.0,"unit":null,"category":null,"note":null,"isChecked":false,"position":0,"version":1,"createdBy":"user-1","updatedBy":"user-1","createdAt":"created","updatedAt":"updated"}}""",
+            ),
+        )
+
+        assertEquals(SyncResult.Succeeded, OperationSynchronizer(retrofitApi(server), database.shoppingDao()).syncNext())
+
+        val pendingDelete = database.shoppingDao().pendingOperations().single()
+        assertEquals("server-item", pendingDelete.itemId)
+        assertTrue(pendingDelete.payloadJson.contains("\"expectedVersion\":1"))
+        assertTrue(database.shoppingDao().items("list-1").isEmpty())
+    }
+
+    @Test
+    fun `a refresh that started first cannot apply its stale snapshot after synchronization`() = runTest {
+        seedItem()
+        val mutex = Mutex()
+        repository = OfflineShoppingRepository(
+            api = retrofitApi(server),
+            dao = database.shoppingDao(),
+            clock = { 1_000L },
+            operationId = { "update-operation" },
+            syncMutex = mutex,
+        )
+        repository.updateItem(
+            ShoppingListItemUiModel("item-1", "Leche", "1 litro", checked = false, version = 7),
+            name = "Leche local",
+        )
+        val refreshStarted = CountDownLatch(1)
+        val releaseRefresh = CountDownLatch(1)
+        val mutationStarted = CountDownLatch(1)
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = when {
+                request.method == "GET" -> {
+                    refreshStarted.countDown()
+                    releaseRefresh.await(2, TimeUnit.SECONDS)
+                    json("""{"items":[{"id":"item-1","listId":"list-1","name":"Leche antigua","normalizedName":"leche antigua","quantity":1.0,"unit":"litro","category":null,"note":null,"isChecked":false,"position":0,"version":7,"createdBy":"user-1","updatedBy":"user-1","createdAt":"created","updatedAt":"old"}]}""")
+                }
+                request.method == "PATCH" -> {
+                    mutationStarted.countDown()
+                    json("""{"item":{"id":"item-1","listId":"list-1","name":"Leche servidor","normalizedName":"leche servidor","quantity":1.0,"unit":"litro","category":null,"note":null,"isChecked":false,"position":0,"version":8,"createdBy":"user-1","updatedBy":"user-1","createdAt":"created","updatedAt":"new"}}""")
+                }
+                else -> MockResponse().setResponseCode(404)
+            }
+        }
+
+        val refresh = launch(Dispatchers.IO) { repository.refreshItems("list-1") }
+        assertTrue(refreshStarted.await(1, TimeUnit.SECONDS))
+        val sync = launch(Dispatchers.IO) {
+            OperationSynchronizer(retrofitApi(server), database.shoppingDao(), syncMutex = mutex).syncNext()
+        }
+        assertFalse(mutationStarted.await(200, TimeUnit.MILLISECONDS))
+        releaseRefresh.countDown()
+        refresh.join()
+        sync.join()
+
+        assertEquals("Leche servidor", database.shoppingDao().item("item-1")?.name)
+        assertEquals(8, database.shoppingDao().item("item-1")?.version)
     }
 
     private suspend fun seedList() {

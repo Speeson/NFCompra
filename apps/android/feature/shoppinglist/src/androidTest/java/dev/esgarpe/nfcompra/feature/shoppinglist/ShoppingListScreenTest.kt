@@ -49,4 +49,81 @@ class ShoppingListScreenTest {
         assertEquals("Casa", retriedName)
         assertTrue(loggedOut)
     }
+
+    @Test
+    fun conflictShowsBothVersionsAndExplicitResolutionButtons() {
+        val actions = mutableListOf<ShoppingListAction>()
+        composeTestRule.setContent {
+            NFCompraTheme {
+                ShoppingListScreen(
+                    ShoppingListUiState(
+                        title = "Compra",
+                        pending = listOf(
+                            ShoppingListItemUiModel(
+                                id = "item-1",
+                                name = "Leche local",
+                                quantity = "1 litro",
+                                checked = false,
+                                version = 1,
+                                pendingState = "conflict",
+                                pendingOperationId = "operation-1",
+                                serverItemName = "Leche servidor",
+                                serverItemVersion = 4,
+                            ),
+                        ),
+                        checked = emptyList(),
+                        isOffline = false,
+                    ),
+                    onAction = actions::add,
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Tu cambio (v1): Leche local").assertExists()
+        composeTestRule.onNodeWithText("Servidor (v4): Leche servidor").assertExists()
+        composeTestRule.onNodeWithText("Usar versión del servidor").performClick()
+        composeTestRule.onNodeWithText("Reintentar mi cambio").performClick()
+
+        assertEquals(
+            listOf(
+                ResolveConflict.UseServer("operation-1"),
+                ResolveConflict.RetryLocal("operation-1"),
+            ),
+            actions,
+        )
+    }
+
+    @Test
+    fun deleteConflictDescribesTheLocalDeletionSeparatelyFromTheServerItem() {
+        composeTestRule.setContent {
+            NFCompraTheme {
+                ShoppingListScreen(
+                    ShoppingListUiState(
+                        title = "Compra",
+                        pending = listOf(
+                            ShoppingListItemUiModel(
+                                id = "item-1",
+                                name = "Leche servidor",
+                                quantity = "1 litro",
+                                checked = false,
+                                version = 4,
+                                pendingState = "conflict",
+                                pendingOperationId = "delete-operation",
+                                pendingOperationType = "delete",
+                                pendingExpectedVersion = 1,
+                                serverItemName = "Leche servidor",
+                                serverItemVersion = 4,
+                            ),
+                        ),
+                        checked = emptyList(),
+                        isOffline = false,
+                    ),
+                    onAction = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Tu cambio (v1): Eliminar Leche servidor").assertExists()
+        composeTestRule.onNodeWithText("Servidor (v4): Leche servidor").assertExists()
+    }
 }
