@@ -8,6 +8,7 @@ import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.Route
+import retrofit2.HttpException
 
 class BearerInterceptor(private val tokenStore: TokenStore) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
@@ -46,21 +47,21 @@ class RefreshAuthenticator(
                     return@withLock retry(response, attemptedSession)
                 }
 
-                val refreshed = runCatching {
+                val refreshed = try {
                     authApi.refresh(RefreshRequest(refreshToken = attemptedSession.tokens.refreshToken))
-                }.getOrElse {
-                    runCatching { tokenStore.compareAndClear(attemptedSession) }
+                } catch (error: Exception) {
+                    if (error is HttpException && error.code() == 401) {
+                        runCatching { tokenStore.compareAndClear(attemptedSession) }
+                    }
                     return@withLock null
                 }
                 if (refreshed.accessToken.isBlank() || refreshed.refreshToken.isBlank()) {
-                    runCatching { tokenStore.compareAndClear(attemptedSession) }
                     return@withLock null
                 }
                 val refreshedTokens = SessionTokens(refreshed.accessToken, refreshed.refreshToken)
                 val saved = runCatching {
                     tokenStore.compareAndSave(attemptedSession, refreshedTokens)
                 }.getOrElse {
-                    runCatching { tokenStore.compareAndClear(attemptedSession) }
                     return@withLock null
                 }
                 if (!saved) return@withLock null

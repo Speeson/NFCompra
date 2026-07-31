@@ -8,10 +8,16 @@ import java.io.Closeable
 class AccountShoppingSession(
     val repository: OfflineShoppingRepository,
     val viewModel: ShoppingListViewModel = ShoppingListViewModel(repository),
+    private val revokeSync: () -> Unit = {},
 ) : Closeable {
     override fun close() {
         viewModel.dispose()
         repository.close()
+    }
+
+    fun revoke() {
+        revokeSync()
+        close()
     }
 
     companion object {
@@ -28,7 +34,12 @@ class AccountShoppingSession(
             )
             return AccountShoppingSession(
                 OfflineShoppingRepository.create(context, api, accountId, baseUrl),
+                revokeSync = { revokeShoppingAccount(context, accountId) },
             )
+        }
+
+        fun revoke(context: Context, accountId: String) {
+            revokeShoppingAccount(context, accountId)
         }
     }
 }

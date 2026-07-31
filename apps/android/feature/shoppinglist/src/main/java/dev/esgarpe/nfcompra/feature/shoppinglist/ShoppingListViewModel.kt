@@ -78,6 +78,15 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         itemObservation?.cancel()
         viewModelScope.launch {
         try {
+            cachedSelection(context)?.let { cached ->
+                publish(
+                    cached.households,
+                    cached.lists,
+                    cached.household.id,
+                    cached.list.id,
+                    refreshFromServer = false,
+                )
+            }
             val households = repository.households()
             if (households.isEmpty()) {
                 if (generation == loadGeneration) mutableState.value = ShoppingListViewState.NoHouseholds
@@ -116,6 +125,23 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
     }
 
     private data class ShoppingContext(val householdId: String, val listId: String?)
+
+    private data class CachedSelection(
+        val households: List<HouseholdUiModel>,
+        val lists: List<ShoppingListSummaryUiModel>,
+        val household: HouseholdUiModel,
+        val list: ShoppingListSummaryUiModel,
+    )
+
+    private suspend fun cachedSelection(context: ShoppingContext?): CachedSelection? {
+        val households = repository.cachedHouseholds() ?: return null
+        val household = context?.let { requested -> households.firstOrNull { it.id == requested.householdId } }
+            ?: households.firstOrNull() ?: return null
+        val lists = repository.cachedLists(household.id) ?: return null
+        val list = context?.listId?.let { requested -> lists.firstOrNull { it.id == requested } }
+            ?: lists.firstOrNull() ?: return null
+        return CachedSelection(households, lists, household, list)
+    }
 
     private suspend fun selectHousehold(data: ShoppingListViewState.Data, householdId: String) {
         val lists = repository.lists(householdId)

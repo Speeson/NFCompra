@@ -47,6 +47,8 @@ interface ShoppingRepository {
     val continuouslyObservesItems: Boolean get() = false
     suspend fun households(): List<HouseholdUiModel>
     suspend fun lists(householdId: String): List<ShoppingListSummaryUiModel>
+    suspend fun cachedHouseholds(): List<HouseholdUiModel>? = null
+    suspend fun cachedLists(householdId: String): List<ShoppingListSummaryUiModel>? = null
     suspend fun refreshItems(listId: String) = Unit
     fun observeItems(listId: String): Flow<List<ShoppingListItemUiModel>>
     suspend fun createHousehold(name: String): Pair<HouseholdUiModel, ShoppingListSummaryUiModel>
@@ -150,6 +152,11 @@ class OfflineShoppingRepository(
         dao.households().map { HouseholdUiModel(it.id, it.name) }
     }
 
+    override suspend fun cachedHouseholds(): List<HouseholdUiModel>? = accountOperation {
+        if (dao.snapshot(SnapshotCollection.HOUSEHOLDS) == null) return@accountOperation null
+        dao.households().map { HouseholdUiModel(it.id, it.name) }
+    }
+
     override suspend fun lists(householdId: String): List<ShoppingListSummaryUiModel> = accountOperation {
         val remote = try {
             api.lists(householdId).also { markOnline() }.bodyOrThrow().lists.map(ShoppingListDto::toLocal)
@@ -164,6 +171,11 @@ class OfflineShoppingRepository(
             }
         }
         dao.replaceLists(householdId, remote, clock())
+        dao.lists(householdId).map { ShoppingListSummaryUiModel(it.id, it.householdId, it.name) }
+    }
+
+    override suspend fun cachedLists(householdId: String): List<ShoppingListSummaryUiModel>? = accountOperation {
+        if (dao.snapshot(SnapshotCollection.lists(householdId)) == null) return@accountOperation null
         dao.lists(householdId).map { ShoppingListSummaryUiModel(it.id, it.householdId, it.name) }
     }
 
@@ -433,12 +445,14 @@ internal fun releaseShoppingRepository(
     syncState: ShoppingSyncState,
 ) {
     try {
-        syncState.releaseRepository {
-            SyncWorker.cancel(context, accountId)
-        }
+        syncState.releaseRepository {}
     } finally {
         NfCompraDatabase.release(accountId, database)
     }
+}
+
+internal fun revokeShoppingAccount(context: Context, accountId: String) {
+    SyncWorker.cancel(context, accountId)
 }
 
 private fun HouseholdDto.toLocal() = LocalHousehold(

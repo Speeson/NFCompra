@@ -12,6 +12,7 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import java.util.WeakHashMap
 
 data class SessionTokens(val accessToken: String, val refreshToken: String)
 data class SessionSnapshot(val identity: Long, val tokens: SessionTokens)
@@ -58,8 +59,40 @@ internal class SessionTokenPersistence(
     }
 }
 
-/** Tokens are encrypted before persisting; the encryption key never leaves Android Keystore. */
-class KeystoreTokenStore(context: Context) : TokenStore {
+internal interface SessionCipher {
+    fun encrypt(value: String): String
+    fun decrypt(value: String): String?
+}
+
+/**
+ * Lightweight facade over the application-scoped session store. Every facade created after an
+ * Activity recreation shares the same generation, lock and flow, so its compare-and-set methods
+ * cannot race a facade that was retained by an older request.
+ */
+class KeystoreTokenStore private constructor(
+    private val delegate: TokenStore,
+) : TokenStore by delegate {
+    constructor(context: Context) : this(
+        ApplicationSessionStores.get(context.applicationContext) { AndroidKeystoreSessionCipher() },
+    )
+
+    internal constructor(context: Context, cipher: SessionCipher) : this(
+        ApplicationSessionStores.get(context.applicationContext) { cipher },
+    )
+}
+
+private object ApplicationSessionStores {
+    private val stores = WeakHashMap<Context, TokenStore>()
+
+    fun get(context: Context, cipher: () -> SessionCipher): TokenStore = synchronized(stores) {
+        stores.getOrPut(context) { EncryptedPreferencesTokenStore(context, cipher()) }
+    }
+}
+
+private class EncryptedPreferencesTokenStore(
+    context: Context,
+    private val cipher: SessionCipher,
+) : TokenStore {
     private val preferences = context.getSharedPreferences("nfcompra.session", Context.MODE_PRIVATE)
     private val persistence = SessionTokenPersistence(object : EncryptedSessionPreferences {
         override val access: String?
@@ -111,6 +144,7 @@ class KeystoreTokenStore(context: Context) : TokenStore {
         synchronized(sessionLock) {
             if (!matchesLocked(expected)) return@synchronized false
             persistLocked(tokens)
+            sessionIdentity++
             mutableSession.value = tokens
             true
         }
@@ -125,8 +159,8 @@ class KeystoreTokenStore(context: Context) : TokenStore {
         sessionIdentity == expected.identity && session.value == expected.tokens
 
     private fun persistLocked(tokens: SessionTokens) {
-        val access = encrypt(tokens.accessToken)
-        val refresh = encrypt(tokens.refreshToken)
+        val access = cipher.encrypt(tokens.accessToken)
+        val refresh = cipher.encrypt(tokens.refreshToken)
         persistence.save(access, refresh)
     }
 
@@ -137,19 +171,27 @@ class KeystoreTokenStore(context: Context) : TokenStore {
     }
 
     private fun readEncrypted(): SessionTokens? {
-        val access = preferences.getString(ACCESS_TOKEN, null)?.let(::decrypt) ?: return null
-        val refresh = preferences.getString(REFRESH_TOKEN, null)?.let(::decrypt) ?: return null
+        val access = preferences.getString(ACCESS_TOKEN, null)?.let(cipher::decrypt) ?: return null
+        val refresh = preferences.getString(REFRESH_TOKEN, null)?.let(cipher::decrypt) ?: return null
         return SessionTokens(access, refresh)
     }
 
-    private fun encrypt(value: String): String {
+    private companion object {
+        const val ACCESS_TOKEN = "access_token"
+        const val REFRESH_TOKEN = "refresh_token"
+    }
+}
+
+/** Tokens are encrypted before persisting; the encryption key never leaves Android Keystore. */
+private class AndroidKeystoreSessionCipher : SessionCipher {
+    override fun encrypt(value: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, secretKey())
         val encrypted = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
         return "${Base64.encodeToString(cipher.iv, Base64.NO_WRAP)}:${Base64.encodeToString(encrypted, Base64.NO_WRAP)}"
     }
 
-    private fun decrypt(value: String): String? = runCatching {
+    override fun decrypt(value: String): String? = runCatching {
         val (iv, encrypted) = value.split(':', limit = 2)
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)))
@@ -171,8 +213,6 @@ class KeystoreTokenStore(context: Context) : TokenStore {
     }
 
     private companion object {
-        const val ACCESS_TOKEN = "access_token"
-        const val REFRESH_TOKEN = "refresh_token"
         const val KEYSTORE = "AndroidKeyStore"
         const val KEY_ALIAS = "nfcompra.session.aes"
         const val TRANSFORMATION = "AES/GCM/NoPadding"

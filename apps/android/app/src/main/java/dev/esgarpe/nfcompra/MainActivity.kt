@@ -55,6 +55,14 @@ class MainActivity : ComponentActivity() {
             val session by tokenStore.session.collectAsState()
             val authViewModel = remember { AuthViewModel(authRepository) }
             val accountId = session?.accessToken?.let(::userIdFromJwt)
+            var previousAccountId by remember { mutableStateOf<String?>(null) }
+            LaunchedEffect(accountId) {
+                val previous = previousAccountId
+                if (previous != null && previous != accountId) {
+                    AccountShoppingSession.revoke(applicationContext, previous)
+                }
+                previousAccountId = accountId
+            }
             val shoppingSession = remember(accountId) {
                 accountId?.let {
                     AccountShoppingSession.create(
@@ -143,7 +151,7 @@ class MainActivity : ComponentActivity() {
                             ShoppingListApp(
                                 authenticatedShoppingViewModel,
                                 {
-                                    authenticatedShoppingSession.close()
+                                    authenticatedShoppingSession.revoke()
                                     authViewModel.logout()
                                 },
                                 { selectedHouseholdId = it },

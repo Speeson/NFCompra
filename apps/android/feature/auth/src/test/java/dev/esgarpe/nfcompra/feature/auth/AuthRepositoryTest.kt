@@ -15,6 +15,7 @@ import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
+import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -579,6 +580,33 @@ class AuthRepositoryTest {
                 mutableSession.value = null
                 true
             }
+        }
+    }
+
+    @Test
+    fun `a transient refresh disconnect keeps the observable session and its offline queue owner`() {
+        val server = MockWebServer()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse =
+                if (request.path == "/v1/auth/refresh") {
+                    MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START)
+                } else {
+                    MockResponse().setResponseCode(401)
+                }
+        }
+        server.start()
+        try {
+            val tokens = SessionTokens("expired-access", "refresh-still-valid")
+            val store = FakeTokenStore().apply { this.tokens = tokens }
+            val client = NetworkClient.authenticatedClient(server.url("/").toString(), store)
+
+            client.newCall(Request.Builder().url(server.url("/v1/protected")).build()).execute().use { response ->
+                assertEquals(401, response.code)
+            }
+
+            assertEquals(tokens, store.session.value)
+        } finally {
+            server.shutdown()
         }
     }
 

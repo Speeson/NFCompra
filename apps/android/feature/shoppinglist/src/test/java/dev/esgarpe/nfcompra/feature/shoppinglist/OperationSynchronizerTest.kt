@@ -520,7 +520,7 @@ class OperationSynchronizerTest {
     }
 
     @Test
-    fun `shared account ownership keeps unique work until the last repository closes`() {
+    fun `closing the last UI repository keeps unique work scheduled for Activity recreation`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val executor = Executors.newSingleThreadExecutor()
         val accountId = "account-${UUID.randomUUID()}"
@@ -553,8 +553,10 @@ class OperationSynchronizerTest {
             val afterLastClose = workManager
                 .getWorkInfosForUniqueWork(SyncWorker.uniqueWorkName(accountId))
                 .get(2, TimeUnit.SECONDS)
-            assertEquals(WorkInfo.State.CANCELLED, afterLastClose.single().state)
+            assertFalse(afterLastClose.single().state == WorkInfo.State.CANCELLED)
         } finally {
+            WorkManager.getInstance(context).cancelUniqueWork(SyncWorker.uniqueWorkName(accountId)).result
+                .get(2, TimeUnit.SECONDS)
             executor.shutdownNow()
         }
     }
@@ -591,6 +593,7 @@ class OperationSynchronizerTest {
             ).result.get(2, TimeUnit.SECONDS)
 
             releaseShoppingRepository(context, accountId, repositoryDatabase, repositoryState)
+            revokeShoppingAccount(context, accountId)
             LogoutWorkProbe.release.countDown()
 
             val terminal = awaitUniqueWork(workManager, uniqueName) { work ->

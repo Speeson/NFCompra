@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import dev.esgarpe.nfcompra.core.database.LocalShoppingItem
+import dev.esgarpe.nfcompra.core.database.LocalHousehold
+import dev.esgarpe.nfcompra.core.database.LocalShoppingList
 import dev.esgarpe.nfcompra.core.database.NfCompraDatabase
 import dev.esgarpe.nfcompra.core.network.NetworkClient
 import dev.esgarpe.nfcompra.core.network.SessionTokens
@@ -21,6 +23,8 @@ import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -29,6 +33,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.CountDownLatch
 
 @RunWith(RobolectricTestRunner::class)
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -106,6 +111,58 @@ class AccountShoppingSessionTest {
         sessionB.close()
     }
 
+    @Test
+    fun `cold launch renders the Room snapshot while the network refresh is still delayed`() = runBlocking {
+        databaseA.shoppingDao().replaceServerSnapshot(
+            households = listOf(household("Casa guardada")),
+            lists = listOf(shoppingList("Compra guardada")),
+            items = listOf(item("cached-item", "list-1", "Leche guardada")),
+        )
+        val refreshStarted = CountDownLatch(1)
+        val releaseRefresh = CountDownLatch(1)
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
+                "/v1/households" -> {
+                    refreshStarted.countDown()
+                    releaseRefresh.await(5, TimeUnit.SECONDS)
+                    json(householdsJson("1", "Casa remota"))
+                }
+                "/v1/households/home-1/lists" -> json(
+                    """{"lists":[{"id":"list-1","householdId":"home-1","name":"Compra remota","isDefault":true,"version":2,"createdAt":"2026-07-28T00:00:00Z","updatedAt":"2026-07-28T00:01:00Z"}]}""",
+                )
+                "/v1/lists/list-1/items" -> json(
+                    """{"items":[{"id":"remote-item","listId":"list-1","name":"Pan remoto","normalizedName":"pan remoto","quantity":1,"unit":null,"category":null,"note":null,"isChecked":false,"position":0,"version":1,"createdBy":"user-1","updatedBy":"user-1","createdAt":"2026-07-28T00:00:00Z","updatedAt":"2026-07-28T00:00:00Z"}]}""",
+                )
+                else -> MockResponse().setResponseCode(404)
+            }
+        }
+        val tokens = MutableAccountTokenStore(SessionTokens("access", "refresh"))
+        val session = session(databaseA, tokens)
+        try {
+            session.viewModel.load()
+
+            val cached = withTimeout(2_000) {
+                session.viewModel.state.first { it is ShoppingListViewState.Data }
+            } as ShoppingListViewState.Data
+            assertEquals("Compra guardada", cached.content.title)
+            assertEquals(listOf("Leche guardada"), cached.content.pending.map { it.name })
+            assertTrue(refreshStarted.await(1, TimeUnit.SECONDS))
+
+            releaseRefresh.countDown()
+            val refreshed = withTimeout(5_000) {
+                session.viewModel.state.first {
+                    it is ShoppingListViewState.Data &&
+                        it.content.title == "Compra remota" &&
+                        it.content.pending.singleOrNull()?.name == "Pan remoto"
+                }
+            } as ShoppingListViewState.Data
+            assertEquals("Compra remota", refreshed.content.title)
+        } finally {
+            releaseRefresh.countDown()
+            session.close()
+        }
+    }
+
     private fun session(
         database: NfCompraDatabase,
         tokens: TokenStore,
@@ -162,6 +219,24 @@ class AccountShoppingSessionTest {
         version = 1,
         createdBy = "test",
         updatedBy = "test",
+        createdAt = "2026-07-28T00:00:00Z",
+        updatedAt = "2026-07-28T00:00:00Z",
+    )
+
+    private fun household(name: String) = LocalHousehold(
+        id = "home-1",
+        name = name,
+        ownerId = "user-1",
+        createdAt = "2026-07-28T00:00:00Z",
+        updatedAt = "2026-07-28T00:00:00Z",
+    )
+
+    private fun shoppingList(name: String) = LocalShoppingList(
+        id = "list-1",
+        householdId = "home-1",
+        name = name,
+        isDefault = true,
+        version = 1,
         createdAt = "2026-07-28T00:00:00Z",
         updatedAt = "2026-07-28T00:00:00Z",
     )
