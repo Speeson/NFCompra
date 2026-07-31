@@ -42,6 +42,15 @@ class OperationSynchronizer(
 ) {
     suspend fun syncNext(): SyncResult = syncMutex.withLock { syncNextLocked() }
 
+    suspend fun syncUntilBlocked(): SyncResult {
+        while (true) {
+            when (val result = syncNext()) {
+                SyncResult.Idle, SyncResult.Conflict, SyncResult.Retry -> return result
+                SyncResult.Succeeded, SyncResult.Failed -> Unit
+            }
+        }
+    }
+
     private suspend fun syncNextLocked(): SyncResult {
         val operation = dao.pendingOperations().firstOrNull {
             it.state == PendingOperationState.PENDING ||

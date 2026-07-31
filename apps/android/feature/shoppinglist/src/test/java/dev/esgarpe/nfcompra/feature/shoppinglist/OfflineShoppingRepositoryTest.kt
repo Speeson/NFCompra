@@ -73,6 +73,42 @@ class OfflineShoppingRepositoryTest {
     }
 
     @Test
+    fun `cached Room data queues local mutations then one sync loop orders requests and exposes a conflict`() = runTest {
+        seedItem()
+        val cached = repository.observeItems("list-1").first().single()
+        assertEquals("Leche", cached.name)
+        assertEquals(0, server.requestCount)
+
+        repository.updateItem(cached, name = "Leche entera", checked = null)
+        val edited = repository.observeItems("list-1").first().single()
+        repository.updateItem(edited, name = null, checked = true)
+        val queuedIds = database.shoppingDao().pendingOperations().map { it.operationId }
+        assertEquals(2, queuedIds.size)
+        assertEquals(0, server.requestCount)
+
+        server.enqueue(itemResponse("Leche entera", version = 8))
+        server.enqueue(conflictResponse("Leche servidor", version = 9))
+        val synchronizer = OperationSynchronizer(
+            api = retrofitApi(server),
+            dao = database.shoppingDao(),
+            clock = { 2_000L },
+        )
+
+        assertEquals(SyncResult.Conflict, synchronizer.syncUntilBlocked())
+
+        val first = server.takeRequest(1, TimeUnit.SECONDS)
+        val second = server.takeRequest(1, TimeUnit.SECONDS)
+        assertEquals(2, server.requestCount)
+        assertTrue(first?.body?.readUtf8()?.contains("\"operationId\":\"${queuedIds[0]}\"") == true)
+        assertTrue(second?.body?.readUtf8()?.contains("\"operationId\":\"${queuedIds[1]}\"") == true)
+
+        assertTrue(synchronizer.resolve(ResolveConflict.UseServer(queuedIds[1])))
+        assertTrue(database.shoppingDao().pendingOperations().isEmpty())
+        assertEquals("Leche servidor", database.shoppingDao().item("item-1")?.name)
+        assertEquals(9, database.shoppingDao().item("item-1")?.version)
+    }
+
+    @Test
     fun `refresh stores server households lists and items before observation`() = runTest {
         server.enqueue(json("""{"households":[{"id":"home-1","name":"Casa","ownerId":"owner-1","createdAt":"2026-07-27T00:00:00Z","updatedAt":"2026-07-27T00:00:00Z"}]}"""))
         server.enqueue(json("""{"lists":[{"id":"list-1","householdId":"home-1","name":"Compra","isDefault":true,"version":1,"createdAt":"2026-07-27T00:00:00Z","updatedAt":"2026-07-27T00:00:00Z"}]}"""))
@@ -713,6 +749,19 @@ class OfflineShoppingRepositoryTest {
             .setResponseCode(200)
             .setHeader("content-type", "application/json")
             .setBody(body)
+
+    private fun itemResponse(name: String, version: Int) = json(
+        """{"item":${serverItemJson(name, version)}}""",
+    )
+
+    private fun conflictResponse(name: String, version: Int) =
+        MockResponse()
+            .setResponseCode(409)
+            .setHeader("content-type", "application/json")
+            .setBody("""{"error":{"code":"ITEM_VERSION_CONFLICT","message":"Conflicto","details":{"current":${serverItemJson(name, version)}}}}""")
+
+    private fun serverItemJson(name: String, version: Int) =
+        """{"id":"item-1","listId":"list-1","name":"$name","normalizedName":"${name.lowercase()}","quantity":1.0,"unit":"litro","category":null,"note":null,"isChecked":false,"position":0,"version":$version,"createdBy":"user-1","updatedBy":"user-2","createdAt":"2026-07-27T00:00:00Z","updatedAt":"2026-07-27T00:00:00Z"}"""
 }
 
 private class InMemoryOfflineTestTokenStore :

@@ -52,14 +52,10 @@ class SyncWorker(
                 databaseMutex = syncState.databaseMutex,
                 itemAliases = syncState.itemAliases,
             )
-            syncLoop@ while (true) {
-                when (synchronizer.syncNext()) {
-                    SyncResult.Idle, SyncResult.Conflict -> break@syncLoop
-                    SyncResult.Succeeded, SyncResult.Failed -> Unit
-                    SyncResult.Retry -> return Result.retry()
-                }
+            when (synchronizer.syncUntilBlocked()) {
+                SyncResult.Retry -> Result.retry()
+                SyncResult.Idle, SyncResult.Conflict, SyncResult.Succeeded, SyncResult.Failed -> Result.success()
             }
-            Result.success()
         } finally {
             NfCompraDatabase.release(accountId, database)
         }
