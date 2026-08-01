@@ -21,6 +21,8 @@ Inicia la API local en un terminal:
 npm run api:dev
 ```
 
+La API usa `apps/api/wrangler.jsonc` para desarrollo local y `apps/api/wrangler.production.jsonc` para produccion. Ambas configuraciones usan las migraciones de `apps/api/migrations`; la de produccion declara la URL publica de la aplicacion y sus origenes permitidos.
+
 Inicia la PWA en otro terminal:
 
 ```sh

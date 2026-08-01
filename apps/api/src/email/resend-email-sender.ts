@@ -8,7 +8,7 @@ export class ResendEmailSender implements EmailSender {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.env.RESEND_API_KEY}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ from: 'NFCompra <no-reply@nfcompra.esgarpe.dev>', to: [message.to], subject: message.subject, text: message.text }),
+      body: JSON.stringify({ from: 'NFCompra <no-reply@esgarpe.dev>', to: [message.to], subject: message.subject, text: message.text }),
     });
     if (!response.ok) throw new Error('No se pudo enviar el correo.');
   }
