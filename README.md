@@ -1,6 +1,6 @@
 # NFCompra
 
-NFCompra es un MVP online para una persona. Incluye una API local con Worker/D1, una PWA y una aplicacion Android; los tres clientes usan el contrato `/v1`. No hay servicios desplegados.
+NFCompra es un MVP online para una persona. Incluye una API local con Worker/D1, una PWA y una aplicacion Android; los tres clientes usan el contrato `/v1`. La base D1 de produccion tiene las seis migraciones aplicadas; el Worker y los clientes no estan desplegados.
 
 ## Requisitos
 
@@ -22,6 +22,12 @@ npm run api:dev
 ```
 
 La API usa `apps/api/wrangler.jsonc` para desarrollo local y `apps/api/wrangler.production.jsonc` para produccion. Ambas configuraciones usan las migraciones de `apps/api/migrations`; la de produccion declara la URL publica de la aplicacion y sus origenes permitidos.
+
+Para aplicar las migraciones pendientes a la base D1 de produccion desde la raiz:
+
+```sh
+npx wrangler d1 migrations apply nfcompra-production --remote --config apps/api/wrangler.production.jsonc
+```
 
 Inicia la PWA en otro terminal:
 
