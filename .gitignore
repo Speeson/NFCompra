@@ -11,3 +11,4 @@ dist/
 local.properties
 *.jks
 *.keystore
+.vercel

@@ -1,11 +1,18 @@
 # NFCompra
 
-NFCompra es un MVP online para una persona. Incluye una API local con Worker/D1, una PWA y una aplicacion Android; los tres clientes usan el contrato `/v1`. La base D1 de produccion tiene las seis migraciones aplicadas; el Worker y los clientes no estan desplegados.
+NFCompra es un MVP online para una persona. Incluye una API con Worker/D1, una PWA y una aplicacion Android; los tres clientes usan el contrato `/v1`. La base D1 de produccion tiene las seis migraciones aplicadas y la API y PWA estan desplegadas.
 
 ## Requisitos
 
 - Node.js LTS y npm.
 - Android Studio, JDK 21 y Android SDK disponible mediante `ANDROID_HOME` para compilar Android.
+
+## Produccion
+
+- API: `https://api.nfcompra.esgarpe.dev`, con `GET /health` respondiendo `{ "status": "ok" }`.
+- PWA: `https://nfcompra.esgarpe.dev`.
+- La configuracion del Worker de produccion esta en `apps/api/wrangler.production.jsonc`; vincula el dominio personalizado y mantiene deshabilitada la ruta temporal `workers.dev`.
+- Vercel usa `vercel.json` desde la raiz para instalar el monorepo, compilar `@nfcompra/web` y publicar `apps/web/dist`. La variable publica de compilacion `VITE_API_BASE_URL` apunta a la API de produccion.
 
 ## Desarrollo local
 
