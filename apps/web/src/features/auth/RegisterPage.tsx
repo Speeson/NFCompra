@@ -104,6 +104,7 @@ export function VerifyEmailPage({ token, onNavigate }: AuthPageProps): JSX.Eleme
   const { verifyEmail } = useSession();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
 
   async function verify(): Promise<void> {
     if (!token) {
@@ -118,11 +119,24 @@ export function VerifyEmailPage({ token, onNavigate }: AuthPageProps): JSX.Eleme
     }
   }
 
+  async function copyToken(): Promise<void> {
+    if (!token) return;
+    await navigator.clipboard.writeText(token);
+    setCopyMessage('Token copiado.');
+  }
+
   return <AuthLayout title="Verifica tu correo">
     {message && <p role="status">{message}</p>}
+    {copyMessage && <p role="status">{copyMessage}</p>}
     {error && <p role="alert">{error}</p>}
-    <button type="button" onClick={verify}>Verificar correo</button>
-    <button type="button" onClick={() => onNavigate?.('/login')}>Ir a iniciar sesión</button>
+    {token ? <div className="auth-token-copy">
+      <code>{token}</code>
+      <button className="button button--quiet" type="button" onClick={() => void copyToken()}>Copiar token</button>
+    </div> : null}
+    <div className="auth-actions">
+      <button className="button" type="button" onClick={verify}>Verificar correo</button>
+      <button className="button button--secondary" type="button" onClick={() => onNavigate?.('/login')}>Ir a iniciar sesión</button>
+    </div>
   </AuthLayout>;
 }
 

@@ -18,6 +18,42 @@ it('sends Resend emails from the production NFCompra address', async () => {
   });
 });
 
+it('adds a branded HTML verification email when a route only provides text', async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 202 }));
+  vi.stubGlobal('fetch', fetchMock);
+  const sender = new ResendEmailSender({ RESEND_API_KEY: 'test-key', RESEND_FROM_EMAIL: 'NFCompra <no-reply@esgarpe.dev>' } as never);
+
+  await sender.send({
+    to: 'persona@example.com',
+    subject: 'Verifica tu correo de NFCompra',
+    text: 'Verifica tu correo: https://nfcompra.esgarpe.dev/auth/verify?token=abc123',
+  });
+
+  const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+  expect(body.html).toContain('Verifica tu cuenta de NFCompra');
+  expect(body.html).toContain('Verificar cuenta');
+  expect(body.html).toContain('Copiar token manualmente');
+  expect(body.html).toContain('abc123');
+});
+
+it('adds a branded HTML password reset email when a route only provides text', async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 202 }));
+  vi.stubGlobal('fetch', fetchMock);
+  const sender = new ResendEmailSender({ RESEND_API_KEY: 'test-key', RESEND_FROM_EMAIL: 'NFCompra <no-reply@esgarpe.dev>' } as never);
+
+  await sender.send({
+    to: 'persona@example.com',
+    subject: 'Restablece tu contraseña de NFCompra',
+    text: 'Restablece tu contraseña: https://nfcompra.esgarpe.dev/auth/reset-password?token=reset123',
+  });
+
+  const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+  expect(body.html).toContain('Restablece tu contraseña de NFCompra');
+  expect(body.html).toContain('Restablecer contraseña');
+  expect(body.html).toContain('Copiar token manualmente');
+  expect(body.html).toContain('reset123');
+});
+
 it('logs Resend response details without exposing credentials when delivery fails', async () => {
   const fetchMock = vi.fn().mockResolvedValue(new Response('domain is not verified', { status: 403, statusText: 'Forbidden' }));
   const errorMock = vi.spyOn(console, 'error').mockImplementation(() => undefined);

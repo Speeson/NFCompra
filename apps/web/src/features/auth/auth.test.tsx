@@ -7,7 +7,7 @@ import { ApiClient } from '../../api/client';
 import { App } from '../../app/App';
 import { AuthProvider, useSession } from './AuthProvider';
 import { LoginPage } from './LoginPage';
-import { RegisterPage } from './RegisterPage';
+import { RegisterPage, VerifyEmailPage } from './RegisterPage';
 import { clearOfflineLists } from '../shopping-list/offline-cache';
 
 vi.mock('../shopping-list/offline-cache', () => ({
@@ -202,6 +202,33 @@ describe('RegisterPage', () => {
       'Si existe una cuenta pendiente de verificar con ese correo, recibirás un nuevo mensaje.',
     );
     expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/auth/resend-verification'))).toBe(true);
+  });
+});
+
+describe('VerifyEmailPage', () => {
+  it('shows styled verification actions and copies the token manually', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const navigate = vi.fn();
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/auth/refresh')) {
+        return Promise.resolve(Response.json({ error: { code: 'UNAUTHORIZED', message: 'No hay sesión.', details: {} } }, { status: 401 }));
+      }
+      if (url.endsWith('/auth/verify-email')) {
+        return Promise.resolve(Response.json({ status: 'verified' }));
+      }
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+
+    render(<AuthProvider><VerifyEmailPage token="token-manual" onNavigate={navigate} /></AuthProvider>);
+
+    expect(screen.getByRole('button', { name: 'Verificar correo' })).toHaveClass('button');
+    expect(screen.getByRole('button', { name: 'Ir a iniciar sesión' })).toHaveClass('button');
+    fireEvent.click(screen.getByRole('button', { name: 'Copiar token' }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('token-manual'));
+    expect(screen.getByRole('status')).toHaveTextContent('Token copiado.');
   });
 });
 

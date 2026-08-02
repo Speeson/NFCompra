@@ -229,6 +229,9 @@ h2 { font-size: 1rem; }
 .auth-form__row--three { grid-template-columns: repeat(3, 1fr); }
 .auth-form__fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .auth-form__fieldset legend { margin-bottom: var(--space-2); color: var(--color-primary); font-size: 0.78rem; font-weight: 900; letter-spacing: 0.18em; text-transform: uppercase; }
+.auth-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-4); }
+.auth-token-copy { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); align-items: center; margin: var(--space-4) 0; padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+.auth-token-copy code { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--color-primary); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; white-space: nowrap; }
 
 .route-card--household { min-height: 3.8rem; padding: .55rem .75rem; gap: var(--space-3); }
 .route-card__name { font-size: 1rem; }
@@ -245,6 +248,10 @@ h2 { font-size: 1rem; }
   .shopping-section { padding: var(--space-3); }
   .auth-form__row,
   .auth-form__row--three { grid-template-columns: 1fr; }
+  .auth-actions,
+  .auth-token-copy { grid-template-columns: 1fr; }
+  .auth-actions .button,
+  .auth-token-copy .button { width: 100%; }
   .route-create-form--list { grid-template-columns: 1fr; }
   .route-create-form--list > div { display: flex; }
   .route-create-form--list label { white-space: normal; }
