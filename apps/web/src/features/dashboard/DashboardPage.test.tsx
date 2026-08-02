@@ -100,4 +100,22 @@ describe('DashboardPage', () => {
     expect(await screen.findByRole('heading', { name: 'Casa dos' })).toBeVisible();
     expect(screen.getByText('No se pudo cargar este hogar.')).toBeVisible();
   });
+
+  it('waits for item data before showing household counts and list progress', async () => {
+    let resolveItems!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/lists/list-1/items')) return new Promise<Response>((resolve) => { resolveItems = resolve; });
+      return Promise.resolve(responseForDashboard(url));
+    }));
+    renderDashboard();
+
+    await screen.findByRole('heading', { name: 'Casa' });
+    expect(await screen.findByText('Cargando este hogar…')).toBeVisible();
+    expect(screen.queryByText('0 pendientes')).not.toBeInTheDocument();
+    expect(screen.queryByText('0 de 0 artículos comprados')).not.toBeInTheDocument();
+
+    resolveItems(Response.json({ items: [] }));
+    expect(await screen.findByText('0 pendientes')).toBeVisible();
+  });
 });
