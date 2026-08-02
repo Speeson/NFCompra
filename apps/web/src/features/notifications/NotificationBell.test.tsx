@@ -30,6 +30,7 @@ describe('NotificationBell', () => {
     render(<QueryClientProvider client={createWebQueryClient()}><NotificationBell onNavigate={navigate} /></QueryClientProvider>);
     expect(await screen.findByRole('button', { name: 'Notificaciones (2 sin leer)' })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Notificaciones (2 sin leer)' }));
+    expect(screen.getByRole('region', { name: 'Panel de notificaciones' })).toHaveClass('notification-bell__panel');
     fireEvent.click(await screen.findByRole('button', { name: 'Nueva invitación' }));
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/invitations/invite-1/accept'));
     fireEvent.click(screen.getByRole('button', { name: 'Notificaciones (2 sin leer)' }));
@@ -49,6 +50,18 @@ describe('NotificationBell', () => {
     await screen.findByRole('button', { name: 'Notificaciones' });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     if (descriptor) Object.defineProperty(document, 'visibilityState', descriptor);
+  });
+
+  it('closes the notification panel when clicking outside it', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => String(input).endsWith('/notifications/unread-count') ? Promise.resolve(Response.json({ count: 0 })) : Promise.resolve(Response.json({ notifications: [] }))));
+    render(<QueryClientProvider client={createWebQueryClient()}><NotificationBell onNavigate={vi.fn()} /></QueryClientProvider>);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Notificaciones' }));
+    expect(screen.getByRole('region', { name: 'Panel de notificaciones' })).toBeVisible();
+
+    fireEvent.mouseDown(document.body);
+
+    expect(screen.queryByRole('region', { name: 'Panel de notificaciones' })).not.toBeInTheDocument();
   });
 
   it('shows notification read errors inline and still opens the selected context', async () => {
@@ -72,7 +85,7 @@ describe('NotificationBell', () => {
   });
 
   it('changes the mounted shell selection when a notification targets another list', async () => {
-    window.history.replaceState({}, '', '/');
+    window.history.replaceState({}, '', '/?household=home-1&list=list-1');
     vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith('/auth/refresh')) return Promise.resolve(Response.json({ accessToken: 'access' }));
@@ -103,7 +116,7 @@ describe('NotificationBell', () => {
   });
 
   it('keeps a notification read failure visible after opening an invitation route', async () => {
-    window.history.replaceState({}, '', '/');
+    window.history.replaceState({}, '', '/?household=home-1&list=list-1');
     vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith('/auth/refresh')) return Promise.resolve(Response.json({ accessToken: 'access' }));

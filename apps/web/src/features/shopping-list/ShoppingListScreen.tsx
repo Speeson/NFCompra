@@ -19,7 +19,6 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
   const checkedItems = items.filter((item) => item.isChecked);
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('1');
-  const [unit, setUnit] = useState('');
   const [suggestions, setSuggestions] = useState<ProductCatalogItem[]>([]);
 
   useEffect(() => {
@@ -44,8 +43,10 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
     event.preventDefault();
     const parsedQuantity = Number(quantity);
     if (isOffline || !name.trim() || !Number.isFinite(parsedQuantity) || parsedQuantity <= 0) return;
-    onAdd?.({ name: name.trim(), quantity: parsedQuantity, unit: unit.trim() || null });
-    setName(''); setQuantity('1'); setUnit(''); setSuggestions([]);
+    onAdd?.({ name: name.trim(), quantity: parsedQuantity, unit: null });
+    setName('');
+    setQuantity('1');
+    setSuggestions([]);
   }
 
   function selectSuggestion(suggestion: ProductCatalogItem): void {
@@ -55,18 +56,18 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
 
   return <main className="shopping-list">
     <header className="shopping-list__header">
-      <div><p className="eyebrow">Lista de la compra</p><h1>{title}</h1></div>
-      <button type="button" className="icon-button" aria-label="Añadir producto" disabled={isOffline} onClick={() => document.getElementById('new-product-name')?.focus()}><span aria-hidden="true">+</span></button>
+      <div className="shopping-list__title"><p className="eyebrow">Lista de la compra</p><h1>{title}</h1></div>
+      {onAdd ? <form className="product-form" onSubmit={addItem}>
+        <label htmlFor="new-product-name">Producto</label>
+        <div className="product-autocomplete"><input id="new-product-name" disabled={isOffline} value={name} onChange={(event) => setName(event.target.value)} required maxLength={200} autoComplete="off" />
+          {suggestions.length ? <div className="product-suggestions" role="listbox" aria-label="Sugerencias de productos">{suggestions.map((suggestion) => <button key={suggestion.id} type="button" className="product-suggestion" onClick={() => selectSuggestion(suggestion)}>{suggestionLabel(suggestion)}</button>)}</div> : null}
+        </div>
+        <label htmlFor="new-product-quantity">Cantidad</label>
+        <input id="new-product-quantity" disabled={isOffline} type="number" min="0.01" step="any" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />
+        <button type="submit" disabled={isOffline}>Añadir</button>
+      </form> : null}
     </header>
     {isOffline ? <p className="offline-notice" role="status">Sin conexión</p> : null}
-    {onAdd ? <form className="product-form" onSubmit={addItem}>
-      <label htmlFor="new-product-name">Producto</label><div className="product-autocomplete"><input id="new-product-name" disabled={isOffline} value={name} onChange={(event) => setName(event.target.value)} required maxLength={200} autoComplete="off" />
-        {suggestions.length ? <div className="product-suggestions" role="listbox" aria-label="Sugerencias de productos">{suggestions.map((suggestion) => <button key={suggestion.id} type="button" className="product-suggestion" onClick={() => selectSuggestion(suggestion)}>{suggestionLabel(suggestion)}</button>)}</div> : null}
-      </div>
-      <label htmlFor="new-product-quantity">Cantidad</label><input id="new-product-quantity" disabled={isOffline} type="number" min="0.01" step="any" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />
-      <label htmlFor="new-product-unit">Unidad</label><input id="new-product-unit" disabled={isOffline} value={unit} onChange={(event) => setUnit(event.target.value)} maxLength={50} />
-      <button type="submit" disabled={isOffline}>Añadir</button>
-    </form> : null}
     <ShoppingSection title="Pendientes" items={pendingItems} emptyMessage="No quedan productos pendientes." isOffline={isOffline} onToggle={onToggle} onUpdate={onUpdate} onDelete={onDelete} />
     <ShoppingSection title="Comprados" items={checkedItems} emptyMessage="Aún no has marcado ningún producto." isOffline={isOffline} onToggle={onToggle} onUpdate={onUpdate} onDelete={onDelete} />
   </main>;
@@ -77,7 +78,7 @@ function suggestionLabel(suggestion: ProductCatalogItem): string {
 }
 
 function ShoppingSection({ title, items, emptyMessage, isOffline, onToggle, onUpdate, onDelete }: { title: string; items: ShoppingItem[]; emptyMessage: string; isOffline: boolean; onToggle?: (item: ShoppingItem) => void; onUpdate?: (item: ShoppingItem, input: ProductInput) => void; onDelete?: (item: ShoppingItem) => void }): JSX.Element {
-  return <section className="shopping-section" aria-labelledby={`${title.toLowerCase()}-heading`}>
+  return <section className={title === 'Comprados' ? 'shopping-section shopping-section--checked' : 'shopping-section shopping-section--pending'} aria-labelledby={`${title.toLowerCase()}-heading`}>
     <h2 id={`${title.toLowerCase()}-heading`}>{title}</h2>
     {items.length === 0 ? <p className="empty-state">{emptyMessage}</p> : <ul className="shopping-items">{items.map((item) => <ShoppingItemRow key={item.id} item={item} isOffline={isOffline} onToggle={onToggle} onUpdate={onUpdate} onDelete={onDelete} />)}</ul>}
   </section>;
@@ -88,6 +89,7 @@ function ShoppingItemRow({ item, isOffline, onToggle, onUpdate, onDelete }: { it
   const [name, setName] = useState(item.name);
   const [quantity, setQuantity] = useState(String(item.quantity));
   const [unit, setUnit] = useState(item.unit ?? '');
+
   function save(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     const parsedQuantity = Number(quantity);
@@ -95,6 +97,7 @@ function ShoppingItemRow({ item, isOffline, onToggle, onUpdate, onDelete }: { it
     onUpdate?.(item, { name: name.trim(), quantity: parsedQuantity, unit: unit.trim() || null });
     setEditing(false);
   }
+
   return <li className={item.isChecked ? 'shopping-item shopping-item--checked' : 'shopping-item'}>
     <button type="button" className="check-button" aria-label={`${item.isChecked ? 'Desmarcar' : 'Marcar'} ${item.name}`} aria-pressed={item.isChecked} disabled={isOffline} onClick={() => onToggle?.(item)}><span aria-hidden="true">{item.isChecked ? '✓' : ''}</span></button>
     {editing ? <form onSubmit={save} className="product-edit-form">
@@ -103,7 +106,7 @@ function ShoppingItemRow({ item, isOffline, onToggle, onUpdate, onDelete }: { it
       <label>Unidad<input aria-label="Unidad del producto" disabled={isOffline} value={unit} onChange={(event) => setUnit(event.target.value)} /></label>
       <button type="submit" disabled={isOffline}>Guardar</button><button type="button" disabled={isOffline} onClick={() => setEditing(false)}>Cancelar</button>
     </form> : <><span className="shopping-item__name">{item.name}</span><span className="shopping-item__quantity">{item.quantity}{item.unit ? ` ${item.unit}` : ''}</span></>}
-    {onUpdate ? <button type="button" disabled={isOffline} onClick={() => setEditing(true)}>Editar {item.name}</button> : null}
-    {onDelete ? <button type="button" disabled={isOffline} onClick={() => onDelete(item)}>Eliminar {item.name}</button> : null}
+    {onUpdate ? <button type="button" className="item-action item-action--edit" aria-label={`Editar ${item.name}`} disabled={isOffline} onClick={() => setEditing(true)}>✎</button> : null}
+    {onDelete ? <button type="button" className="item-action item-action--delete" aria-label={`Eliminar ${item.name}`} disabled={isOffline} onClick={() => onDelete(item)}>×</button> : null}
   </li>;
 }

@@ -28,6 +28,41 @@ function shoppingItem(name: string) {
 }
 
 describe('ShoppingListRoute', () => {
+  it('opens an exact deep-linked cached list when the household lookup is unavailable offline', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    vi.mocked(loadOfflineList).mockResolvedValue([{ ...shoppingItem('Arroz guardado'), listId: 'list-7' }]);
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/households') || url.endsWith('/lists/list-7/items')) return Promise.reject(new Error('Sin conexión'));
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+
+    render(<QueryClientProvider client={createWebQueryClient()}><ShoppingListRoute currentUserId="user-1" requestedListId="list-7" /></QueryClientProvider>);
+
+    expect(await screen.findByText('Arroz guardado')).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('Sin conexión');
+    expect(screen.queryByLabelText('Hogar')).not.toBeInTheDocument();
+  });
+
+  it('resolves a deep-linked list to its non-first owning household without replacing the requested list', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
+    vi.mocked(loadOfflineList).mockResolvedValue(null);
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'home-1', name: 'Casa uno' }, { id: 'home-2', name: 'Casa dos' }] }));
+      if (url.endsWith('/households/home-1/lists')) return Promise.resolve(Response.json({ lists: [{ ...shoppingList(), id: 'list-1', householdId: 'home-1', name: 'Lista uno' }] }));
+      if (url.endsWith('/households/home-2/lists')) return Promise.resolve(Response.json({ lists: [{ ...shoppingList(), id: 'list-7', householdId: 'home-2', name: 'Compra semanal' }] }));
+      if (url.endsWith('/lists/list-7/items')) return Promise.resolve(Response.json({ items: [] }));
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+
+    render(<QueryClientProvider client={createWebQueryClient()}><ShoppingListRoute currentUserId="user-1" requestedListId="list-7" /></QueryClientProvider>);
+
+    expect(await screen.findByRole('heading', { name: 'Compra semanal' })).toBeVisible();
+    expect(screen.getByLabelText('Hogar')).toHaveValue('home-2');
+    expect(screen.getByLabelText('Lista')).toHaveValue('list-7');
+  });
+
   it('shows the matching cached list read-only after an offline item request fails', async () => {
     Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
     vi.mocked(loadOfflineList).mockResolvedValue([shoppingItem('Leche guardada')]);
@@ -43,7 +78,7 @@ describe('ShoppingListRoute', () => {
 
     expect(await screen.findByText('Leche guardada')).toBeVisible();
     expect(screen.getByRole('status')).toHaveTextContent('Sin conexi\u00f3n');
-    expect(screen.getByRole('button', { name: 'A\u00f1adir producto' })).toBeDisabled();
+    expect(screen.getByLabelText('Producto')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'A\u00f1adir' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Marcar Leche guardada' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Editar Leche guardada' })).toBeDisabled();

@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, type JSX } from 'react';
-import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ApiError } from '../../api/client';
 import { HouseholdSetup } from '../households/HouseholdSetup';
-import { MembersPanel } from '../households/MembersPanel';
 import { notificationsQueryKey, unreadNotificationsQueryKey } from '../notifications/notification-api';
 import { ShoppingListScreen } from './ShoppingListScreen';
 import { loadOfflineList, saveOfflineList } from './offline-cache';
@@ -22,7 +21,7 @@ export function createWebQueryClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
 }
 
-export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, requestedListId }: { currentUserId?: string; requestedHouseholdId?: string | null; requestedListId?: string | null }): JSX.Element {
+export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, requestedListId, onNavigate }: { currentUserId?: string; requestedHouseholdId?: string | null; requestedListId?: string | null; onNavigate?(path: string): void }): JSX.Element {
   const queryClient = useQueryClient();
   const [householdId, setHouseholdId] = useState<string | undefined>(() => requestedHouseholdId ?? new URL(window.location.href).searchParams.get('household') ?? undefined);
   const [listId, setListId] = useState<string | undefined>(() => requestedListId ?? new URL(window.location.href).searchParams.get('list') ?? undefined);
@@ -37,6 +36,9 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
   const nextRevision = useRef(0);
   const optimisticItems = useRef(new Map<string, OptimisticItemState>());
   const householdsQuery = useQuery({ queryKey: householdQueryKey, queryFn: fetchHouseholds });
+  const isDirectListRoute = Boolean(requestedListId && !requestedHouseholdId);
+  const ownershipQueries = useQueries({ queries: isDirectListRoute ? (householdsQuery.data ?? []).map((household) => ({ queryKey: listQueryKey(household.id), queryFn: () => fetchLists(household.id) })) : [] });
+  const resolvedHouseholdId = isDirectListRoute ? householdsQuery.data?.find((_household, index) => (ownershipQueries[index]?.data ?? []).some((list) => list.id === requestedListId))?.id : undefined;
   const listsQuery = useQuery({ queryKey: listQueryKey(householdId ?? ''), queryFn: () => fetchLists(householdId!), enabled: Boolean(householdId) });
   const itemsQuery = useQuery({
     queryKey: itemQueryKey(listId ?? ''), queryFn: async () => {
@@ -78,10 +80,16 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
     setListId(requestedListId ?? undefined);
   }, [requestedHouseholdId, requestedListId]);
   useEffect(() => {
+    if (!resolvedHouseholdId || !requestedListId) return;
+    setHouseholdId(resolvedHouseholdId);
+    setListId(requestedListId);
+  }, [requestedListId, resolvedHouseholdId]);
+  useEffect(() => {
     const households = householdsQuery.data ?? [];
     const first = households[0];
+    if (isDirectListRoute && !householdId) return;
     if (first && !households.some((household) => household.id === householdId)) setHouseholdId(first.id);
-  }, [householdId, householdsQuery.data]);
+  }, [householdId, householdsQuery.data, isDirectListRoute]);
   useEffect(() => {
     const lists = listsQuery.data ?? [];
     const first = lists[0];
@@ -89,6 +97,7 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
   }, [listId, listsQuery.data]);
 
   const isOffline = offlineSnapshot?.source === offlineSource(currentUserId, listId ?? '');
+  const isDirectOfflineRoute = Boolean(requestedListId && !householdId && isOffline && !itemsQuery.isPending);
   function resetFeedback(): void { setMessage(undefined); setConflict(undefined); }
   function invalidateNotifications(): void {
     void queryClient.invalidateQueries({ queryKey: notificationsQueryKey, exact: true });
@@ -216,13 +225,19 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
     onError: () => setMessage('No se pudo crear la lista.'),
   });
 
+  if (isDirectOfflineRoute) return <ShoppingListScreen title="Lista" items={(itemsQuery.data ?? []).map((item) => ({ ...item, unit: item.unit ?? undefined }))} isOffline />;
   if (householdsQuery.isPending) return <main><p role="status">Cargando hogares…</p></main>;
   if (householdsQuery.isError) return <main><p role="alert">No se pudieron cargar los hogares.</p></main>;
+  if (isDirectListRoute && !resolvedHouseholdId && ownershipQueries.some((query) => query.isError)) return <main><p role="alert">No se pudo localizar la lista.</p></main>;
+  if (isDirectListRoute && !resolvedHouseholdId && ownershipQueries.some((query) => query.isPending)) return <main><p role="status">Cargando lista…</p></main>;
+  if (isDirectListRoute && !resolvedHouseholdId && ownershipQueries.length > 0) return <main><p role="alert">No se encontró esta lista.</p></main>;
   if (!householdsQuery.data?.length) return <HouseholdSetup onCreate={async (name) => { try { await householdMutation.mutateAsync(name); } catch { /* mutation exposes feedback */ } }} isCreating={householdMutation.isPending} error={message} />;
   if (!householdId || listsQuery.isPending || !listId || itemsQuery.isPending) return <main><p role="status">Cargando lista…</p></main>;
   if (listsQuery.isError || itemsQuery.isError) return <main><p role="alert">No se pudo cargar la lista.</p></main>;
 
+  const currentHousehold = householdsQuery.data.find((household) => household.id === householdId);
   return <>
+    {onNavigate ? <button className="back-link back-link--route" type="button" onClick={() => currentHousehold ? onNavigate(`/households/${encodeURIComponent(currentHousehold.id)}`) : onNavigate('/lists')}>← Volver a {currentHousehold?.name ?? 'listas'}</button> : null}
     <section className="list-selectors" aria-label="Seleccionar hogar y lista">
       <label>Hogar<select disabled={isOffline} value={householdId} onChange={(event) => { setHouseholdId(event.target.value); setListId(undefined); }}>{householdsQuery.data.map((household) => <option key={household.id} value={household.id}>{household.name}</option>)}</select></label>
       <label>Lista<select disabled={isOffline} value={listId} onChange={(event) => setListId(event.target.value)}>{listsQuery.data?.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}</select></label>
@@ -235,7 +250,6 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
       onToggle={(item) => { if (!isOffline) updateMutation.mutate({ item: item as ApiShoppingItem, patch: { isChecked: !item.isChecked } }); }}
       onUpdate={(item, input) => { if (!isOffline) updateMutation.mutate({ item: item as ApiShoppingItem, patch: input }); }}
       onDelete={(item) => { if (!isOffline) deleteMutation.mutate(item as ApiShoppingItem); }} />
-    {currentUserId && !isOffline ? <MembersPanel householdId={householdId} currentUserId={currentUserId} /> : null}
   </>;
 }
 

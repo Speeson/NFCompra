@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "test": "vitest run",
+    "test": "node --no-warnings --test test/migrations.wrangler.node-test.mjs && vitest run",
     "catalog:build-sql": "node --experimental-strip-types scripts/build-catalog-sql.ts",
     "db:migrate:local": "wrangler d1 migrations apply DB --local"
   },

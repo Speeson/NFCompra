@@ -7,11 +7,19 @@ interface AuthPageProps {
   onNavigate?(path: string): void;
 }
 
+export interface LoginFormProps extends AuthPageProps {
+  onSwitchToRegister?(): void;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof ApiError ? error.message : 'No se pudo completar la solicitud. Inténtalo de nuevo.';
 }
 
 export function LoginPage({ onNavigate }: AuthPageProps): JSX.Element {
+  return <AuthLayout title="Inicia sesión en NFCompra"><LoginForm onNavigate={onNavigate} /></AuthLayout>;
+}
+
+export function LoginForm({ onNavigate, onSwitchToRegister }: LoginFormProps): JSX.Element {
   const { login } = useSession();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -30,7 +38,7 @@ export function LoginPage({ onNavigate }: AuthPageProps): JSX.Element {
     }
   }
 
-  return <AuthLayout title="Inicia sesión en NFCompra">
+  return <>
     <form onSubmit={submit}>
       <label>Correo electrónico<input name="email" type="email" autoComplete="email" required /></label>
       <label>Contraseña<input name="password" type="password" autoComplete="current-password" required /></label>
@@ -39,8 +47,11 @@ export function LoginPage({ onNavigate }: AuthPageProps): JSX.Element {
     </form>
     <button type="button" onClick={() => onNavigate?.('/auth/forgot-password')}>¿Has olvidado tu contraseña?</button>
     <button type="button" onClick={() => onNavigate?.('/auth/resend-verification')}>Reenviar correo de verificación</button>
-    <p>¿No tienes cuenta? <button type="button" onClick={() => onNavigate?.('/register')}>Regístrate</button></p>
-  </AuthLayout>;
+    <p>¿No tienes cuenta? <button type="button" onClick={() => {
+      if (onSwitchToRegister) onSwitchToRegister();
+      else onNavigate?.('/register');
+    }}>Regístrate</button></p>
+  </>;
 }
 
 export function ResendVerificationPage({ onNavigate }: AuthPageProps): JSX.Element {

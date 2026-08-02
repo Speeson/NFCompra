@@ -11,12 +11,15 @@ declare global {
     interface Env {
       DB: D1Database;
       TEST_MIGRATIONS: Migration[];
+      WRANGLER_NOTIFICATION_MIGRATION: string;
     }
   }
 }
 
-it('applies every migration to an empty database', async () => {
-  await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
+it('applies every migration to an empty database through the remote Wrangler execution boundary', async () => {
+  await applyD1Migrations(env.DB, env.TEST_MIGRATIONS.slice(0, 5));
+  await env.DB.exec(env.WRANGLER_NOTIFICATION_MIGRATION);
+  await applyD1Migrations(env.DB, env.TEST_MIGRATIONS.slice(6));
 
   const users = await env.DB.prepare('PRAGMA table_info(users)').all<{ name: string }>();
   const refreshTokens = await env.DB.prepare('PRAGMA table_info(refresh_tokens)').all<{ name: string }>();
@@ -29,6 +32,9 @@ it('applies every migration to an empty database', async () => {
   const productCatalog = await env.DB.prepare('PRAGMA table_info(product_catalog)').all<{ name: string }>();
   const productAliases = await env.DB.prepare('PRAGMA table_info(product_aliases)').all<{ name: string }>();
   const shoppingItems = await env.DB.prepare('PRAGMA table_info(shopping_items)').all<{ name: string }>();
+  const notificationTriggers = await env.DB
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'notifications_%' ORDER BY name")
+    .all<{ name: string }>();
 
   expect(users.results.map(({ name }) => name)).toContain('session_version');
   expect(refreshTokens.results.map(({ name }) => name)).toContain('session_version');
@@ -42,6 +48,14 @@ it('applies every migration to an empty database', async () => {
   expect(productCatalog.results.map(({ name }) => name)).toEqual(expect.arrayContaining(['id', 'name', 'normalized_name', 'category_id', 'icon_key', 'source_product_id']));
   expect(productAliases.results.map(({ name }) => name)).toEqual(expect.arrayContaining(['id', 'product_id', 'alias', 'normalized_alias']));
   expect(shoppingItems.results.map(({ name }) => name)).toContain('catalog_product_id');
+  expect(notificationTriggers.results.map(({ name }) => name)).toEqual([
+    'notifications_invitation_accepted',
+    'notifications_invitation_received',
+    'notifications_item_created',
+    'notifications_item_deleted',
+    'notifications_item_updated',
+    'notifications_member_removed',
+  ]);
   expect(await env.DB.prepare('SELECT COUNT(*) AS count FROM d1_migrations').first<{ count: number }>())
     .toEqual({ count: env.TEST_MIGRATIONS.length });
 });
