@@ -20,6 +20,7 @@
   ],
   "vars": {
     "APP_BASE_URL": "https://nfcompra.esgarpe.dev",
-    "ALLOWED_ORIGINS": "https://nfcompra.esgarpe.dev"
+    "ALLOWED_ORIGINS": "https://nfcompra.esgarpe.dev",
+    "RESEND_FROM_EMAIL": "NFCompra <no-reply@esgarpe.dev>"
   }
 }
