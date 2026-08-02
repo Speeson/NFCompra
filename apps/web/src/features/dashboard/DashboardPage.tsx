@@ -1,4 +1,4 @@
-import { useQueries, useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import type { JSX } from 'react';
 
 import { fetchMembers, memberQueryKey, type HouseholdMember } from '../households/household-api';
@@ -10,52 +10,42 @@ interface DashboardPageProps {
   onNavigate(path: string): void;
 }
 
-type HouseholdData = { household: Household; members: HouseholdMember[]; lists: Array<{ list: ShoppingList; items: ApiShoppingItem[] }> };
-
 function householdPath(householdId: string): string { return `/?household=${encodeURIComponent(householdId)}`; }
 
 export function DashboardPage({ userName, onNavigate }: DashboardPageProps): JSX.Element {
   const households = useQuery({ queryKey: householdQueryKey, queryFn: fetchHouseholds });
   const notifications = useQuery({ queryKey: notificationsQueryKey, queryFn: fetchNotifications });
-  const householdQueries = useQueries({
-    queries: (households.data ?? []).map((household) => ({
-      queryKey: ['dashboard', household.id] as const,
-      queryFn: async (): Promise<HouseholdData> => {
-        const [members, lists] = await Promise.all([fetchMembers(household.id), fetchLists(household.id)]);
-        const items = await Promise.all(lists.map(async (list) => ({ list, items: await fetchItems(list.id) })));
-        return { household, members, lists: items };
-      },
-    })),
-  });
+  const householdList = households.data ?? [];
+  const memberQueries = useQueries({ queries: householdList.map((household) => ({ queryKey: memberQueryKey(household.id), queryFn: () => fetchMembers(household.id) })) });
+  const listQueries = useQueries({ queries: householdList.map((household) => ({ queryKey: listQueryKey(household.id), queryFn: () => fetchLists(household.id) })) });
+  const lists = listQueries.flatMap((query) => query.data ?? []);
+  const itemQueries = useQueries({ queries: lists.map((list) => ({ queryKey: itemQueryKey(list.id), queryFn: () => fetchItems(list.id) })) });
+  const itemQueryByListId = new Map(lists.map((list, index) => [list.id, itemQueries[index]]));
 
   if (households.isPending) return <section className="dashboard" aria-busy="true"><p role="status">Cargando el resumen…</p></section>;
   if (households.isError) return <section className="dashboard"><p role="alert">No se pudo cargar el resumen de hogares.</p></section>;
   if (!households.data?.length) return <section className="dashboard"><header><p className="eyebrow">Resumen</p><h1>Hola, {userName}</h1></header><p className="dashboard__empty">Todavía no tienes hogares.</p><QuickActions onNavigate={onNavigate} /></section>;
 
-  const details = householdQueries.filter((query): query is UseQueryResult<HouseholdData> & { data: HouseholdData } => Boolean(query.data)).map((query) => query.data);
-  const isLoadingDetails = householdQueries.some((query) => query.isPending);
-  const hasDetailError = householdQueries.some((query) => query.isError);
-
   return <section className="dashboard">
     <header className="dashboard__header"><div><p className="eyebrow">Resumen</p><h1>Hola, {userName}</h1><p>Todo lo importante de tus hogares, de un vistazo.</p></div></header>
-    {isLoadingDetails ? <p role="status">Cargando los detalles de tus hogares…</p> : null}
-    {hasDetailError ? <p role="alert">No se pudo cargar toda la información de los hogares.</p> : null}
+    {memberQueries.some((query) => query.isPending) || listQueries.some((query) => query.isPending) ? <p role="status">Cargando los detalles de tus hogares…</p> : null}
     <div className="dashboard__households">
-      {details.map((detail) => <HouseholdCard key={detail.household.id} detail={detail} onNavigate={onNavigate} />)}
+      {householdList.map((household, index) => <HouseholdCard key={household.id} household={household} members={memberQueries[index].data} lists={listQueries[index].data} memberOrListError={memberQueries[index].isError || listQueries[index].isError} itemQueryByListId={itemQueryByListId} onNavigate={onNavigate} />)}
     </div>
     <RecentActivity notifications={notifications.data} isPending={notifications.isPending} isError={notifications.isError} onNavigate={onNavigate} />
     <QuickActions onNavigate={onNavigate} />
   </section>;
 }
 
-function HouseholdCard({ detail, onNavigate }: { detail: HouseholdData; onNavigate(path: string): void }): JSX.Element {
-  const items = detail.lists.flatMap(({ items: listItems }) => listItems);
+function HouseholdCard({ household, members, lists, memberOrListError, itemQueryByListId, onNavigate }: { household: Household; members: HouseholdMember[] | undefined; lists: ShoppingList[] | undefined; memberOrListError: boolean; itemQueryByListId: Map<string, { data?: ApiShoppingItem[]; isError: boolean } | undefined>; onNavigate(path: string): void }): JSX.Element {
+  const listDetails = (lists ?? []).map((list) => ({ list, items: itemQueryByListId.get(list.id)?.data ?? [] }));
+  const hasItemError = (lists ?? []).some((list) => itemQueryByListId.get(list.id)?.isError);
+  const items = listDetails.flatMap(({ items: listItems }) => listItems);
   const pending = items.filter((item) => !item.isChecked).length;
   return <article className="dashboard__household-card">
-    <div><p className="eyebrow">Hogar</p><h2>{detail.household.name}</h2></div>
-    <dl className="dashboard__stats"><div><dt>Miembros</dt><dd>{detail.members.length} {detail.members.length === 1 ? 'miembro' : 'miembros'}</dd></div><div><dt>Listas</dt><dd>{detail.lists.length} {detail.lists.length === 1 ? 'lista' : 'listas'}</dd></div><div><dt>Pendientes</dt><dd>{pending} {pending === 1 ? 'pendiente' : 'pendientes'}</dd></div></dl>
-    <div className="dashboard__list-progress">{detail.lists.map(({ list, items: listItems }) => <button key={list.id} type="button" onClick={() => onNavigate(`/?household=${encodeURIComponent(detail.household.id)}&list=${encodeURIComponent(list.id)}`)}><strong>{list.name}</strong><span>{listItems.filter((item) => item.isChecked).length} de {listItems.length} artículos comprados</span></button>)}</div>
-    <button className="button" type="button" onClick={() => onNavigate(householdPath(detail.household.id))}>Abrir {detail.household.name}</button>
+    <div><p className="eyebrow">Hogar</p><h2>{household.name}</h2></div>
+    {memberOrListError || hasItemError ? <p role="alert">No se pudo cargar este hogar.</p> : <><dl className="dashboard__stats"><div><dt>Miembros</dt><dd>{members?.length ?? 0} {(members?.length ?? 0) === 1 ? 'miembro' : 'miembros'}</dd></div><div><dt>Listas</dt><dd>{listDetails.length} {listDetails.length === 1 ? 'lista' : 'listas'}</dd></div><div><dt>Pendientes</dt><dd>{pending} {pending === 1 ? 'pendiente' : 'pendientes'}</dd></div></dl><div className="dashboard__list-progress">{listDetails.map(({ list, items: listItems }) => <button key={list.id} type="button" onClick={() => onNavigate(`/?household=${encodeURIComponent(household.id)}&list=${encodeURIComponent(list.id)}`)}><strong>{list.name}</strong><span>{listItems.filter((item) => item.isChecked).length} de {listItems.length} artículos comprados</span></button>)}</div></>}
+    <button className="button" type="button" onClick={() => onNavigate(householdPath(household.id))}>Abrir {household.name}</button>
   </article>;
 }
 

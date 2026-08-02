@@ -30,9 +30,9 @@ describe('DashboardPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Hola, Ana' })).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Casa' })).toBeVisible();
+    expect(await screen.findByText('1 pendiente')).toBeVisible();
     expect(screen.getByText('2 miembros')).toBeVisible();
     expect(screen.getByText('1 lista')).toBeVisible();
-    expect(screen.getByText('1 pendiente')).toBeVisible();
     expect(screen.getByText('Compra semanal')).toBeVisible();
     expect(screen.getByText('1 de 2 artículos comprados')).toBeVisible();
     expect(screen.getByText('Bea actualizó Compra semanal')).toBeVisible();
@@ -81,5 +81,23 @@ describe('DashboardPage', () => {
     }));
     renderDashboard();
     await waitFor(() => expect(screen.getByText('No tienes actividad reciente.')).toBeVisible());
+  });
+
+  it('keeps other household cards available when one household detail query fails', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'home-1', name: 'Casa uno' }, { id: 'home-2', name: 'Casa dos' }] }));
+      if (url.endsWith('/households/home-1/members')) return Promise.resolve(Response.json({ members: [{ userId: 'user-1', name: 'Ana', email: 'ana@example.test', role: 'owner', createdAt: '2026-08-02T00:00:00.000Z' }] }));
+      if (url.endsWith('/households/home-1/lists')) return Promise.resolve(Response.json({ lists: [] }));
+      if (url.endsWith('/households/home-2/members')) return Promise.resolve(Response.json({ error: { message: 'No disponible' } }, { status: 503 }));
+      if (url.endsWith('/households/home-2/lists')) return Promise.resolve(Response.json({ lists: [] }));
+      if (url.endsWith('/notifications')) return Promise.resolve(Response.json({ notifications: [] }));
+      return Promise.resolve(Response.json({ error: { message: 'Ruta inesperada' } }, { status: 404 }));
+    }));
+    renderDashboard();
+
+    expect(await screen.findByRole('heading', { name: 'Casa uno' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Casa dos' })).toBeVisible();
+    expect(screen.getByText('No se pudo cargar este hogar.')).toBeVisible();
   });
 });
