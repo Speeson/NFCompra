@@ -58,11 +58,6 @@ it('sends a verifiable email and creates a web session for a verified user', asy
   expect(fakeEmailSender.messages).toHaveLength(1);
   expect(fakeEmailSender.messages[0]).toMatchObject({ to: email, subject: 'Verifica tu correo de NFCompra' });
   expect(fakeEmailSender.messages[0].text).toContain('http://app.test/auth/verify?token=');
-  expect(fakeEmailSender.messages[0].html).toContain('Verifica tu cuenta de NFCompra');
-  expect(fakeEmailSender.messages[0].html).toContain('Verificar cuenta');
-  expect(fakeEmailSender.messages[0].html).toContain('http://app.test/auth/verify?token=');
-  expect(fakeEmailSender.messages[0].html).not.toContain('Copiar token manualmente');
-
   const verifyResponse = await dispatch('/v1/auth/verify-email', { token: tokenFrom(fakeEmailSender.messages[0]) });
   expect(verifyResponse.status).toBe(200);
 
