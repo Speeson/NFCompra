@@ -156,6 +156,13 @@ describe('autenticaciÃ³n desde la landing', () => {
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     expect(within(dialog).getByLabelText(/Correo electr.nico/)).toBeVisible();
     expect(within(dialog).getByLabelText(/Contrase.a/)).toBeVisible();
+    const closeButton = within(dialog).getByRole('button', { name: 'Cerrar' });
+    const lastFocusable = within(dialog).getByRole('button', { name: /Reg.strate/ });
+    lastFocusable.focus();
+    fireEvent.keyDown(lastFocusable, { key: 'Tab' });
+    expect(closeButton).toHaveFocus();
+    fireEvent.keyDown(closeButton, { key: 'Tab', shiftKey: true });
+    expect(lastFocusable).toHaveFocus();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cerrar' }));
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
