@@ -86,6 +86,8 @@ El APK queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`.
 - Android permite abrir los miembros del hogar seleccionado, invita, revoca y elimina miembros solo desde controles de propietario con confirmacion, y muestra el contenido en solo lectura al resto. La sesion autenticada incluye una campana accesible con contador, lectura individual o total y navegacion al hogar o lista exactos; consulta notificaciones cada 15 segundos mientras la actividad esta reanudada y la sesion sigue autenticada. Un fallo al marcar una notificacion no bloquea la navegacion y muestra un aviso cerrable; una lectura correcta refresca la lista y el contador.
 - Android acepta tanto `https://nfcompra.esgarpe.dev/invitations/accept?token=...`, que coincide con el enlace publico de correo previsto, como `nfcompra://app/invitations/accept?token=...`. El filtro HTTPS no declara verificacion de App Links, por lo que Android puede mostrar su selector. El token pendiente se conserva solo mediante el estado de instancia de la actividad durante una recreacion y se elimina al aceptar o cancelar; no se guarda en preferencias ni se registra. No se habilitan push ni NFC; el único trabajo en segundo plano es la sincronización de la cola offline mediante WorkManager.
 
+- The authenticated PWA uses a responsive shell with NFCompra branding, primary navigation, notifications, a keyboard-accessible profile menu and a disabled Download APK control until a real release URL is available.
+
 ## Limites del MVP
 
 - No hay despliegue ni operaciones remotas incluidas.

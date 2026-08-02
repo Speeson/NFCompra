@@ -6,9 +6,9 @@ import { useSession } from '../features/auth/AuthProvider';
 import { ForgotPasswordPage, LoginPage, ResendVerificationPage } from '../features/auth/LoginPage';
 import { RegisterPage, ResetPasswordPage, VerifyEmailPage } from '../features/auth/RegisterPage';
 import { AcceptInvitationPage } from '../features/invitations/AcceptInvitationPage';
-import { NotificationBell } from '../features/notifications/NotificationBell';
 import { PublicLanding } from '../features/landing/PublicLanding';
 import { AuthModal, type AuthMode } from '../features/auth/AuthModal';
+import { AppShell } from '../features/app-shell/AppShell';
 
 export function App(): JSX.Element {
   const { user } = useSession();
@@ -86,13 +86,8 @@ function AppRoute(): JSX.Element {
     <LoginPage onNavigate={navigate} />
   </>;
 
-  return <>
+  return <AppShell user={user!} pathname={location.pathname} onNavigate={navigate} onLogout={handleLogout} onNotificationActionError={setNotificationActionError}>
     {notificationActionAlert}
-    <header>
-      <NotificationBell onNavigate={navigate} onActionError={setNotificationActionError} />
-      <p>Sesión iniciada como {user?.name}</p>
-      <button type="button" onClick={() => void handleLogout()}>Cerrar sesión</button>
-    </header>
     <ShoppingListRoute currentUserId={user?.id ?? ''} requestedHouseholdId={location.searchParams.get('household')} requestedListId={location.searchParams.get('list')} />
-  </>;
+  </AppShell>;
 }
