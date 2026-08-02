@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type JSX } from 'react';
-import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ApiError } from '../../api/client';
 import { HouseholdSetup } from '../households/HouseholdSetup';
@@ -37,6 +37,9 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
   const nextRevision = useRef(0);
   const optimisticItems = useRef(new Map<string, OptimisticItemState>());
   const householdsQuery = useQuery({ queryKey: householdQueryKey, queryFn: fetchHouseholds });
+  const isDirectListRoute = Boolean(requestedListId && !requestedHouseholdId);
+  const ownershipQueries = useQueries({ queries: isDirectListRoute ? (householdsQuery.data ?? []).map((household) => ({ queryKey: listQueryKey(household.id), queryFn: () => fetchLists(household.id) })) : [] });
+  const resolvedHouseholdId = isDirectListRoute ? householdsQuery.data?.find((_household, index) => (ownershipQueries[index]?.data ?? []).some((list) => list.id === requestedListId))?.id : undefined;
   const listsQuery = useQuery({ queryKey: listQueryKey(householdId ?? ''), queryFn: () => fetchLists(householdId!), enabled: Boolean(householdId) });
   const itemsQuery = useQuery({
     queryKey: itemQueryKey(listId ?? ''), queryFn: async () => {
@@ -78,10 +81,16 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
     setListId(requestedListId ?? undefined);
   }, [requestedHouseholdId, requestedListId]);
   useEffect(() => {
+    if (!resolvedHouseholdId || !requestedListId) return;
+    setHouseholdId(resolvedHouseholdId);
+    setListId(requestedListId);
+  }, [requestedListId, resolvedHouseholdId]);
+  useEffect(() => {
     const households = householdsQuery.data ?? [];
     const first = households[0];
+    if (isDirectListRoute && !householdId) return;
     if (first && !households.some((household) => household.id === householdId)) setHouseholdId(first.id);
-  }, [householdId, householdsQuery.data]);
+  }, [householdId, householdsQuery.data, isDirectListRoute]);
   useEffect(() => {
     const lists = listsQuery.data ?? [];
     const first = lists[0];
@@ -220,6 +229,9 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
   if (isDirectOfflineRoute) return <ShoppingListScreen title="Lista" items={(itemsQuery.data ?? []).map((item) => ({ ...item, unit: item.unit ?? undefined }))} isOffline />;
   if (householdsQuery.isPending) return <main><p role="status">Cargando hogares…</p></main>;
   if (householdsQuery.isError) return <main><p role="alert">No se pudieron cargar los hogares.</p></main>;
+  if (isDirectListRoute && !resolvedHouseholdId && ownershipQueries.some((query) => query.isError)) return <main><p role="alert">No se pudo localizar la lista.</p></main>;
+  if (isDirectListRoute && !resolvedHouseholdId && ownershipQueries.some((query) => query.isPending)) return <main><p role="status">Cargando lista…</p></main>;
+  if (isDirectListRoute && !resolvedHouseholdId && ownershipQueries.length > 0) return <main><p role="alert">No se encontró esta lista.</p></main>;
   if (!householdsQuery.data?.length) return <HouseholdSetup onCreate={async (name) => { try { await householdMutation.mutateAsync(name); } catch { /* mutation exposes feedback */ } }} isCreating={householdMutation.isPending} error={message} />;
   if (!householdId || listsQuery.isPending || !listId || itemsQuery.isPending) return <main><p role="status">Cargando lista…</p></main>;
   if (listsQuery.isError || itemsQuery.isError) return <main><p role="alert">No se pudo cargar la lista.</p></main>;
