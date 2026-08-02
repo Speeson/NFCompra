@@ -23,8 +23,7 @@ export default defineConfig({
         background_color: '#f6f7fb',
         theme_color: '#255bd9',
         icons: [
-          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' }
+          { src: '/icons/nfcompra-logo.png', sizes: 'any', type: 'image/png' }
         ]
       },
       workbox: {
