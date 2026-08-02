@@ -11,7 +11,7 @@ import { AuthModal, type AuthMode } from '../features/auth/AuthModal';
 import { AppShell } from '../features/app-shell/AppShell';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { HouseholdDetailPage, HouseholdsPage } from '../features/households/HouseholdsPage';
-import { ListDetailRoute, ListsPage } from '../features/shopping-list/ListsPage';
+import { ListsPage } from '../features/shopping-list/ListsPage';
 import { NfcPage } from '../features/nfc/NfcPage';
 
 export function App(): JSX.Element {
@@ -103,7 +103,7 @@ export function AuthenticatedRoute({ pathname, search, userId, userName, onNavig
   if (pathname === '/households') return <HouseholdsPage onNavigate={onNavigate} />;
   if (householdMatch) return <HouseholdDetailPage householdId={decodeURIComponent(householdMatch[1])} currentUserId={userId} onNavigate={onNavigate} />;
   if (pathname === '/lists') return <ListsPage onNavigate={onNavigate} />;
-  if (listMatch) return <ListDetailRoute currentUserId={userId} listId={decodeURIComponent(listMatch[1])} />;
+  if (listMatch) return <ShoppingListRoute currentUserId={userId} requestedListId={decodeURIComponent(listMatch[1])} />;
   if (pathname === '/nfc') return <NfcPage />;
   if (pathname === '/profile') return <PlaceholderPage title="Perfil" text="Tu perfil se mostrará aquí cuando haya ajustes guardados disponibles." />;
   if (pathname === '/settings') return <PlaceholderPage title="Ajustes" text="Los ajustes de la cuenta estarán disponibles aquí próximamente." />;

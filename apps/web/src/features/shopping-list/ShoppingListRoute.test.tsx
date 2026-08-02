@@ -28,6 +28,22 @@ function shoppingItem(name: string) {
 }
 
 describe('ShoppingListRoute', () => {
+  it('opens an exact deep-linked cached list when the household lookup is unavailable offline', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    vi.mocked(loadOfflineList).mockResolvedValue([{ ...shoppingItem('Arroz guardado'), listId: 'list-7' }]);
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/households') || url.endsWith('/lists/list-7/items')) return Promise.reject(new Error('Sin conexión'));
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+
+    render(<QueryClientProvider client={createWebQueryClient()}><ShoppingListRoute currentUserId="user-1" requestedListId="list-7" /></QueryClientProvider>);
+
+    expect(await screen.findByText('Arroz guardado')).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('Sin conexión');
+    expect(screen.queryByLabelText('Hogar')).not.toBeInTheDocument();
+  });
+
   it('shows the matching cached list read-only after an offline item request fails', async () => {
     Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
     vi.mocked(loadOfflineList).mockResolvedValue([shoppingItem('Leche guardada')]);

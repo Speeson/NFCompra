@@ -89,6 +89,7 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
   }, [listId, listsQuery.data]);
 
   const isOffline = offlineSnapshot?.source === offlineSource(currentUserId, listId ?? '');
+  const isDirectOfflineRoute = Boolean(requestedListId && !householdId && isOffline && !itemsQuery.isPending);
   function resetFeedback(): void { setMessage(undefined); setConflict(undefined); }
   function invalidateNotifications(): void {
     void queryClient.invalidateQueries({ queryKey: notificationsQueryKey, exact: true });
@@ -216,6 +217,7 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
     onError: () => setMessage('No se pudo crear la lista.'),
   });
 
+  if (isDirectOfflineRoute) return <ShoppingListScreen title="Lista" items={(itemsQuery.data ?? []).map((item) => ({ ...item, unit: item.unit ?? undefined }))} isOffline />;
   if (householdsQuery.isPending) return <main><p role="status">Cargando hogares…</p></main>;
   if (householdsQuery.isError) return <main><p role="alert">No se pudieron cargar los hogares.</p></main>;
   if (!householdsQuery.data?.length) return <HouseholdSetup onCreate={async (name) => { try { await householdMutation.mutateAsync(name); } catch { /* mutation exposes feedback */ } }} isCreating={householdMutation.isPending} error={message} />;

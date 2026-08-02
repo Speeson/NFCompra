@@ -40,4 +40,20 @@ describe('household route views', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Miembros' }));
     expect(await screen.findByRole('heading', { name: 'Miembros' })).toBeVisible();
   });
+
+  it('connects tabs to their panels and supports roving keyboard navigation', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => Promise.resolve(respond(String(input)))));
+    renderPage(<HouseholdDetailPage householdId="home-1" currentUserId="user-1" onNavigate={vi.fn()} />);
+
+    const listsTab = await screen.findByRole('tab', { name: 'Listas' });
+    const membersTab = screen.getByRole('tab', { name: 'Miembros' });
+    expect(listsTab).toHaveAttribute('aria-controls', 'household-home-1-lists-panel');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', listsTab.id);
+    fireEvent.keyDown(listsTab, { key: 'ArrowRight' });
+    expect(membersTab).toHaveFocus();
+    expect(membersTab).toHaveAttribute('aria-selected', 'true');
+    expect(membersTab).toHaveAttribute('tabindex', '0');
+    fireEvent.keyDown(membersTab, { key: 'End' });
+    expect(screen.getByRole('tab', { name: 'NFC' })).toHaveFocus();
+  });
 });

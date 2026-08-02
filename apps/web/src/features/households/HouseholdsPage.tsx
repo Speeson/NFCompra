@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState, type JSX } from 'react';
+import { useRef, useState, type JSX, type KeyboardEvent } from 'react';
 
 import { MembersPanel } from './MembersPanel';
 import { fetchHouseholds, fetchLists, householdQueryKey, listQueryKey, type Household } from '../shopping-list/queries';
@@ -20,20 +20,28 @@ function HouseholdCard({ household, onNavigate }: { household: Household; onNavi
 
 export function HouseholdDetailPage({ householdId, currentUserId, onNavigate }: { householdId: string; currentUserId: string; onNavigate(path: string): void }): JSX.Element {
   const [tab, setTab] = useState<'lists' | 'members' | 'nfc'>('lists');
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const tabs = ['lists', 'members', 'nfc'] as const;
   const households = useQuery({ queryKey: householdQueryKey, queryFn: fetchHouseholds });
   const lists = useQuery({ queryKey: listQueryKey(householdId), queryFn: () => fetchLists(householdId) });
   if (households.isPending) return <RouteState text="Cargando hogar…" />;
   const household = households.data?.find((candidate) => candidate.id === householdId);
   if (!household) return <RouteState text="No se encontró este hogar." alert />;
+  const panelId = (name: typeof tab) => `household-${householdId}-${name}-panel`;
+  const tabId = (name: typeof tab) => `household-${householdId}-${name}-tab`;
+  function activateTab(index: number): void { tabRefs.current[index]?.focus(); setTab(tabs[index]); }
+  function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void {
+    const target = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : undefined;
+    if (target === undefined) return;
+    event.preventDefault(); activateTab(target);
+  }
   return <section className="route-page"><header><p className="eyebrow">Hogar</p><h1>{household.name}</h1></header>
     <div role="tablist" aria-label="Secciones del hogar" className="route-tabs">
-      <button role="tab" type="button" aria-selected={tab === 'lists'} onClick={() => setTab('lists')}>Listas</button>
-      <button role="tab" type="button" aria-selected={tab === 'members'} onClick={() => setTab('members')}>Miembros</button>
-      <button role="tab" type="button" aria-selected={tab === 'nfc'} onClick={() => setTab('nfc')}>NFC</button>
+      {tabs.map((name, index) => <button key={name} ref={(element) => { tabRefs.current[index] = element; }} id={tabId(name)} role="tab" type="button" tabIndex={tab === name ? 0 : -1} aria-controls={panelId(name)} aria-selected={tab === name} onClick={() => setTab(name)} onKeyDown={(event) => onTabKeyDown(event, index)}>{name === 'lists' ? 'Listas' : name === 'members' ? 'Miembros' : 'NFC'}</button>)}
     </div>
-    {tab === 'lists' ? <section className="route-panel" aria-label="Listas"><h2>Listas</h2>{lists.isPending ? <p role="status">Cargando listas…</p> : lists.isError ? <p role="alert">No se pudieron cargar las listas.</p> : <ul className="route-list">{lists.data?.map((list) => <li key={list.id}><strong>{list.name}</strong><button type="button" onClick={() => onNavigate(`/lists/${encodeURIComponent(list.id)}`)}>Abrir {list.name}</button></li>)}</ul>}</section> : null}
-    {tab === 'members' ? <MembersPanel householdId={householdId} currentUserId={currentUserId} /> : null}
-    {tab === 'nfc' ? <NfcGuidance householdName={household.name} /> : null}
+    {tab === 'lists' ? <section className="route-panel" id={panelId('lists')} role="tabpanel" aria-labelledby={tabId('lists')}><h2>Listas</h2>{lists.isPending ? <p role="status">Cargando listas…</p> : lists.isError ? <p role="alert">No se pudieron cargar las listas.</p> : <ul className="route-list">{lists.data?.map((list) => <li key={list.id}><strong>{list.name}</strong><button type="button" onClick={() => onNavigate(`/lists/${encodeURIComponent(list.id)}`)}>Abrir {list.name}</button></li>)}</ul>}</section> : null}
+    {tab === 'members' ? <section id={panelId('members')} role="tabpanel" aria-labelledby={tabId('members')}><MembersPanel householdId={householdId} currentUserId={currentUserId} /></section> : null}
+    {tab === 'nfc' ? <section id={panelId('nfc')} role="tabpanel" aria-labelledby={tabId('nfc')}><NfcGuidance householdName={household.name} /></section> : null}
   </section>;
 }
 
