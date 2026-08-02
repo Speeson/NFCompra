@@ -32,8 +32,7 @@ it('adds a branded HTML verification email when a route only provides text', asy
   const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
   expect(body.html).toContain('Verifica tu cuenta de NFCompra');
   expect(body.html).toContain('Verificar cuenta');
-  expect(body.html).toContain('Copiar token manualmente');
-  expect(body.html).toContain('abc123');
+  expect(body.html).not.toContain('Copiar token manualmente');
 });
 
 it('adds a branded HTML password reset email when a route only provides text', async () => {
@@ -50,8 +49,7 @@ it('adds a branded HTML password reset email when a route only provides text', a
   const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
   expect(body.html).toContain('Restablece tu contraseña de NFCompra');
   expect(body.html).toContain('Restablecer contraseña');
-  expect(body.html).toContain('Copiar token manualmente');
-  expect(body.html).toContain('reset123');
+  expect(body.html).not.toContain('Copiar token manualmente');
 });
 
 it('logs Resend response details without exposing credentials when delivery fails', async () => {

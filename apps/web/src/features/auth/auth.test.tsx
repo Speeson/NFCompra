@@ -225,10 +225,10 @@ describe('VerifyEmailPage', () => {
 
     expect(screen.getByRole('button', { name: 'Verificar correo' })).toHaveClass('button');
     expect(screen.getByRole('button', { name: 'Ir a iniciar sesión' })).toHaveClass('button');
-    fireEvent.click(screen.getByRole('button', { name: 'Copiar token' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copiar enlace de verificación' }));
 
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith('token-manual'));
-    expect(screen.getByRole('status')).toHaveTextContent('Token copiado.');
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('http://localhost:3000/auth/verify?token=token-manual'));
+    expect(screen.getByRole('status')).toHaveTextContent('Enlace copiado.');
   });
 });
 

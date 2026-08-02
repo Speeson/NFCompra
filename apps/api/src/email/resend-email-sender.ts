@@ -32,7 +32,6 @@ export class ResendEmailSender implements EmailSender {
 function brandedAuthHtml(message: EmailMessage): string | undefined {
   const url = message.text.match(/https?:\/\/\S+/)?.[0];
   if (!url) return undefined;
-  const token = new URL(url).searchParams.get('token') ?? '';
   const isReset = message.subject.toLowerCase().includes('restablece');
   return authEmailHtml({
     title: isReset ? 'Restablece tu contraseña de NFCompra' : 'Verifica tu cuenta de NFCompra',
@@ -40,7 +39,6 @@ function brandedAuthHtml(message: EmailMessage): string | undefined {
     body: isReset ? 'Pulsa el botón para elegir una nueva contraseña. Si no has sido tú, puedes ignorar este correo.' : 'Pulsa el botón para verificar tu correo y activar tu cuenta.',
     buttonLabel: isReset ? 'Restablecer contraseña' : 'Verificar cuenta',
     url,
-    token,
     expiryText: 'Este enlace caduca en 24 horas.',
   });
 }
@@ -54,8 +52,7 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;');
 }
 
-function authEmailHtml({ title, greeting, body, buttonLabel, url, token, expiryText }: { title: string; greeting: string; body: string; buttonLabel: string; url: string; token: string; expiryText: string }): string {
+function authEmailHtml({ title, greeting, body, buttonLabel, url, expiryText }: { title: string; greeting: string; body: string; buttonLabel: string; url: string; expiryText: string }): string {
   const safeUrl = escapeHtml(url);
-  const safeToken = escapeHtml(token);
-  return `<!doctype html><html lang="es"><body style="margin:0;background:#0f172a;color:#f8fafc;font-family:Arial,Helvetica,sans-serif;"><div style="max-width:640px;margin:0 auto;padding:32px 24px;"><p style="margin:0 0 28px;color:#22c55e;font-weight:800;letter-spacing:.02em;">NFCompra</p><h1 style="margin:0 0 20px;font-size:26px;line-height:1.2;color:#f8fafc;">${escapeHtml(title)}</h1><p style="margin:0 0 18px;font-size:16px;line-height:1.6;color:#dbeafe;">${escapeHtml(greeting)}</p><p style="margin:0 0 24px;font-size:16px;line-height:1.6;color:#dbeafe;">${escapeHtml(body)}</p><a href="${safeUrl}" style="display:inline-block;margin:0 0 28px;padding:13px 18px;border-radius:9px;background:#16a34a;color:#ffffff;text-decoration:none;font-weight:800;">${escapeHtml(buttonLabel)}</a><p style="margin:0 0 10px;color:#f8fafc;font-weight:700;">Si el botón no funciona, copia este enlace:</p><p style="margin:0 0 20px;word-break:break-all;"><a href="${safeUrl}" style="color:#93c5fd;">${safeUrl}</a></p><p style="margin:0 0 10px;color:#f8fafc;font-weight:700;">Copiar token manualmente</p><div style="display:inline-block;max-width:100%;padding:12px 14px;border:1px solid #334155;border-radius:9px;background:#111827;color:#bbf7d0;font-family:Consolas,Monaco,monospace;font-size:13px;word-break:break-all;">${safeToken}</div><p style="margin:24px 0 0;color:#94a3b8;">${escapeHtml(expiryText)}</p></div></body></html>`;
+  return `<!doctype html><html lang="es"><body style="margin:0;background:#0f172a;color:#f8fafc;font-family:Arial,Helvetica,sans-serif;"><div style="max-width:640px;margin:0 auto;padding:32px 24px;"><p style="margin:0 0 28px;color:#22c55e;font-weight:800;letter-spacing:.02em;">NFCompra</p><h1 style="margin:0 0 20px;font-size:26px;line-height:1.2;color:#f8fafc;">${escapeHtml(title)}</h1><p style="margin:0 0 18px;font-size:16px;line-height:1.6;color:#dbeafe;">${escapeHtml(greeting)}</p><p style="margin:0 0 24px;font-size:16px;line-height:1.6;color:#dbeafe;">${escapeHtml(body)}</p><a href="${safeUrl}" style="display:inline-block;margin:0 0 28px;padding:13px 18px;border-radius:9px;background:#16a34a;color:#ffffff;text-decoration:none;font-weight:800;">${escapeHtml(buttonLabel)}</a><p style="margin:0 0 10px;color:#f8fafc;font-weight:700;">Si el botón no funciona, copia este enlace:</p><p style="margin:0 0 20px;word-break:break-all;"><a href="${safeUrl}" style="color:#93c5fd;">${safeUrl}</a></p><p style="margin:24px 0 0;color:#94a3b8;">${escapeHtml(expiryText)}</p></div></body></html>`;
 }

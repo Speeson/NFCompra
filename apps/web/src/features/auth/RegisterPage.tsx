@@ -119,19 +119,24 @@ export function VerifyEmailPage({ token, onNavigate }: AuthPageProps): JSX.Eleme
     }
   }
 
-  async function copyToken(): Promise<void> {
-    if (!token) return;
-    await navigator.clipboard.writeText(token);
-    setCopyMessage('Token copiado.');
+  function verificationUrl(): string | null {
+    return token ? `${window.location.origin}/auth/verify?token=${encodeURIComponent(token)}` : null;
+  }
+
+  async function copyVerificationLink(): Promise<void> {
+    const url = verificationUrl();
+    if (!url) return;
+    await navigator.clipboard.writeText(url);
+    setCopyMessage('Enlace copiado.');
   }
 
   return <AuthLayout title="Verifica tu correo">
     {message && <p role="status">{message}</p>}
     {copyMessage && <p role="status">{copyMessage}</p>}
     {error && <p role="alert">{error}</p>}
-    {token ? <div className="auth-token-copy">
-      <code>{token}</code>
-      <button className="button button--quiet" type="button" onClick={() => void copyToken()}>Copiar token</button>
+    {token && verificationUrl() ? <div className="auth-token-copy">
+      <code>{verificationUrl()}</code>
+      <button className="button button--quiet auth-copy-button" type="button" aria-label="Copiar enlace de verificación" onClick={() => void copyVerificationLink()}><span aria-hidden="true">⧉</span></button>
     </div> : null}
     <div className="auth-actions">
       <button className="button" type="button" onClick={verify}>Verificar correo</button>
