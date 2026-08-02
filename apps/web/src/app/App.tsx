@@ -100,9 +100,9 @@ export function AuthenticatedRoute({ pathname, search, userId, userName, onNavig
   const householdMatch = pathname.match(/^\/households\/([^/]+)$/);
   const listMatch = pathname.match(/^\/lists\/([^/]+)$/);
   if (pathname === '/' && !search.has('household') && !search.has('list')) return <DashboardPage userName={userName} onNavigate={onNavigate} />;
-  if (pathname === '/households') return <HouseholdsPage onNavigate={onNavigate} />;
+  if (pathname === '/households') return <HouseholdsPage onNavigate={onNavigate} startCreating={search.get('create') === '1'} />;
   if (householdMatch) return <HouseholdDetailPage householdId={decodeURIComponent(householdMatch[1])} currentUserId={userId} onNavigate={onNavigate} />;
-  if (pathname === '/lists') return <ListsPage onNavigate={onNavigate} />;
+  if (pathname === '/lists') return <ListsPage onNavigate={onNavigate} startCreating={search.get('create') === '1'} />;
   if (listMatch) return <ShoppingListRoute currentUserId={userId} requestedListId={decodeURIComponent(listMatch[1])} />;
   if (pathname === '/nfc') return <NfcPage />;
   if (pathname === '/profile') return <PlaceholderPage title="Perfil" text="Tu perfil se mostrará aquí cuando haya ajustes guardados disponibles." />;

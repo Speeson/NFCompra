@@ -30,7 +30,7 @@ describe('la landing pública', () => {
     expect(screen.getByText('Compra sin fricción')).toBeVisible();
     expect(screen.getByText('Para todo el hogar')).toBeVisible();
     expect(screen.getAllByRole('button', { name: 'Iniciar sesión' })).toHaveLength(2);
-    expect(screen.getByRole('button', { name: 'Registrarse' })).toBeVisible();
+    expect(screen.getAllByRole('button', { name: 'Registrarse' })).toHaveLength(2);
   });
 
   it('explica que las pegatinas NFC abren el hogar al que están vinculadas', async () => {
@@ -48,7 +48,7 @@ describe('la landing pública', () => {
     const onOpenAuth = vi.fn();
     render(<PublicLanding onOpenAuth={onOpenAuth} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Registrarse' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Registrarse' })[0]);
     fireEvent.click(screen.getAllByRole('button', { name: 'Iniciar sesión' })[0]);
 
     expect(onOpenAuth).toHaveBeenNthCalledWith(1, 'register');

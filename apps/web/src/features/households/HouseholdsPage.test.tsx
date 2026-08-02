@@ -21,6 +21,26 @@ function respond(url: string): Response {
 function renderPage(node: ReactNode): void { render(<QueryClientProvider client={createWebQueryClient()}>{node}</QueryClientProvider>); }
 
 describe('household route views', () => {
+  it('creates a household from the households page and opens it', async () => {
+    const navigate = vi.fn();
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/households') && init?.method === 'POST') return Promise.resolve(Response.json({ household: { id: 'home-2', name: 'Piso' }, defaultList: { id: 'list-2', householdId: 'home-2', name: 'Compra', isDefault: true } }));
+      if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'home-1', name: 'Casa' }] }));
+      if (url.endsWith('/households/home-1/lists')) return Promise.resolve(Response.json({ lists: [] }));
+      throw new Error(`Ruta inesperada: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage(<HouseholdsPage onNavigate={navigate} startCreating />);
+
+    fireEvent.change(await screen.findByLabelText('Nombre del nuevo hogar'), { target: { value: 'Piso' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Crear hogar' }));
+
+    expect(await screen.findByText('Piso')).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/\/households$/), expect.objectContaining({ method: 'POST' }));
+    expect(navigate).toHaveBeenCalledWith('/households/home-2');
+  });
+
   it('shows a household card and opens its exact detail route', async () => {
     const navigate = vi.fn();
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => Promise.resolve(respond(String(input)))));

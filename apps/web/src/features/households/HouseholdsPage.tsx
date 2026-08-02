@@ -1,15 +1,34 @@
-import { useQuery } from '@tanstack/react-query';
-import { useRef, useState, type JSX, type KeyboardEvent } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef, useState, type FormEvent, type JSX, type KeyboardEvent } from 'react';
 
 import { MembersPanel } from './MembersPanel';
-import { fetchHouseholds, fetchLists, householdQueryKey, listQueryKey, type Household } from '../shopping-list/queries';
+import { createHousehold, fetchHouseholds, fetchLists, householdQueryKey, listQueryKey, type Household } from '../shopping-list/queries';
 
-export function HouseholdsPage({ onNavigate }: { onNavigate(path: string): void }): JSX.Element {
+export function HouseholdsPage({ onNavigate, startCreating = false }: { onNavigate(path: string): void; startCreating?: boolean }): JSX.Element {
+  const queryClient = useQueryClient();
+  const [creating, setCreating] = useState(startCreating);
+  const [name, setName] = useState('');
   const households = useQuery({ queryKey: householdQueryKey, queryFn: fetchHouseholds });
+  const creation = useMutation({
+    mutationFn: createHousehold,
+    onSuccess: ({ household, defaultList }) => {
+      queryClient.setQueryData<Household[]>(householdQueryKey, (current = []) => [...current, household]);
+      queryClient.setQueryData(listQueryKey(household.id), [defaultList]);
+      setCreating(false);
+      setName('');
+      onNavigate(`/households/${encodeURIComponent(household.id)}`);
+    },
+  });
+  function submit(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    if (name.trim()) creation.mutate(name.trim());
+  }
   if (households.isPending) return <RouteState text="Cargando hogares…" />;
   if (households.isError) return <RouteState text="No se pudieron cargar los hogares." alert />;
-  return <section className="route-page"><header><p className="eyebrow">Hogares</p><h1>Tus hogares</h1><p>Organiza las listas y las personas con las que compras.</p></header>
-    {!households.data?.length ? <p className="route-page__empty">Todavía no tienes hogares. Crea el primero desde tu lista de compra.</p> : <div className="route-card-grid">{households.data.map((household) => <HouseholdCard key={household.id} household={household} onNavigate={onNavigate} />)}</div>}
+  const hasHouseholds = Boolean(households.data?.length);
+  return <section className="route-page"><header className="route-page__header"><div><p className="eyebrow">Hogares</p><h1>Tus hogares</h1><p>Organiza las listas y las personas con las que compras.</p></div>{hasHouseholds ? <button className="button" type="button" onClick={() => setCreating(true)}>Nuevo hogar</button> : null}</header>
+    {creating || !hasHouseholds ? <form className="route-create-form" onSubmit={submit}><h2>{hasHouseholds ? 'Crear otro hogar' : 'Crea tu primer hogar'}</h2><label htmlFor="new-household-name">Nombre del nuevo hogar</label><input id="new-household-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={100} autoFocus /><div><button className="button" type="submit" disabled={creation.isPending}>{creation.isPending ? 'Creando…' : 'Crear hogar'}</button>{hasHouseholds ? <button className="button button--quiet" type="button" onClick={() => setCreating(false)}>Cancelar</button> : null}</div>{creation.isError ? <p role="alert">No se pudo crear el hogar.</p> : null}</form> : null}
+    {hasHouseholds ? <div className="route-card-grid">{households.data!.map((household) => <HouseholdCard key={household.id} household={household} onNavigate={onNavigate} />)}</div> : null}
   </section>;
 }
 

@@ -18,7 +18,10 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
           <a href="#hogares">Hogares</a>
           <a href="#nfc">NFC</a>
         </div>
-        <button className="button button--quiet" type="button" onClick={() => onOpenAuth('login')}>Iniciar sesión</button>
+        <div className="public-landing__access">
+          <button className="button button--quiet" type="button" onClick={() => onOpenAuth('login')}>Iniciar sesión</button>
+          <button className="button" type="button" onClick={() => onOpenAuth('register')}>Registrarse</button>
+        </div>
       </nav>
     </header>
     <main>

@@ -173,7 +173,7 @@ describe('autenticaciÃ³n desde la landing', () => {
     stubAnonymousSession();
     render(<AuthProvider><App /></AuthProvider>);
 
-    const opener = await screen.findByRole('button', { name: 'Registrarse' });
+    const opener = (await screen.findAllByRole('button', { name: 'Registrarse' }))[0];
     opener.focus();
     fireEvent.click(opener);
     const registerDialog = screen.getByRole('dialog', { name: /Crea tu cuenta de NFCompra/ });

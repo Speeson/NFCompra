@@ -18,11 +18,11 @@ const user = {
   updatedAt: '2026-08-01T00:00:00.000Z',
 };
 
-function renderShell() {
+function renderShell(pathname = '/') {
   const onNavigate = vi.fn();
   const onLogout = vi.fn();
-  render(<AppShell user={user} pathname="/" onNavigate={onNavigate} onLogout={onLogout}><main>Contenido</main></AppShell>);
-  return { onNavigate, onLogout };
+  const view = render(<AppShell user={user} pathname={pathname} onNavigate={onNavigate} onLogout={onLogout}><h1>Contenido</h1></AppShell>);
+  return { onNavigate, onLogout, ...view };
 }
 
 afterEach(cleanup);
@@ -47,17 +47,44 @@ describe('AppShell', () => {
 
     trigger.focus();
     fireEvent.click(trigger);
-    expect(trigger).not.toHaveAttribute('aria-haspopup');
-    const profileControls = screen.getByRole('group', { name: 'Opciones de perfil' });
+    expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
+    const profileControls = screen.getByRole('menu', { name: 'Opciones de perfil' });
     expect(profileControls).toBeVisible();
-    expect(within(profileControls).getByRole('button', { name: 'Profile' })).toBeVisible();
-    expect(within(profileControls).getByRole('button', { name: 'Settings' })).toBeVisible();
-    fireEvent.click(within(profileControls).getByRole('button', { name: 'Sign out' }));
+    expect(within(profileControls).getByRole('menuitem', { name: 'Profile' })).toBeVisible();
+    expect(within(profileControls).getByRole('menuitem', { name: 'Settings' })).toBeVisible();
+    expect(within(profileControls).getByRole('menuitem', { name: 'Profile' })).toHaveFocus();
+    fireEvent.click(within(profileControls).getByRole('menuitem', { name: 'Sign out' }));
     expect(onLogout).toHaveBeenCalledOnce();
 
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.queryByRole('group', { name: 'Opciones de perfil' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menu', { name: 'Opciones de perfil' })).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
+  });
+
+  it('cierra el menú al interactuar fuera y restaura el foco al disparador', () => {
+    renderShell();
+    const trigger = screen.getByRole('button', { name: /María García/ });
+    fireEvent.click(trigger);
+    expect(screen.getByRole('menu', { name: 'Opciones de perfil' })).toBeVisible();
+
+    fireEvent.mouseDown(document.body);
+
+    expect(screen.queryByRole('menu', { name: 'Opciones de perfil' })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('marca como actual la sección de una ruta hija y mueve el foco al contenido al navegar', () => {
+    const { rerender } = renderShell('/households/home-1');
+    const desktopNavigation = screen.getByRole('navigation', { name: 'Navegación principal' });
+    const mobileNavigation = screen.getByRole('navigation', { name: 'Navegación móvil' });
+
+    expect(within(desktopNavigation).getByRole('link', { name: 'Hogares' })).toHaveAttribute('aria-current', 'page');
+    expect(within(mobileNavigation).getByRole('link', { name: 'Hogares' })).toHaveAttribute('aria-current', 'page');
+
+    rerender(<AppShell user={user} pathname="/lists/list-7" onNavigate={vi.fn()} onLogout={vi.fn()}><h1>Lista</h1></AppShell>);
+
+    expect(screen.getByRole('main')).toHaveFocus();
+    expect(within(desktopNavigation).getByRole('link', { name: 'Mis listas' })).toHaveAttribute('aria-current', 'page');
   });
 
   it('incluye enlaces móviles con URL y navegación cliente para las cuatro secciones', () => {

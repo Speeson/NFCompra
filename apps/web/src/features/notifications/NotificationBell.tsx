@@ -32,9 +32,9 @@ export function NotificationBell({ onNavigate, onActionError }: { onNavigate(pat
   }
 
   return <div className="notification-bell">
-    <button type="button" aria-expanded={open} aria-label={count ? `Notificaciones (${count} sin leer)` : 'Notificaciones'} onClick={() => setOpen((value) => !value)}>Notificaciones{count ? <span aria-hidden="true"> {count}</span> : null}</button>
+    <button className="notification-bell__trigger" type="button" aria-expanded={open} aria-label={count ? `Notificaciones (${count} sin leer)` : 'Notificaciones'} onClick={() => setOpen((value) => !value)}><span aria-hidden="true">🔔</span>{count ? <span className="notification-bell__count" aria-hidden="true">{count}</span> : null}</button>
     {actionError ? <p role="alert">{actionError}</p> : null}
-    {open ? <section aria-label="Panel de notificaciones">
+    {open ? <section className="notification-bell__panel" aria-label="Panel de notificaciones">
       <button type="button" onClick={() => { setActionError(undefined); readAll.mutate(); }} disabled={!count || readAll.isPending}>Marcar todas como leídas</button>
       {notifications.isPending ? <p role="status">Cargando notificaciones…</p> : null}
       {notifications.isError ? <p role="alert">No se pudieron cargar las notificaciones.</p> : null}

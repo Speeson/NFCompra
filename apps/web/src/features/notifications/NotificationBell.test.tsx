@@ -30,6 +30,7 @@ describe('NotificationBell', () => {
     render(<QueryClientProvider client={createWebQueryClient()}><NotificationBell onNavigate={navigate} /></QueryClientProvider>);
     expect(await screen.findByRole('button', { name: 'Notificaciones (2 sin leer)' })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Notificaciones (2 sin leer)' }));
+    expect(screen.getByRole('region', { name: 'Panel de notificaciones' })).toHaveClass('notification-bell__panel');
     fireEvent.click(await screen.findByRole('button', { name: 'Nueva invitación' }));
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/invitations/invite-1/accept'));
     fireEvent.click(screen.getByRole('button', { name: 'Notificaciones (2 sin leer)' }));
