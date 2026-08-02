@@ -1,5 +1,7 @@
 import type { JSX } from 'react';
 
+import logo from '../../assets/brand/nfcompra-logo.png';
+
 type AuthMode = 'login' | 'register';
 
 interface PublicLandingProps {
@@ -10,7 +12,7 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
   return <div className="public-landing">
     <header className="public-landing__header">
       <nav className="public-landing__nav" aria-label="Navegación principal">
-        <a className="public-landing__brand" href="#inicio">NFCompra</a>
+        <a className="public-landing__brand" href="#inicio"><img className="public-landing__brand-logo" src={logo} alt="NFCompra" /></a>
         <div className="public-landing__links">
           <a href="#como-funciona">Cómo funciona</a>
           <a href="#hogares">Hogares</a>
@@ -26,7 +28,7 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
           <h1 id="landing-title">Tu compra, con solo acercar.</h1>
           <p className="public-landing__lead">Organiza lo que hace falta en casa, compártelo y prepara la compra desde cualquier móvil.</p>
           <div className="public-landing__actions">
-            <button className="button" type="button" onClick={() => onOpenAuth('register')}>Crear cuenta</button>
+            <button className="button" type="button" onClick={() => onOpenAuth('register')}>Registrarse</button>
             <button className="button button--secondary" type="button" onClick={() => onOpenAuth('login')}>Iniciar sesión</button>
           </div>
         </div>
@@ -52,9 +54,9 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
 
       <section className="public-landing__nfc" id="nfc" aria-labelledby="nfc-title">
         <div>
-          <p className="public-landing__eyebrow">Próxima capacidad</p>
-          <h2 id="nfc-title">NFC, muy pronto</h2>
-          <p>Estamos preparando NFC para que añadas productos con solo acercar tu móvil. Te avisaremos cuando esté disponible.</p>
+          <p className="public-landing__eyebrow">NFC ya disponible</p>
+          <h2 id="nfc-title">NFC listo para tu hogar</h2>
+          <p>Las pegatinas NFC ya funcionan: cada una abre el hogar al que está vinculada.</p>
         </div>
         <span className="public-landing__nfc-mark" aria-hidden="true">NFC</span>
       </section>
