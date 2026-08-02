@@ -9,6 +9,7 @@ import { AcceptInvitationPage } from '../features/invitations/AcceptInvitationPa
 import { PublicLanding } from '../features/landing/PublicLanding';
 import { AuthModal, type AuthMode } from '../features/auth/AuthModal';
 import { AppShell } from '../features/app-shell/AppShell';
+import { DashboardPage } from '../features/dashboard/DashboardPage';
 
 export function App(): JSX.Element {
   const { user } = useSession();
@@ -88,6 +89,8 @@ function AppRoute(): JSX.Element {
 
   return <AppShell user={user!} pathname={location.pathname} onNavigate={navigate} onLogout={handleLogout} onNotificationActionError={setNotificationActionError}>
     {notificationActionAlert}
-    <ShoppingListRoute currentUserId={user?.id ?? ''} requestedHouseholdId={location.searchParams.get('household')} requestedListId={location.searchParams.get('list')} />
+    {location.pathname === '/' && !location.searchParams.has('household') && !location.searchParams.has('list')
+      ? <DashboardPage userName={user?.name ?? ''} onNavigate={navigate} />
+      : <ShoppingListRoute currentUserId={user?.id ?? ''} requestedHouseholdId={location.searchParams.get('household')} requestedListId={location.searchParams.get('list')} />}
   </AppShell>;
 }

@@ -72,7 +72,7 @@ describe('NotificationBell', () => {
   });
 
   it('changes the mounted shell selection when a notification targets another list', async () => {
-    window.history.replaceState({}, '', '/');
+    window.history.replaceState({}, '', '/?household=home-1&list=list-1');
     vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith('/auth/refresh')) return Promise.resolve(Response.json({ accessToken: 'access' }));
@@ -103,7 +103,7 @@ describe('NotificationBell', () => {
   });
 
   it('keeps a notification read failure visible after opening an invitation route', async () => {
-    window.history.replaceState({}, '', '/');
+    window.history.replaceState({}, '', '/?household=home-1&list=list-1');
     vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith('/auth/refresh')) return Promise.resolve(Response.json({ accessToken: 'access' }));
