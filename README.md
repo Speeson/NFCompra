@@ -88,6 +88,7 @@ El APK queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`.
 
 - The authenticated PWA uses a responsive shell with NFCompra branding, primary navigation, notifications, a keyboard-accessible profile menu and a disabled Download APK control until a real release URL is available.
 - La ruta autenticada `/` muestra un panel de hogares con recuentos de miembros, listas, pendientes y progreso, actividad reciente y accesos para crear hogares/listas o abrir NFC. Los enlaces contextuales `/?household=...&list=...` siguen abriendo la lista solicitada.
+- La PWA autenticada incluye `/households`, `/households/:id`, `/lists`, `/lists/:id`, `/nfc`, `/profile` y `/settings`. Los detalles de hogar mantienen la gestión de miembros e invitaciones; los detalles de lista reutilizan la experiencia offline y optimista existente. NFC indica explícitamente que su gestión aún no está disponible, sin simular vinculaciones.
 
 ## Limites del MVP
 

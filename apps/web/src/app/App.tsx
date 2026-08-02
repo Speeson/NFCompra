@@ -10,6 +10,9 @@ import { PublicLanding } from '../features/landing/PublicLanding';
 import { AuthModal, type AuthMode } from '../features/auth/AuthModal';
 import { AppShell } from '../features/app-shell/AppShell';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
+import { HouseholdDetailPage, HouseholdsPage } from '../features/households/HouseholdsPage';
+import { ListDetailRoute, ListsPage } from '../features/shopping-list/ListsPage';
+import { NfcPage } from '../features/nfc/NfcPage';
 
 export function App(): JSX.Element {
   const { user } = useSession();
@@ -89,8 +92,22 @@ function AppRoute(): JSX.Element {
 
   return <AppShell user={user!} pathname={location.pathname} onNavigate={navigate} onLogout={handleLogout} onNotificationActionError={setNotificationActionError}>
     {notificationActionAlert}
-    {location.pathname === '/' && !location.searchParams.has('household') && !location.searchParams.has('list')
-      ? <DashboardPage userName={user?.name ?? ''} onNavigate={navigate} />
-      : <ShoppingListRoute currentUserId={user?.id ?? ''} requestedHouseholdId={location.searchParams.get('household')} requestedListId={location.searchParams.get('list')} />}
+    <AuthenticatedRoute pathname={location.pathname} search={location.searchParams} userId={user?.id ?? ''} userName={user?.name ?? ''} onNavigate={navigate} />
   </AppShell>;
 }
+
+export function AuthenticatedRoute({ pathname, search, userId, userName, onNavigate }: { pathname: string; search: URLSearchParams; userId: string; userName: string; onNavigate(path: string): void }): JSX.Element {
+  const householdMatch = pathname.match(/^\/households\/([^/]+)$/);
+  const listMatch = pathname.match(/^\/lists\/([^/]+)$/);
+  if (pathname === '/' && !search.has('household') && !search.has('list')) return <DashboardPage userName={userName} onNavigate={onNavigate} />;
+  if (pathname === '/households') return <HouseholdsPage onNavigate={onNavigate} />;
+  if (householdMatch) return <HouseholdDetailPage householdId={decodeURIComponent(householdMatch[1])} currentUserId={userId} onNavigate={onNavigate} />;
+  if (pathname === '/lists') return <ListsPage onNavigate={onNavigate} />;
+  if (listMatch) return <ListDetailRoute currentUserId={userId} listId={decodeURIComponent(listMatch[1])} />;
+  if (pathname === '/nfc') return <NfcPage />;
+  if (pathname === '/profile') return <PlaceholderPage title="Perfil" text="Tu perfil se mostrará aquí cuando haya ajustes guardados disponibles." />;
+  if (pathname === '/settings') return <PlaceholderPage title="Ajustes" text="Los ajustes de la cuenta estarán disponibles aquí próximamente." />;
+  return <ShoppingListRoute currentUserId={userId} requestedHouseholdId={search.get('household')} requestedListId={search.get('list')} />;
+}
+
+function PlaceholderPage({ title, text }: { title: string; text: string }): JSX.Element { return <section className="route-page"><p className="eyebrow">Cuenta</p><h1>{title}</h1><p className="route-page__empty">{text}</p></section>; }
