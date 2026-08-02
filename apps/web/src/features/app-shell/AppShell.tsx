@@ -42,12 +42,12 @@ export function AppShell({ user, pathname, onNavigate, onLogout, onNotificationA
         <button className="app-shell__apk" type="button" disabled title="Próximamente">Descargar APK</button>
         <NotificationBell onNavigate={onNavigate} onActionError={onNotificationActionError} />
         <div className="app-shell__profile" ref={menuRef}>
-          <button ref={triggerRef} className="app-shell__profile-trigger" type="button" aria-expanded={profileOpen} aria-haspopup="menu" onClick={() => setProfileOpen((open) => !open)}><span aria-hidden="true">{user.name.slice(0, 1).toUpperCase()}</span>{user.name}</button>
-          {profileOpen ? <div className="app-shell__profile-menu" role="menu" aria-label="Menú de perfil">
+          <button ref={triggerRef} className="app-shell__profile-trigger" type="button" aria-expanded={profileOpen} onClick={() => setProfileOpen((open) => !open)}><span aria-hidden="true">{user.name.slice(0, 1).toUpperCase()}</span>{user.name}</button>
+          {profileOpen ? <div className="app-shell__profile-menu" role="group" aria-label="Opciones de perfil">
             <p><strong>{user.name}</strong><span>{user.email}</span></p>
-            <button type="button" role="menuitem" onClick={() => go('/profile')}>Profile</button>
-            <button type="button" role="menuitem" onClick={() => go('/settings')}>Settings</button>
-            <button type="button" role="menuitem" onClick={() => void onLogout()}>Sign out</button>
+            <button type="button" onClick={() => go('/profile')}>Profile</button>
+            <button type="button" onClick={() => go('/settings')}>Settings</button>
+            <button type="button" onClick={() => void onLogout()}>Sign out</button>
           </div> : null}
         </div>
         <button className="app-shell__logout" type="button" onClick={() => void onLogout()}>Cerrar sesión</button>
@@ -55,7 +55,7 @@ export function AppShell({ user, pathname, onNavigate, onLogout, onNotificationA
     </header>
     <main className="app-shell__content">{children}</main>
     <nav className="app-shell__mobile-nav" aria-label="Navegación móvil">
-      {mobileNavigation.map(([label, path]) => <button key={path} type="button" aria-current={pathname === path ? 'page' : undefined} onClick={() => go(path)}>{label}</button>)}
+      {mobileNavigation.map(([label, path]) => <a key={path} href={path} aria-current={pathname === path ? 'page' : undefined} onClick={(event) => { event.preventDefault(); go(path); }}>{label}</a>)}
     </nav>
   </div>;
 }
