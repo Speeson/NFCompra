@@ -1,6 +1,6 @@
 # NFCompra
 
-NFCompra es un MVP online para una persona. Incluye una API local con Worker/D1, una PWA y una aplicacion Android; los tres clientes usan el contrato `/v1`. No hay servicios desplegados.
+NFCompra es un MVP online para una persona. Incluye una API Worker/D1, una PWA y una aplicacion Android; los tres clientes usan el contrato `/v1`. La API productiva verificada vive en `https://api.nfcompra.esgarpe.dev`.
 
 ## Requisitos
 
@@ -28,6 +28,32 @@ npm run web:dev
 ```
 
 El servidor de desarrollo de la PWA reenvia `/v1` a `http://localhost:8787`, por lo que las rutas autenticadas y las listas usan la API local. `GET /health` responde `200` con `{ "status": "ok" }` en la API local.
+
+Para preparar un catalogo propio desde un JSON local de productos:
+
+```sh
+cd apps/api
+npm run catalog:build-sql -- ../../catalogo-productos.json ../../catalog-import.sql
+npx wrangler d1 execute DB --local --file ../../catalog-import.sql
+```
+
+El repositorio incluye un seed inicial propio en `apps/api/catalog/supermercados-espana.seed.json`. Para cargarlo en la D1 local:
+
+```sh
+cd apps/api
+npm run catalog:build-sql -- catalog/supermercados-espana.seed.json catalog/supermercados-espana.seed.sql
+npx wrangler d1 execute DB --local --file catalog/supermercados-espana.seed.sql
+```
+
+Para D1 remoto, genera el SQL sin transaccion SQL explicita:
+
+```sh
+cd apps/api
+npm run catalog:build-sql -- catalog/supermercados-espana.seed.json catalog/supermercados-espana.seed.sql --no-transaction
+npx wrangler d1 execute nfcompra-production --remote --config wrangler.production.jsonc --file catalog/supermercados-espana.seed.sql
+```
+
+El importador acepta campos genericos como `name`, `category`, `brand`, `packageSize`, `sourceProductId` y `aliases`. Tambien reconoce exportaciones JSON con `results[]`, `display_name`, `category_name` y `price_instructions.unit_size`. No descarga imagenes ni precios.
 
 La variante `debug` de Android usa `http://10.0.2.2:8787/` como base de API para el emulador. Se puede sustituir mediante la propiedad de Gradle `NFCompraApiBaseUrl` o la variable de entorno `NFCOMPRA_API_BASE_URL`.
 
@@ -57,11 +83,12 @@ El APK queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`.
 
 ## Funcionalidad actual
 
-- La API permite registro, verificacion y reenvio de verificacion de correo, inicio y cierre de sesion, renovacion, recuperacion y restablecimiento de contrasena, y consulta y edicion de perfil. Las pruebas usan un remitente falso; no se documentan claves ni se verifica el envio de correo real.
+- La API permite registro, verificacion y reenvio de verificacion de correo, inicio y cierre de sesion, renovacion, recuperacion y restablecimiento de contrasena, y consulta y edicion de perfil. El registro acepta nombre, apellidos, fecha de nacimiento, username, email y password; la contrasena se guarda solo como hash. Las pruebas usan un remitente falso; no se documentan claves ni se verifica el envio de correo real.
+- D1 incluye la base del catalogo de productos de supermercado con `product_categories`, `product_catalog` y `product_aliases`, ademas de la referencia opcional `shopping_items.catalog_product_id`. La API expone `GET /v1/product-categories` y `GET /v1/product-catalog?search=...` para categorias y busqueda/autocompletado de productos. El repositorio no incluye importacion automatica de datos externos ni scraping en directo.
 - Una persona puede crear varios hogares manualmente; cada hogar obtiene una lista predeterminada y puede tener listas adicionales. Las mutaciones de productos requieren autenticacion y cubren alta, edicion, marcado, borrado, purga, busqueda normalizada y conflictos de version. Un `operationId` completado reproduce su respuesta y una operacion pendiente devuelve `409 OPERATION_IN_PROGRESS`.
 - Los propietarios de un hogar pueden crear, renovar, listar y revocar invitaciones en `/v1/households/:householdId/invitations`, y eliminar miembros. Cualquier miembro del hogar puede consultar `/v1/households/:householdId/members`. Las invitaciones se aceptan mediante `POST /v1/invitations/accept` o, desde una notificación, `POST /v1/invitations/:invitationId/accept`; ambas rutas requieren la cuenta verificada destinataria. Caducan a los siete dias y los tokens se guardan solo como hashes.
 - Hito 3A: la API persiste notificaciones internas en `/v1/notifications`: lista reciente, contador de no leídas, marcado individual y marcado total. Las invitaciones, altas y bajas de miembros y cambios remotos de productos notifican solo a las otras personas afectadas; la actividad de una lista se agrupa por destinatario, autor, lista y tipo durante cinco minutos. No incluye notificaciones push.
-- La PWA tiene rutas de registro, acceso, verificacion, reenvio, recuperacion, restablecimiento y cierre de sesion. Conserva el token de acceso en memoria y la API gestiona la cookie de renovacion. Permite seleccionar hogares y listas, crear hogares/listas y gestionar productos; consulta la lista visible cada 15 segundos y aplica mutaciones optimistas con reintento ante conflictos.
+- La PWA tiene rutas de registro, acceso, verificacion, reenvio, recuperacion, restablecimiento y cierre de sesion. Conserva el token de acceso en memoria y la API gestiona la cookie de renovacion. El formulario de registro web recoge nombre, apellidos, fecha de nacimiento, username, email, password y confirmacion de password. Permite seleccionar hogares y listas, crear hogares/listas y gestionar productos; al escribir un producto consulta el catalogo para mostrar sugerencias y, al seleccionar una, rellena el nombre. Consulta la lista visible cada 15 segundos y aplica mutaciones optimistas con reintento ante conflictos.
 - Hito 3B (PWA): guarda en IndexedDB la ultima respuesta correcta de cada lista por usuario autenticado. Si falla la consulta sin conexion, muestra solo esa instantanea de usuario y lista en modo lectura; respuestas tardias de otra fuente no cambian ese estado. Una respuesta correcta posterior sustituye la instantanea y devuelve los controles a su modo conectado. Deshabilita las mutaciones y borra las instantaneas del usuario al cerrar sesion. No almacena tokens ni datos de invitaciones, ni encola mutaciones offline.
 - Los propietarios administran miembros e invitaciones desde el hogar seleccionado. La ruta `/invitations/accept?token=...` conserva su continuación de inicio de sesión en `sessionStorage`, muestra errores de aceptación sin datos ajenos y abre el hogar aceptado. La cabecera autenticada incluye notificaciones con contador, lectura individual o total y navegación al hogar o lista relacionada; consulta actualizaciones solo mientras el documento está visible.
 - La PWA conserva un aviso de error de lectura de notificaciones tras una navegacion contextual y permite cerrarlo; una solicitud de hogar/lista en URL se aplica una sola vez para no bloquear la seleccion manual posterior.

@@ -1,4 +1,4 @@
-import { createAuthToken, createRefreshToken, createUser, consumeAuthToken, consumeRefreshToken, findUserByEmail, invalidateSessions, revokeRefreshToken, updatePassword, updateUserName, verifyEmail } from './auth-repository';
+import { createAuthToken, createRefreshToken, createUser, consumeAuthToken, consumeRefreshToken, findUserByEmail, findUserByUsername, invalidateSessions, revokeRefreshToken, updatePassword, updateUserName, verifyEmail, type AuthUser } from './auth-repository';
 import { hashPassword, verifyPassword } from './password-hasher';
 import { createAccessToken, createRandomToken, hashToken } from './token-service';
 import type { EmailSender } from '../email/email-sender';
@@ -8,8 +8,11 @@ import { errorResponse } from '../shared/http';
 type ClientType = 'web' | 'android';
 const EMAIL_MAX_LENGTH = 254;
 const NAME_MAX_LENGTH = 100;
+const USERNAME_MAX_LENGTH = 30;
 const DEVICE_NAME_MAX_LENGTH = 100;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const USERNAME_PATTERN = /^[a-zA-Z0-9._-]{3,30}$/;
+const BIRTH_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function readCookie(request: Request, name: string): string | null {
   return request.headers.get('cookie')?.split(';').map((part) => part.trim()).find((part) => part.startsWith(`${name}=`))?.slice(name.length + 1) ?? null;
@@ -35,6 +38,21 @@ function boundedText(value: unknown, maximumLength: number): string | null {
 function parseEmail(value: unknown): string | null {
   const normalized = boundedText(value, EMAIL_MAX_LENGTH)?.toLowerCase();
   return normalized && EMAIL_PATTERN.test(normalized) ? normalized : null;
+}
+
+function parseBirthDate(value: unknown): string | null | undefined {
+  if (value === undefined || value === null || value === '') return null;
+  const normalized = text(value);
+  if (!normalized || !BIRTH_DATE_PATTERN.test(normalized)) return undefined;
+  const [year, month, day] = normalized.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? normalized : undefined;
+}
+
+function parseUsername(value: unknown): string | null | undefined {
+  if (value === undefined || value === null || value === '') return null;
+  const normalized = text(value);
+  return normalized && normalized.length <= USERNAME_MAX_LENGTH && USERNAME_PATTERN.test(normalized) ? normalized : undefined;
 }
 
 function deviceName(value: unknown): string | null | undefined {
@@ -89,12 +107,17 @@ export async function handleAuthRoute(request: Request, env: Env, emailSender: E
   if (request.method !== 'POST' || !body) return null;
 
   if (action === 'register') {
-    const name = boundedText(body.name, NAME_MAX_LENGTH);
+    const firstName = boundedText(body.firstName, NAME_MAX_LENGTH);
+    const lastName = boundedText(body.lastName, NAME_MAX_LENGTH);
+    const birthDate = parseBirthDate(body.birthDate);
+    const username = parseUsername(body.username);
+    const name = firstName ? [firstName, lastName].filter(Boolean).join(' ') : boundedText(body.name, NAME_MAX_LENGTH);
     const email = parseEmail(body.email);
     const password = text(body.password);
-    if (!name || !email || !password || password.length < 8) return invalidInput();
+    if (!name || !email || !password || password.length < 8 || birthDate === undefined || username === undefined) return invalidInput();
     if (await findUserByEmail(env, email)) return errorResponse('EMAIL_ALREADY_REGISTERED', 'El correo ya está registrado.', 409);
-    const user = await createUser(env, { name, email, passwordHash: await hashPassword(password) });
+    if (username && await findUserByUsername(env, username)) return errorResponse('USERNAME_ALREADY_REGISTERED', 'El nombre de usuario ya está registrado.', 409);
+    const user = await createUser(env, { name, firstName, lastName, birthDate, username, email, passwordHash: await hashPassword(password) });
     try {
       await sendVerificationEmail(env, emailSender, user);
     } catch {
@@ -189,7 +212,7 @@ export async function handleAuthRoute(request: Request, env: Env, emailSender: E
   return null;
 }
 
-export async function handleMeRoute(request: Request, env: Env, user: { id: string; name: string; email: string; emailVerifiedAt: string | null; createdAt: string; updatedAt: string }): Promise<Response | null> {
+export async function handleMeRoute(request: Request, env: Env, user: AuthUser): Promise<Response | null> {
   const path = new URL(request.url).pathname;
   if (path !== '/v1/me') return null;
   if (request.method === 'GET') return Response.json({ user });

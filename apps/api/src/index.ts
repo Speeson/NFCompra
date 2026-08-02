@@ -8,6 +8,7 @@ import { handleHouseholdRoute } from './households/routes';
 import { handleInvitationRoute } from './invitations/routes';
 import { handleListRoute } from './lists/routes';
 import { handleNotificationRoute } from './notifications/routes';
+import { handleCatalogRoute } from './catalog/routes';
 
 export function createWorker(emailSender?: EmailSender): ExportedHandler<Env> {
   return {
@@ -17,8 +18,10 @@ export function createWorker(emailSender?: EmailSender): ExportedHandler<Env> {
       if (new URL(request.url).pathname === '/health' && request.method === 'GET') {
         response = Response.json({ status: 'ok' });
       } else {
-        const authResponse = await handleAuthRoute(request, env, emailSender ?? new ResendEmailSender(env));
-        if (authResponse) response = authResponse;
+        const catalogResponse = await handleCatalogRoute(request, env);
+        const authResponse = catalogResponse ? null : await handleAuthRoute(request, env, emailSender ?? new ResendEmailSender(env));
+        if (catalogResponse) response = catalogResponse;
+        else if (authResponse) response = authResponse;
         else if (new URL(request.url).pathname === '/v1/me') {
           try {
             const user = await requireUser(request, env);

@@ -12,7 +12,10 @@ interface Credentials {
 }
 
 interface Registration extends Credentials {
-  name: string;
+  firstName: string;
+  lastName: string;
+  birthDate: string;
+  username: string;
 }
 
 interface AuthContextValue {

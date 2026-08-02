@@ -75,6 +75,68 @@ describe('LoginPage', () => {
 });
 
 describe('RegisterPage', () => {
+  it('submits the extended registration fields expected by the API', async () => {
+    const fetchMock = vi.fn((input: string | URL | Request, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/auth/refresh')) {
+        return Promise.resolve(Response.json({ error: { code: 'UNAUTHORIZED', message: 'No hay sesiÃ³n.', details: {} } }, { status: 401 }));
+      }
+      if (url.endsWith('/auth/register')) return Promise.resolve(Response.json({ user: { id: 'user-1' } }, { status: 201 }));
+      throw new Error(`Solicitud inesperada: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<AuthProvider><RegisterPage /></AuthProvider>);
+    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Esteban' } });
+    fireEvent.change(screen.getByLabelText('Apellidos'), { target: { value: 'García Pérez' } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'esteban@example.test' } });
+    fireEvent.change(screen.getByLabelText('Día'), { target: { value: '23' } });
+    fireEvent.change(screen.getByLabelText('Mes'), { target: { value: '4' } });
+    fireEvent.change(screen.getByLabelText('Año'), { target: { value: '1995' } });
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'Spee' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'a secure password' } });
+    fireEvent.change(screen.getByLabelText('Confirmar password'), { target: { value: 'a secure password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }));
+
+    await screen.findByRole('status');
+    const registerCall = fetchMock.mock.calls.find(([input]) => String(input).endsWith('/auth/register'));
+    expect(JSON.parse(String(registerCall?.[1]?.body))).toEqual({
+      firstName: 'Esteban',
+      lastName: 'García Pérez',
+      birthDate: '1995-04-23',
+      username: 'Spee',
+      email: 'esteban@example.test',
+      password: 'a secure password',
+    });
+  });
+
+  it('does not submit the registration form when password confirmation differs', async () => {
+    const fetchMock = vi.fn((input: string | URL | Request, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/auth/refresh')) {
+        return Promise.resolve(Response.json({ error: { code: 'UNAUTHORIZED', message: 'No hay sesiÃ³n.', details: {} } }, { status: 401 }));
+      }
+      if (url.endsWith('/auth/register')) return Promise.resolve(Response.json({ user: { id: 'user-1' } }, { status: 201 }));
+      throw new Error(`Solicitud inesperada: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<AuthProvider><RegisterPage /></AuthProvider>);
+    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Esteban' } });
+    fireEvent.change(screen.getByLabelText('Apellidos'), { target: { value: 'García Pérez' } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'esteban@example.test' } });
+    fireEvent.change(screen.getByLabelText('Día'), { target: { value: '23' } });
+    fireEvent.change(screen.getByLabelText('Mes'), { target: { value: '4' } });
+    fireEvent.change(screen.getByLabelText('Año'), { target: { value: '1995' } });
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'Spee' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'a secure password' } });
+    fireEvent.change(screen.getByLabelText('Confirmar password'), { target: { value: 'otra password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Las contraseñas no coinciden.');
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/auth/register'))).toBe(false);
+  });
+
   it('offers a verification email retry when the account exists but delivery failed', async () => {
     const fetchMock = vi.fn((input: string | URL | Request, _init?: RequestInit) => {
       const url = String(input);
@@ -97,8 +159,14 @@ describe('RegisterPage', () => {
 
     render(<AuthProvider><RegisterPage /></AuthProvider>);
     fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Ana' } });
-    fireEvent.change(screen.getByLabelText('Correo electrónico'), { target: { value: 'ana@example.test' } });
-    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'a secure password' } });
+    fireEvent.change(screen.getByLabelText('Apellidos'), { target: { value: 'Test' } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'ana@example.test' } });
+    fireEvent.change(screen.getByLabelText('Día'), { target: { value: '1' } });
+    fireEvent.change(screen.getByLabelText('Mes'), { target: { value: '1' } });
+    fireEvent.change(screen.getByLabelText('Año'), { target: { value: '1990' } });
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'ana-test' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'a secure password' } });
+    fireEvent.change(screen.getByLabelText('Confirmar password'), { target: { value: 'a secure password' } });
     fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo enviar el correo de verificación.');

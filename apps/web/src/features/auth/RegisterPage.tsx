@@ -23,10 +23,25 @@ export function RegisterPage({ onNavigate }: AuthPageProps): JSX.Element {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const email = String(form.get('email'));
+    const password = String(form.get('password'));
+    const confirmPassword = String(form.get('confirmPassword'));
+    if (password !== confirmPassword) {
+      setMessage(null);
+      setError('Las contraseñas no coinciden.');
+      return;
+    }
+
     setError(null);
     setRetryEmail(null);
     try {
-      await register({ name: String(form.get('name')), email, password: String(form.get('password')) });
+      await register({
+        firstName: String(form.get('firstName')),
+        lastName: String(form.get('lastName')),
+        birthDate: `${String(form.get('birthYear'))}-${String(form.get('birthMonth')).padStart(2, '0')}-${String(form.get('birthDay')).padStart(2, '0')}`,
+        username: String(form.get('username')),
+        email,
+        password,
+      });
       setMessage('Revisa tu correo para verificar la cuenta antes de iniciar sesión.');
     } catch (cause) {
       if (cause instanceof ApiError && cause.code === 'EMAIL_DELIVERY_FAILED') setRetryEmail(email);
@@ -47,10 +62,23 @@ export function RegisterPage({ onNavigate }: AuthPageProps): JSX.Element {
   }
 
   return <AuthLayout title="Crea tu cuenta de NFCompra">
-    <form onSubmit={submit}>
-      <label>Nombre<input name="name" autoComplete="name" required /></label>
-      <label>Correo electrónico<input name="email" type="email" autoComplete="email" required /></label>
-      <label>Contraseña<input name="password" type="password" autoComplete="new-password" minLength={8} required /></label>
+    <form onSubmit={submit} className="auth-form auth-form--extended">
+      <div className="auth-form__row">
+        <label>Nombre<input name="firstName" autoComplete="given-name" required /></label>
+        <label>Apellidos<input name="lastName" autoComplete="family-name" required /></label>
+      </div>
+      <label>Email<input name="email" type="email" autoComplete="email" required /></label>
+      <fieldset className="auth-form__fieldset">
+        <legend>Fecha de nacimiento</legend>
+        <div className="auth-form__row auth-form__row--three">
+          <label>Día<input name="birthDay" inputMode="numeric" pattern="[0-9]{1,2}" placeholder="Día" autoComplete="bday-day" required /></label>
+          <label>Mes<input name="birthMonth" inputMode="numeric" pattern="[0-9]{1,2}" placeholder="Mes" autoComplete="bday-month" required /></label>
+          <label>Año<input name="birthYear" inputMode="numeric" pattern="[0-9]{4}" placeholder="Año" autoComplete="bday-year" required /></label>
+        </div>
+      </fieldset>
+      <label>Username<input name="username" autoComplete="username" minLength={3} maxLength={30} pattern="[a-zA-Z0-9._-]{3,30}" required /></label>
+      <label>Password<input name="password" type="password" autoComplete="new-password" minLength={8} required /></label>
+      <label>Confirmar password<input name="confirmPassword" type="password" autoComplete="new-password" minLength={8} required /></label>
       {message && <p role="status">{message}</p>}
       {error && <p role="alert">{error}</p>}
       {retryEmail && <button type="button" onClick={() => void resend()}>Reenviar verificación</button>}

@@ -28,7 +28,7 @@ const testEnv: WorkerEnv = { ...env, JWT_SECRET: 'test-jwt-secret', APP_BASE_URL
 
 beforeEach(async () => {
   await env.DB.exec(`
-    CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE COLLATE NOCASE, password_hash TEXT NOT NULL, email_verified_at TEXT NULL, session_version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, first_name TEXT NULL, last_name TEXT NULL, birth_date TEXT NULL, username TEXT UNIQUE COLLATE NOCASE NULL, email TEXT NOT NULL UNIQUE COLLATE NOCASE, password_hash TEXT NOT NULL, email_verified_at TEXT NULL, session_version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS auth_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, type TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL, used_at TEXT NULL, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS refresh_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, device_name TEXT NULL, session_version INTEGER NOT NULL DEFAULT 0, expires_at TEXT NOT NULL, revoked_at TEXT NULL, created_at TEXT NOT NULL);
     DELETE FROM refresh_tokens;
@@ -74,6 +74,42 @@ it('sends a verifiable email and creates a web session for a verified user', asy
   const updateResponse = await dispatch('/v1/me', { name: 'Beatriz' }, { authorization: `Bearer ${accessToken}` }, 'PATCH');
   expect(updateResponse.status).toBe(200);
   expect(await updateResponse.json()).toMatchObject({ user: { name: 'Beatriz' } });
+});
+
+it('registers the extended profile fields used by the web form', async () => {
+  const email = `profile-${crypto.randomUUID()}@example.test`;
+
+  const registerResponse = await dispatch('/v1/auth/register', {
+    firstName: 'Esteban',
+    lastName: 'García Pérez',
+    birthDate: '1995-04-23',
+    username: 'Spee',
+    email,
+    password: 'a secure password',
+  });
+
+  expect(registerResponse.status).toBe(201);
+  expect(await registerResponse.json()).toMatchObject({
+    user: {
+      name: 'Esteban García Pérez',
+      firstName: 'Esteban',
+      lastName: 'García Pérez',
+      birthDate: '1995-04-23',
+      username: 'Spee',
+      email,
+    },
+  });
+
+  const duplicateUsername = await dispatch('/v1/auth/register', {
+    firstName: 'Otra',
+    lastName: 'Persona',
+    birthDate: '1990-01-01',
+    username: 'spee',
+    email: `profile-duplicate-${crypto.randomUUID()}@example.test`,
+    password: 'a secure password',
+  });
+  expect(duplicateUsername.status).toBe(409);
+  expect(await duplicateUsername.json()).toMatchObject({ error: { code: 'USERNAME_ALREADY_REGISTERED' } });
 });
 
 it('returns a recoverable JSON error when registration email fails and supports resending it', async () => {
@@ -235,6 +271,10 @@ it('rejects malformed or oversized registration details', async () => {
   expect(malformedEmail.status).toBe(422);
   const oversizedName = await dispatch('/v1/auth/register', { name: 'n'.repeat(101), email: `name-${crypto.randomUUID()}@example.test`, password: 'a secure password' });
   expect(oversizedName.status).toBe(422);
+  const malformedBirthDate = await dispatch('/v1/auth/register', { firstName: 'Ana', lastName: 'Test', birthDate: '31/12/2000', username: 'ana-test', email: `birth-${crypto.randomUUID()}@example.test`, password: 'a secure password' });
+  expect(malformedBirthDate.status).toBe(422);
+  const malformedUsername = await dispatch('/v1/auth/register', { firstName: 'Ana', lastName: 'Test', birthDate: '2000-12-31', username: 'no vale', email: `username-${crypto.randomUUID()}@example.test`, password: 'a secure password' });
+  expect(malformedUsername.status).toBe(422);
 });
 
 it('rejects an oversized device name when issuing an Android session', async () => {

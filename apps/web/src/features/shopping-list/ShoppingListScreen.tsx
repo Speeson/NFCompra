@@ -1,5 +1,6 @@
-import { useState, type FormEvent, type JSX } from 'react';
+import { useEffect, useState, type FormEvent, type JSX } from 'react';
 
+import { searchProductCatalog, type ProductCatalogItem } from '../catalog/product-catalog-api';
 import type { ShoppingItem } from './model';
 
 type ProductInput = { name: string; quantity: number; unit: string | null };
@@ -19,13 +20,37 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [unit, setUnit] = useState('');
+  const [suggestions, setSuggestions] = useState<ProductCatalogItem[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    const search = name.trim();
+    if (isOffline || search.length < 2) {
+      setSuggestions([]);
+      return () => { active = false; };
+    }
+    const timer = window.setTimeout(() => {
+      void searchProductCatalog(search, 8)
+        .then((products) => { if (active) setSuggestions(products); })
+        .catch(() => { if (active) setSuggestions([]); });
+    }, 150);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [isOffline, name]);
 
   function addItem(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     const parsedQuantity = Number(quantity);
     if (isOffline || !name.trim() || !Number.isFinite(parsedQuantity) || parsedQuantity <= 0) return;
     onAdd?.({ name: name.trim(), quantity: parsedQuantity, unit: unit.trim() || null });
-    setName(''); setQuantity('1'); setUnit('');
+    setName(''); setQuantity('1'); setUnit(''); setSuggestions([]);
+  }
+
+  function selectSuggestion(suggestion: ProductCatalogItem): void {
+    setName(suggestion.name);
+    setSuggestions([]);
   }
 
   return <main className="shopping-list">
@@ -35,7 +60,9 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
     </header>
     {isOffline ? <p className="offline-notice" role="status">Sin conexión</p> : null}
     {onAdd ? <form className="product-form" onSubmit={addItem}>
-      <label htmlFor="new-product-name">Producto</label><input id="new-product-name" disabled={isOffline} value={name} onChange={(event) => setName(event.target.value)} required maxLength={200} />
+      <label htmlFor="new-product-name">Producto</label><div className="product-autocomplete"><input id="new-product-name" disabled={isOffline} value={name} onChange={(event) => setName(event.target.value)} required maxLength={200} autoComplete="off" />
+        {suggestions.length ? <div className="product-suggestions" role="listbox" aria-label="Sugerencias de productos">{suggestions.map((suggestion) => <button key={suggestion.id} type="button" className="product-suggestion" onClick={() => selectSuggestion(suggestion)}>{suggestionLabel(suggestion)}</button>)}</div> : null}
+      </div>
       <label htmlFor="new-product-quantity">Cantidad</label><input id="new-product-quantity" disabled={isOffline} type="number" min="0.01" step="any" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />
       <label htmlFor="new-product-unit">Unidad</label><input id="new-product-unit" disabled={isOffline} value={unit} onChange={(event) => setUnit(event.target.value)} maxLength={50} />
       <button type="submit" disabled={isOffline}>Añadir</button>
@@ -43,6 +70,10 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
     <ShoppingSection title="Pendientes" items={pendingItems} emptyMessage="No quedan productos pendientes." isOffline={isOffline} onToggle={onToggle} onUpdate={onUpdate} onDelete={onDelete} />
     <ShoppingSection title="Comprados" items={checkedItems} emptyMessage="Aún no has marcado ningún producto." isOffline={isOffline} onToggle={onToggle} onUpdate={onUpdate} onDelete={onDelete} />
   </main>;
+}
+
+function suggestionLabel(suggestion: ProductCatalogItem): string {
+  return [suggestion.name, suggestion.categoryName, suggestion.packageSize].filter(Boolean).join(' · ');
 }
 
 function ShoppingSection({ title, items, emptyMessage, isOffline, onToggle, onUpdate, onDelete }: { title: string; items: ShoppingItem[]; emptyMessage: string; isOffline: boolean; onToggle?: (item: ShoppingItem) => void; onUpdate?: (item: ShoppingItem, input: ProductInput) => void; onDelete?: (item: ShoppingItem) => void }): JSX.Element {

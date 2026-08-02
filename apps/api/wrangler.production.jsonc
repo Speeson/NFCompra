@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "nfcompra-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-26",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "nfcompra-production",
+      "database_id": "c9849220-3753-482c-8a0d-a4d40a93856b",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "APP_BASE_URL": "https://nfcompra.esgarpe.dev",
+    "ALLOWED_ORIGINS": "https://nfcompra.esgarpe.dev"
+  }
+}

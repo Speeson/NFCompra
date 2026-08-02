@@ -3,6 +3,10 @@ import { ApiClient } from './client';
 export interface User {
   id: string;
   name: string;
+  firstName: string | null;
+  lastName: string | null;
+  birthDate: string | null;
+  username: string | null;
   email: string;
   emailVerifiedAt: string | null;
   createdAt: string;

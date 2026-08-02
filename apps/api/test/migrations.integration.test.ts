@@ -25,6 +25,10 @@ it('applies every migration to an empty database', async () => {
   const invitationIndexes = await env.DB.prepare('PRAGMA index_list(invitations)').all<{ name: string }>();
   const notifications = await env.DB.prepare('PRAGMA table_info(notifications)').all<{ name: string }>();
   const notificationIndexes = await env.DB.prepare('PRAGMA index_list(notifications)').all<{ name: string }>();
+  const productCategories = await env.DB.prepare('PRAGMA table_info(product_categories)').all<{ name: string }>();
+  const productCatalog = await env.DB.prepare('PRAGMA table_info(product_catalog)').all<{ name: string }>();
+  const productAliases = await env.DB.prepare('PRAGMA table_info(product_aliases)').all<{ name: string }>();
+  const shoppingItems = await env.DB.prepare('PRAGMA table_info(shopping_items)').all<{ name: string }>();
 
   expect(users.results.map(({ name }) => name)).toContain('session_version');
   expect(refreshTokens.results.map(({ name }) => name)).toContain('session_version');
@@ -33,6 +37,11 @@ it('applies every migration to an empty database', async () => {
   expect(invitationIndexes.results.map(({ name }) => name)).toEqual(expect.arrayContaining(['idx_invitations_active_household_email', 'idx_invitations_household_status']));
   expect(notifications.results.map(({ name }) => name)).toEqual(expect.arrayContaining(['user_id', 'actor_user_id', 'list_id', 'type', 'grouped_until', 'read_at']));
   expect(notificationIndexes.results.map(({ name }) => name)).toEqual(expect.arrayContaining(['idx_notifications_user_read_created', 'idx_notifications_grouping']));
+  expect(users.results.map(({ name }) => name)).toEqual(expect.arrayContaining(['first_name', 'last_name', 'birth_date', 'username']));
+  expect(productCategories.results.map(({ name }) => name)).toEqual(expect.arrayContaining(['id', 'name', 'normalized_name', 'icon_key']));
+  expect(productCatalog.results.map(({ name }) => name)).toEqual(expect.arrayContaining(['id', 'name', 'normalized_name', 'category_id', 'icon_key', 'source_product_id']));
+  expect(productAliases.results.map(({ name }) => name)).toEqual(expect.arrayContaining(['id', 'product_id', 'alias', 'normalized_alias']));
+  expect(shoppingItems.results.map(({ name }) => name)).toContain('catalog_product_id');
   expect(await env.DB.prepare('SELECT COUNT(*) AS count FROM d1_migrations').first<{ count: number }>())
     .toEqual({ count: env.TEST_MIGRATIONS.length });
 });

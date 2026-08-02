@@ -3,6 +3,10 @@ import type { Env } from '../env';
 export interface AuthUser {
   id: string;
   name: string;
+  firstName: string | null;
+  lastName: string | null;
+  birthDate: string | null;
+  username: string | null;
   email: string;
   emailVerifiedAt: string | null;
   createdAt: string;
@@ -12,6 +16,10 @@ export interface AuthUser {
 interface UserRow {
   id: string;
   name: string;
+  first_name: string | null;
+  last_name: string | null;
+  birth_date: string | null;
+  username: string | null;
   email: string;
   password_hash: string;
   email_verified_at: string | null;
@@ -26,11 +34,16 @@ export interface UserWithPassword extends AuthUser {
 }
 
 function mapUser(row: UserRow): UserWithPassword {
-  return { id: row.id, name: row.name, email: row.email, passwordHash: row.password_hash, sessionVersion: row.session_version, emailVerifiedAt: row.email_verified_at, createdAt: row.created_at, updatedAt: row.updated_at };
+  return { id: row.id, name: row.name, firstName: row.first_name, lastName: row.last_name, birthDate: row.birth_date, username: row.username, email: row.email, passwordHash: row.password_hash, sessionVersion: row.session_version, emailVerifiedAt: row.email_verified_at, createdAt: row.created_at, updatedAt: row.updated_at };
 }
 
 export async function findUserByEmail(env: Env, email: string): Promise<UserWithPassword | null> {
   const row = await env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(email).first<UserRow>();
+  return row ? mapUser(row) : null;
+}
+
+export async function findUserByUsername(env: Env, username: string): Promise<UserWithPassword | null> {
+  const row = await env.DB.prepare('SELECT * FROM users WHERE username = ?').bind(username).first<UserRow>();
   return row ? mapUser(row) : null;
 }
 
@@ -50,12 +63,12 @@ export async function findUserSessionById(env: Env, id: string): Promise<UserSes
   return { user, sessionVersion };
 }
 
-export async function createUser(env: Env, input: { name: string; email: string; passwordHash: string }): Promise<AuthUser> {
+export async function createUser(env: Env, input: { name: string; firstName?: string | null; lastName?: string | null; birthDate?: string | null; username?: string | null; email: string; passwordHash: string }): Promise<AuthUser> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  await env.DB.prepare('INSERT INTO users (id, name, email, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(id, input.name, input.email, input.passwordHash, now, now).run();
-  return { id, name: input.name, email: input.email, emailVerifiedAt: null, createdAt: now, updatedAt: now };
+  await env.DB.prepare('INSERT INTO users (id, name, first_name, last_name, birth_date, username, email, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, input.name, input.firstName ?? null, input.lastName ?? null, input.birthDate ?? null, input.username ?? null, input.email, input.passwordHash, now, now).run();
+  return { id, name: input.name, firstName: input.firstName ?? null, lastName: input.lastName ?? null, birthDate: input.birthDate ?? null, username: input.username ?? null, email: input.email, emailVerifiedAt: null, createdAt: now, updatedAt: now };
 }
 
 export async function verifyEmail(env: Env, id: string): Promise<void> {
