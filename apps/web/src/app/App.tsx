@@ -8,6 +8,7 @@ import { RegisterPage, ResetPasswordPage, VerifyEmailPage } from '../features/au
 import { AcceptInvitationPage } from '../features/invitations/AcceptInvitationPage';
 import { NotificationBell } from '../features/notifications/NotificationBell';
 import { PublicLanding } from '../features/landing/PublicLanding';
+import { AuthModal, type AuthMode } from '../features/auth/AuthModal';
 
 export function App(): JSX.Element {
   const { user } = useSession();
@@ -24,6 +25,8 @@ function AppRoute(): JSX.Element {
   const [location, setLocation] = useState(() => new URL(window.location.href));
   const [logoutError, setLogoutError] = useState(false);
   const [notificationActionError, setNotificationActionError] = useState<string>();
+  const [authMode, setAuthMode] = useState<AuthMode | null>(null);
+  const authTriggerRef = useRef<HTMLElement | null>(null);
   const { status, user, logout } = useSession();
   const queryClient = useQueryClient();
 
@@ -36,6 +39,16 @@ function AppRoute(): JSX.Element {
   function navigate(path: string): void {
     window.history.pushState({}, '', path);
     setLocation(new URL(window.location.href));
+  }
+
+  function openAuth(mode: AuthMode): void {
+    authTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setAuthMode(mode);
+  }
+
+  function closeAuth(): void {
+    setAuthMode(null);
+    requestAnimationFrame(() => authTriggerRef.current?.focus());
   }
 
   const notificationActionAlert = notificationActionError ? <p role="alert">
@@ -65,7 +78,8 @@ function AppRoute(): JSX.Element {
   if (location.pathname === '/auth/resend-verification') return <ResendVerificationPage onNavigate={navigate} />;
   if (status === 'anonymous' && location.pathname === '/') return <>
     {logoutError && <p role="alert">No se pudo cerrar sesión en el servidor. La sesión local se ha cerrado.</p>}
-    <PublicLanding onOpenAuth={() => undefined} />
+    <PublicLanding onOpenAuth={openAuth} />
+    {authMode && <AuthModal mode={authMode} onClose={closeAuth} onSwitch={setAuthMode} onNavigate={navigate} />}
   </>;
   if (status === 'anonymous') return <>
     {logoutError && <p role="alert">No se pudo cerrar sesión en el servidor. La sesión local se ha cerrado.</p>}

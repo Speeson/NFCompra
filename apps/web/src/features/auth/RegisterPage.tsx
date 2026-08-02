@@ -9,11 +9,19 @@ interface AuthPageProps {
   token?: string | null;
 }
 
+export interface RegisterFormProps extends AuthPageProps {
+  onSwitchToLogin?(): void;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof ApiError ? error.message : 'No se pudo completar la solicitud. Inténtalo de nuevo.';
 }
 
 export function RegisterPage({ onNavigate }: AuthPageProps): JSX.Element {
+  return <AuthLayout title="Crea tu cuenta de NFCompra"><RegisterForm onNavigate={onNavigate} /></AuthLayout>;
+}
+
+export function RegisterForm({ onNavigate, onSwitchToLogin }: RegisterFormProps): JSX.Element {
   const { register, resendVerification } = useSession();
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -46,7 +54,7 @@ export function RegisterPage({ onNavigate }: AuthPageProps): JSX.Element {
     }
   }
 
-  return <AuthLayout title="Crea tu cuenta de NFCompra">
+  return <>
     <form onSubmit={submit}>
       <label>Nombre<input name="name" autoComplete="name" required /></label>
       <label>Correo electrónico<input name="email" type="email" autoComplete="email" required /></label>
@@ -57,8 +65,11 @@ export function RegisterPage({ onNavigate }: AuthPageProps): JSX.Element {
       <button type="submit">Crear cuenta</button>
     </form>
     <button type="button" onClick={() => onNavigate?.('/auth/resend-verification')}>Reenviar correo de verificación</button>
-    <p>¿Ya tienes cuenta? <button type="button" onClick={() => onNavigate?.('/login')}>Inicia sesión</button></p>
-  </AuthLayout>;
+    <p>¿Ya tienes cuenta? <button type="button" onClick={() => {
+      if (onSwitchToLogin) onSwitchToLogin();
+      else onNavigate?.('/login');
+    }}>Inicia sesión</button></p>
+  </>;
 }
 
 export function VerifyEmailPage({ token, onNavigate }: AuthPageProps): JSX.Element {

@@ -44,6 +44,18 @@ a { color: inherit; }
 
 @media (max-width: 42rem) { .public-landing__links { display: none; }.public-landing__hero { grid-template-columns: 1fr; padding-top: 3rem; }.public-landing__preview { transform: none; }.public-landing__benefits { grid-template-columns: 1fr; }.public-landing__nfc { align-items: flex-start; }.public-landing__nfc-mark { width: 4rem; } }
 
+.auth-modal__backdrop { position: fixed; z-index: 10; inset: 0; display: grid; place-items: center; padding: var(--space-4); background: rgb(16 39 30 / 58%); }
+.auth-modal { width: min(100%, 30rem); max-height: calc(100vh - 2rem); overflow: auto; padding: var(--space-6); border-radius: 1rem; background: var(--color-surface); box-shadow: 0 1.5rem 5rem rgb(16 39 30 / 35%); }
+.auth-modal__header { display: flex; align-items: start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); }
+.auth-modal__header h2 { font-size: 1.5rem; }
+.auth-modal__close { width: 2.25rem; height: 2.25rem; border: 0; border-radius: var(--radius-pill); background: var(--color-page); color: var(--color-text); cursor: pointer; font-size: 1.5rem; line-height: 1; }
+.auth-modal form, .auth-page form { display: grid; gap: var(--space-4); }
+.auth-modal label, .auth-page label { display: grid; gap: var(--space-2); font-weight: 700; }
+.auth-modal input, .auth-page input { width: 100%; padding: 0.7rem 0.8rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-page); color: var(--color-text); font: inherit; }
+.auth-modal form button[type="submit"], .auth-page form button[type="submit"] { border: 0; border-radius: var(--radius-pill); padding: 0.75rem 1rem; background: var(--color-primary); color: var(--color-primary-contrast); cursor: pointer; font-weight: 800; }
+.auth-modal > button, .auth-modal > p button, .auth-page > button, .auth-page > p button { border: 0; padding: var(--space-2) 0; background: transparent; color: var(--color-primary); cursor: pointer; font-weight: 700; text-align: left; }
+.auth-page { width: min(100% - 2rem, 30rem); margin: 0 auto; padding: clamp(3rem, 10vw, 7rem) 0; }
+
 .shopping-list { width: min(100% - 2rem, 42rem); margin: 0 auto; padding: var(--space-8) 0; }
 .shopping-list__header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-6); }
 .eyebrow { margin: 0 0 var(--space-1); color: var(--color-muted); font-size: 0.875rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }

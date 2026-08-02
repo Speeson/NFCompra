@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiClient } from '../../api/client';
@@ -20,7 +20,9 @@ vi.mock('../shopping-list/offline-cache', () => ({
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  sessionStorage.clear();
   vi.unstubAllGlobals();
+  window.history.replaceState({}, '', '/');
 });
 
 describe('LoginPage', () => {
@@ -132,6 +134,67 @@ describe('RegisterPage', () => {
       'Si existe una cuenta pendiente de verificar con ese correo, recibirás un nuevo mensaje.',
     );
     expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/auth/resend-verification'))).toBe(true);
+  });
+});
+
+describe('autenticaciÃ³n desde la landing', () => {
+  function stubAnonymousSession(): void {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({
+      error: { code: 'UNAUTHORIZED', message: 'No hay sesiÃ³n.', details: {} },
+    }, { status: 401 })));
+  }
+
+  it('abre un diÃ¡logo de inicio de sesiÃ³n etiquetado y devuelve el foco al cerrarlo', async () => {
+    stubAnonymousSession();
+    render(<AuthProvider><App /></AuthProvider>);
+
+    const opener = (await screen.findAllByRole('button', { name: /Iniciar sesi.n/ }))[1];
+    opener.focus();
+    fireEvent.click(opener);
+
+    const dialog = screen.getByRole('dialog', { name: /NFCompra/ });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(within(dialog).getByLabelText(/Correo electr.nico/)).toBeVisible();
+    expect(within(dialog).getByLabelText(/Contrase.a/)).toBeVisible();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cerrar' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+
+  it('cambia a registro y permite cerrar el diÃ¡logo con Escape', async () => {
+    stubAnonymousSession();
+    render(<AuthProvider><App /></AuthProvider>);
+
+    const opener = await screen.findByRole('button', { name: 'Crear cuenta' });
+    opener.focus();
+    fireEvent.click(opener);
+    const registerDialog = screen.getByRole('dialog', { name: /Crea tu cuenta de NFCompra/ });
+    expect(within(registerDialog).getByLabelText('Nombre')).toBeVisible();
+    expect(within(registerDialog).getByLabelText(/Correo electr.nico/)).toBeVisible();
+    expect(within(registerDialog).getByLabelText(/Contrase.a/)).toBeVisible();
+
+    fireEvent.click(within(registerDialog).getByRole('button', { name: /Inicia sesi.n/ }));
+    expect(screen.getByRole('dialog', { name: /NFCompra/ })).toBeVisible();
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+
+  it.each([
+    ['/auth/verify?token=verify-token', /Verifica tu correo/],
+    ['/auth/reset-password?token=reset-token', /Elige una nueva contrase/],
+    ['/auth/forgot-password', /Restablece tu contrase/],
+    ['/invitations/accept?token=invitation-token', /Acepta tu invitaci/],
+    ['/invitations/invitation-1/accept', /Acepta tu invitaci/],
+  ])('mantiene disponible la ruta directa %s', async (path, heading) => {
+    window.history.replaceState({}, '', path);
+    stubAnonymousSession();
+
+    render(<AuthProvider><App /></AuthProvider>);
+
+    expect(await screen.findByRole('heading', { name: heading })).toBeVisible();
   });
 });
 
