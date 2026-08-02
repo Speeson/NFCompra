@@ -31,13 +31,11 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
   return <main className="shopping-list">
     <header className="shopping-list__header">
       <div><p className="eyebrow">Lista de la compra</p><h1>{title}</h1></div>
-      <button type="button" className="icon-button" aria-label="Añadir producto" disabled={isOffline} onClick={() => document.getElementById('new-product-name')?.focus()}><span aria-hidden="true">+</span></button>
     </header>
     {isOffline ? <p className="offline-notice" role="status">Sin conexión</p> : null}
     {onAdd ? <form className="product-form" onSubmit={addItem}>
       <label htmlFor="new-product-name">Producto</label><input id="new-product-name" disabled={isOffline} value={name} onChange={(event) => setName(event.target.value)} required maxLength={200} />
       <label htmlFor="new-product-quantity">Cantidad</label><input id="new-product-quantity" disabled={isOffline} type="number" min="0.01" step="any" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />
-      <label htmlFor="new-product-unit">Unidad</label><input id="new-product-unit" disabled={isOffline} value={unit} onChange={(event) => setUnit(event.target.value)} maxLength={50} />
       <button type="submit" disabled={isOffline}>Añadir</button>
     </form> : null}
     <ShoppingSection title="Pendientes" items={pendingItems} emptyMessage="No quedan productos pendientes." isOffline={isOffline} onToggle={onToggle} onUpdate={onUpdate} onDelete={onDelete} />
@@ -72,7 +70,7 @@ function ShoppingItemRow({ item, isOffline, onToggle, onUpdate, onDelete }: { it
       <label>Unidad<input aria-label="Unidad del producto" disabled={isOffline} value={unit} onChange={(event) => setUnit(event.target.value)} /></label>
       <button type="submit" disabled={isOffline}>Guardar</button><button type="button" disabled={isOffline} onClick={() => setEditing(false)}>Cancelar</button>
     </form> : <><span className="shopping-item__name">{item.name}</span><span className="shopping-item__quantity">{item.quantity}{item.unit ? ` ${item.unit}` : ''}</span></>}
-    {onUpdate ? <button type="button" disabled={isOffline} onClick={() => setEditing(true)}>Editar {item.name}</button> : null}
-    {onDelete ? <button type="button" disabled={isOffline} onClick={() => onDelete(item)}>Eliminar {item.name}</button> : null}
+    {onUpdate ? <button type="button" className="item-action item-action--edit" aria-label={`Editar ${item.name}`} disabled={isOffline} onClick={() => setEditing(true)}>✎</button> : null}
+    {onDelete ? <button type="button" className="item-action item-action--delete" aria-label={`Eliminar ${item.name}`} disabled={isOffline} onClick={() => onDelete(item)}>×</button> : null}
   </li>;
 }

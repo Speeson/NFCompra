@@ -78,7 +78,7 @@ describe('ShoppingListRoute', () => {
 
     expect(await screen.findByText('Leche guardada')).toBeVisible();
     expect(screen.getByRole('status')).toHaveTextContent('Sin conexi\u00f3n');
-    expect(screen.getByRole('button', { name: 'A\u00f1adir producto' })).toBeDisabled();
+    expect(screen.getByLabelText('Producto')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'A\u00f1adir' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Marcar Leche guardada' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Editar Leche guardada' })).toBeDisabled();
