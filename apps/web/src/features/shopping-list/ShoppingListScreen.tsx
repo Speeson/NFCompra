@@ -25,19 +25,23 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
     const parsedQuantity = Number(quantity);
     if (isOffline || !name.trim() || !Number.isFinite(parsedQuantity) || parsedQuantity <= 0) return;
     onAdd?.({ name: name.trim(), quantity: parsedQuantity, unit: unit.trim() || null });
-    setName(''); setQuantity('1'); setUnit('');
+    setName('');
+    setQuantity('1');
+    setUnit('');
   }
 
   return <main className="shopping-list">
     <header className="shopping-list__header">
-      <div><p className="eyebrow">Lista de la compra</p><h1>{title}</h1></div>
+      <div className="shopping-list__title"><p className="eyebrow">Lista de la compra</p><h1>{title}</h1></div>
+      {onAdd ? <form className="product-form" onSubmit={addItem}>
+        <label htmlFor="new-product-name">Producto</label>
+        <input id="new-product-name" disabled={isOffline} value={name} onChange={(event) => setName(event.target.value)} required maxLength={200} />
+        <label htmlFor="new-product-quantity">Cantidad</label>
+        <input id="new-product-quantity" disabled={isOffline} type="number" min="0.01" step="any" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />
+        <button type="submit" disabled={isOffline}>Añadir</button>
+      </form> : null}
     </header>
     {isOffline ? <p className="offline-notice" role="status">Sin conexión</p> : null}
-    {onAdd ? <form className="product-form" onSubmit={addItem}>
-      <label htmlFor="new-product-name">Producto</label><input id="new-product-name" disabled={isOffline} value={name} onChange={(event) => setName(event.target.value)} required maxLength={200} />
-      <label htmlFor="new-product-quantity">Cantidad</label><input id="new-product-quantity" disabled={isOffline} type="number" min="0.01" step="any" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />
-      <button type="submit" disabled={isOffline}>Añadir</button>
-    </form> : null}
     <ShoppingSection title="Pendientes" items={pendingItems} emptyMessage="No quedan productos pendientes." isOffline={isOffline} onToggle={onToggle} onUpdate={onUpdate} onDelete={onDelete} />
     <ShoppingSection title="Comprados" items={checkedItems} emptyMessage="Aún no has marcado ningún producto." isOffline={isOffline} onToggle={onToggle} onUpdate={onUpdate} onDelete={onDelete} />
   </main>;
@@ -55,6 +59,7 @@ function ShoppingItemRow({ item, isOffline, onToggle, onUpdate, onDelete }: { it
   const [name, setName] = useState(item.name);
   const [quantity, setQuantity] = useState(String(item.quantity));
   const [unit, setUnit] = useState(item.unit ?? '');
+
   function save(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     const parsedQuantity = Number(quantity);
@@ -62,6 +67,7 @@ function ShoppingItemRow({ item, isOffline, onToggle, onUpdate, onDelete }: { it
     onUpdate?.(item, { name: name.trim(), quantity: parsedQuantity, unit: unit.trim() || null });
     setEditing(false);
   }
+
   return <li className={item.isChecked ? 'shopping-item shopping-item--checked' : 'shopping-item'}>
     <button type="button" className="check-button" aria-label={`${item.isChecked ? 'Desmarcar' : 'Marcar'} ${item.name}`} aria-pressed={item.isChecked} disabled={isOffline} onClick={() => onToggle?.(item)}><span aria-hidden="true">{item.isChecked ? '✓' : ''}</span></button>
     {editing ? <form onSubmit={save} className="product-edit-form">

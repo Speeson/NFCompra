@@ -111,3 +111,67 @@ h2 { font-size: 1rem; }
 @media (max-width: 42rem) { .route-page__header { align-items: flex-start; flex-direction: column; }.route-page__header .button { width: 100%; }.product-form { grid-template-columns: 1fr 6rem; }.product-form button { grid-column: 1 / -1; }.shopping-item { grid-template-columns: 2rem minmax(0,1fr) 2rem 2rem; }.shopping-item__quantity { grid-column: 2; text-align: left; }.item-action { grid-row: 1 / span 2; }.item-action--edit { grid-column: 3; }.item-action--delete { grid-column: 4; } }
 @media (max-width: 42rem) { .route-page { padding-top: var(--space-6); }.route-card, .route-panel { padding: var(--space-4); } }
 @media (max-width: 42rem) { .list-selectors { grid-template-columns: 1fr; } }
+
+.route-list-groups--cards { grid-template-columns: repeat(auto-fit, minmax(17rem, 24rem)); align-items: stretch; }
+.route-list-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto 1fr auto; gap: var(--space-4); min-height: 9.5rem; padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-card); }
+.route-list-card__list { display: grid; gap: var(--space-1); min-width: 0; text-align: left; }
+.route-list-card__list strong { overflow-wrap: anywhere; font-size: 1.05rem; }
+.route-list-card__list span, .route-list-card__home span { color: var(--color-muted); font-size: .8125rem; font-weight: 700; }
+.route-list-card__home { display: grid; gap: var(--space-1); justify-items: end; max-width: 9rem; text-align: right; }
+.route-list-card__home h2 { overflow-wrap: anywhere; font-size: .95rem; }
+.route-list-card > .button { grid-column: 1 / -1; justify-self: center; align-self: center; min-width: 9rem; }
+
+.shopping-list { width: min(100% - 2rem, 70rem); }
+.list-selectors { display: flex; align-items: center; gap: var(--space-3); width: min(100% - 2rem, 70rem); margin-top: var(--space-4); padding: var(--space-3); }
+.list-selectors label, .list-selectors form { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.list-selectors label { flex: 1 1 12rem; }
+.list-selectors form { flex: 1.4 1 18rem; }
+.list-selectors select, .list-selectors input, .list-selectors form button, .product-form input, .product-form button { min-height: 2.65rem; }
+.list-selectors select, .list-selectors input { flex: 1 1 auto; }
+.list-selectors form button { flex: 0 0 auto; padding: 0 .95rem; }
+
+.shopping-list__header { display: grid; grid-template-columns: 1fr; gap: var(--space-3); align-items: center; margin-bottom: var(--space-5); padding: var(--space-4); }
+.shopping-list__title { display: grid; grid-template-columns: minmax(9rem, 1fr) minmax(0, 1.5fr) minmax(9rem, 1fr); align-items: baseline; gap: var(--space-3); }
+.shopping-list__title .eyebrow { margin: 0; }
+.shopping-list__title h1 { grid-column: 2; justify-self: center; font-size: clamp(1.45rem, 3vw, 1.9rem); line-height: 1.1; text-align: center; }
+.product-form { display: grid; grid-template-columns: auto minmax(10rem, 1fr) auto 6rem auto; align-items: center; gap: var(--space-2); margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.product-form label { display: block; font-weight: 800; white-space: nowrap; }
+.product-form input { padding: .65rem .75rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-page); }
+.product-form button { border: 0; border-radius: var(--radius-sm); padding: 0 1rem; background: var(--color-primary); color: white; font-weight: 800; }
+.shopping-section { margin-top: var(--space-5); padding-top: 0; }
+.shopping-section h2 { display: flex; align-items: center; min-height: 2.6rem; margin: 0; padding: 0 var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); font-size: .95rem; }
+.shopping-item { grid-template-columns: 2rem minmax(0, 1fr) minmax(3.5rem, auto) 2rem 2rem; min-height: 3.25rem; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); }
+.check-button, .item-action { width: 2rem; height: 2rem; border-radius: var(--radius-sm); }
+
+@media (max-width: 42rem) {
+  .route-list-groups--cards { grid-template-columns: 1fr; }
+  .route-list-card { min-height: 8.5rem; }
+  .list-selectors { align-items: stretch; flex-direction: column; }
+  .list-selectors label, .list-selectors form { display: grid; gap: var(--space-2); }
+  .shopping-list__title { grid-template-columns: 1fr; }
+  .shopping-list__title h1 { grid-column: 1; justify-self: start; text-align: left; }
+  .product-form { grid-template-columns: auto minmax(0, 1fr); }
+  .product-form button { grid-column: 1 / -1; }
+  .shopping-item { grid-template-columns: 2rem minmax(0, 1fr) 2rem 2rem; }
+  .shopping-item__quantity { grid-column: 2; text-align: left; }
+}
+
+.app-shell__header { min-height: 3rem; padding-top: .15rem; padding-bottom: .15rem; }
+.app-shell__brand img { width: 5.9rem; }
+.route-page__header { min-height: 5rem; padding: var(--space-3) var(--space-4); }
+.route-page__header--compact h1 { font-size: 1.35rem; line-height: 1.15; }
+.route-page__header--compact p { margin-top: .2rem; }
+.route-card-grid { grid-template-columns: repeat(auto-fit, minmax(16rem, 21rem)); }
+.route-card--household { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto 1fr auto; min-height: 9rem; text-align: left; justify-items: stretch; }
+.route-card__identity { display: grid; gap: var(--space-1); min-width: 0; }
+.route-card__identity h2 { overflow-wrap: anywhere; font-size: 1.05rem; }
+.route-card__metric { justify-self: end; margin: 0; color: var(--color-muted); font-weight: 800; text-align: right; }
+.route-card--household .button { grid-column: 1 / -1; justify-self: center; min-width: 9rem; margin-top: 0; }
+.route-card__members { grid-column: 2; justify-self: end; margin: 0; color: var(--color-muted); font-size: .875rem; font-weight: 700; text-align: right; }
+
+@media (max-width: 42rem) {
+  .app-shell__header { min-height: 3.4rem; }
+  .app-shell__brand img { width: 5.8rem; }
+  .route-page__header { min-height: 0; }
+  .route-card-grid { grid-template-columns: 1fr; }
+}

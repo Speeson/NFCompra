@@ -3,7 +3,6 @@ import { QueryClient, useMutation, useQueries, useQuery, useQueryClient } from '
 
 import { ApiError } from '../../api/client';
 import { HouseholdSetup } from '../households/HouseholdSetup';
-import { MembersPanel } from '../households/MembersPanel';
 import { notificationsQueryKey, unreadNotificationsQueryKey } from '../notifications/notification-api';
 import { ShoppingListScreen } from './ShoppingListScreen';
 import { loadOfflineList, saveOfflineList } from './offline-cache';
@@ -249,7 +248,6 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
       onToggle={(item) => { if (!isOffline) updateMutation.mutate({ item: item as ApiShoppingItem, patch: { isChecked: !item.isChecked } }); }}
       onUpdate={(item, input) => { if (!isOffline) updateMutation.mutate({ item: item as ApiShoppingItem, patch: input }); }}
       onDelete={(item) => { if (!isOffline) deleteMutation.mutate(item as ApiShoppingItem); }} />
-    {currentUserId && !isOffline ? <MembersPanel householdId={householdId} currentUserId={currentUserId} /> : null}
   </>;
 }
 
