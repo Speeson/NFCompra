@@ -103,11 +103,11 @@ export function AuthenticatedRoute({ pathname, search, userId, userName, onNavig
   if (pathname === '/households') return <HouseholdsPage onNavigate={onNavigate} startCreating={search.get('create') === '1'} />;
   if (householdMatch) return <HouseholdDetailPage householdId={decodeURIComponent(householdMatch[1])} currentUserId={userId} onNavigate={onNavigate} />;
   if (pathname === '/lists') return <ListsPage onNavigate={onNavigate} startCreating={search.get('create') === '1'} />;
-  if (listMatch) return <ShoppingListRoute currentUserId={userId} requestedListId={decodeURIComponent(listMatch[1])} />;
+  if (listMatch) return <ShoppingListRoute currentUserId={userId} requestedListId={decodeURIComponent(listMatch[1])} onNavigate={onNavigate} />;
   if (pathname === '/nfc') return <NfcPage />;
   if (pathname === '/profile') return <PlaceholderPage title="Perfil" text="Tu perfil se mostrará aquí cuando haya ajustes guardados disponibles." />;
   if (pathname === '/settings') return <PlaceholderPage title="Ajustes" text="Los ajustes de la cuenta estarán disponibles aquí próximamente." />;
-  return <ShoppingListRoute currentUserId={userId} requestedHouseholdId={search.get('household')} requestedListId={search.get('list')} />;
+  return <ShoppingListRoute currentUserId={userId} requestedHouseholdId={search.get('household')} requestedListId={search.get('list')} onNavigate={onNavigate} />;
 }
 
 function PlaceholderPage({ title, text }: { title: string; text: string }): JSX.Element { return <section className="route-page"><p className="eyebrow">Cuenta</p><h1>{title}</h1><p className="route-page__empty">{text}</p></section>; }

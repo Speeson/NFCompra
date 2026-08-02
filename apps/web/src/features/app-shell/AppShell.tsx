@@ -22,7 +22,11 @@ export function AppShell({ user, pathname, onNavigate, onLogout, onNotificationA
   const firstMenuItemRef = useRef<HTMLButtonElement>(null);
   const contentRef = useRef<HTMLElement>(null);
   const previousPathname = useRef(pathname);
-  function closeProfile(restoreFocus = false): void { setProfileOpen(false); if (restoreFocus) triggerRef.current?.focus(); }
+
+  function closeProfile(restoreFocus = false): void {
+    setProfileOpen(false);
+    if (restoreFocus) triggerRef.current?.focus();
+  }
 
   function isCurrent(path: string): boolean {
     return path === '/' ? pathname === '/' : pathname === path || pathname.startsWith(`${path}/`);
@@ -46,7 +50,10 @@ export function AppShell({ user, pathname, onNavigate, onLogout, onNotificationA
     previousPathname.current = pathname;
   }, [pathname]);
 
-  function go(path: string): void { closeProfile(); onNavigate(path); }
+  function go(path: string): void {
+    closeProfile();
+    onNavigate(path);
+  }
 
   return <div className="app-shell">
     <header className="app-shell__header">
@@ -63,10 +70,10 @@ export function AppShell({ user, pathname, onNavigate, onLogout, onNotificationA
             <p><strong>{user.name}</strong><span>{user.email}</span></p>
             <button ref={firstMenuItemRef} role="menuitem" type="button" onClick={() => go('/profile')}>Profile</button>
             <button role="menuitem" type="button" onClick={() => go('/settings')}>Settings</button>
-            <button role="menuitem" type="button" onClick={() => void onLogout()}>Sign out</button>
+            <button className="app-shell__profile-logout" role="menuitem" type="button" onClick={() => void onLogout()}><LogoutIcon />Cerrar sesión</button>
           </div> : null}
         </div>
-        <button className="app-shell__logout" type="button" onClick={() => void onLogout()}>Cerrar sesión</button>
+        <button className="app-shell__logout" type="button" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => void onLogout()}><LogoutIcon /></button>
       </div>
     </header>
     <main ref={contentRef} className="app-shell__content" tabIndex={-1}>{children}</main>
@@ -74,4 +81,8 @@ export function AppShell({ user, pathname, onNavigate, onLogout, onNotificationA
       {mobileNavigation.map(([label, path]) => <a key={path} href={path} aria-current={isCurrent(path) ? 'page' : undefined} onClick={(event) => { event.preventDefault(); go(path); }}>{label}</a>)}
     </nav>
   </div>;
+}
+
+function LogoutIcon(): JSX.Element {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M10 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20H10" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /><path d="M15 7l5 5-5 5M20 12H9" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
 }

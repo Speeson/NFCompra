@@ -52,6 +52,18 @@ describe('NotificationBell', () => {
     if (descriptor) Object.defineProperty(document, 'visibilityState', descriptor);
   });
 
+  it('closes the notification panel when clicking outside it', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => String(input).endsWith('/notifications/unread-count') ? Promise.resolve(Response.json({ count: 0 })) : Promise.resolve(Response.json({ notifications: [] }))));
+    render(<QueryClientProvider client={createWebQueryClient()}><NotificationBell onNavigate={vi.fn()} /></QueryClientProvider>);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Notificaciones' }));
+    expect(screen.getByRole('region', { name: 'Panel de notificaciones' })).toBeVisible();
+
+    fireEvent.mouseDown(document.body);
+
+    expect(screen.queryByRole('region', { name: 'Panel de notificaciones' })).not.toBeInTheDocument();
+  });
+
   it('shows notification read errors inline and still opens the selected context', async () => {
     const navigate = vi.fn();
     vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {

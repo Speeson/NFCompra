@@ -21,7 +21,7 @@ export function createWebQueryClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
 }
 
-export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, requestedListId }: { currentUserId?: string; requestedHouseholdId?: string | null; requestedListId?: string | null }): JSX.Element {
+export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, requestedListId, onNavigate }: { currentUserId?: string; requestedHouseholdId?: string | null; requestedListId?: string | null; onNavigate?(path: string): void }): JSX.Element {
   const queryClient = useQueryClient();
   const [householdId, setHouseholdId] = useState<string | undefined>(() => requestedHouseholdId ?? new URL(window.location.href).searchParams.get('household') ?? undefined);
   const [listId, setListId] = useState<string | undefined>(() => requestedListId ?? new URL(window.location.href).searchParams.get('list') ?? undefined);
@@ -235,7 +235,9 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
   if (!householdId || listsQuery.isPending || !listId || itemsQuery.isPending) return <main><p role="status">Cargando lista…</p></main>;
   if (listsQuery.isError || itemsQuery.isError) return <main><p role="alert">No se pudo cargar la lista.</p></main>;
 
+  const currentHousehold = householdsQuery.data.find((household) => household.id === householdId);
   return <>
+    {onNavigate ? <button className="back-link back-link--route" type="button" onClick={() => currentHousehold ? onNavigate(`/households/${encodeURIComponent(currentHousehold.id)}`) : onNavigate('/lists')}>← Volver a {currentHousehold?.name ?? 'listas'}</button> : null}
     <section className="list-selectors" aria-label="Seleccionar hogar y lista">
       <label>Hogar<select disabled={isOffline} value={householdId} onChange={(event) => { setHouseholdId(event.target.value); setListId(undefined); }}>{householdsQuery.data.map((household) => <option key={household.id} value={household.id}>{household.name}</option>)}</select></label>
       <label>Lista<select disabled={isOffline} value={listId} onChange={(event) => setListId(event.target.value)}>{listsQuery.data?.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}</select></label>

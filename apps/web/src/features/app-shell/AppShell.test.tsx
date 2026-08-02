@@ -53,7 +53,7 @@ describe('AppShell', () => {
     expect(within(profileControls).getByRole('menuitem', { name: 'Profile' })).toBeVisible();
     expect(within(profileControls).getByRole('menuitem', { name: 'Settings' })).toBeVisible();
     expect(within(profileControls).getByRole('menuitem', { name: 'Profile' })).toHaveFocus();
-    fireEvent.click(within(profileControls).getByRole('menuitem', { name: 'Sign out' }));
+    fireEvent.click(within(profileControls).getByRole('menuitem', { name: 'Cerrar sesión' }));
     expect(onLogout).toHaveBeenCalledOnce();
 
     fireEvent.keyDown(document, { key: 'Escape' });

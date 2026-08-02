@@ -1,4 +1,4 @@
-import { useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ApiError } from '../../api/client';
@@ -8,6 +8,7 @@ export function NotificationBell({ onNavigate, onActionError }: { onNavigate(pat
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [actionError, setActionError] = useState<string>();
+  const rootRef = useRef<HTMLDivElement>(null);
   const polling = () => document.visibilityState === 'visible' ? 30_000 : false;
   const notifications = useQuery({ queryKey: notificationsQueryKey, queryFn: fetchNotifications, refetchInterval: polling, refetchIntervalInBackground: false });
   const unread = useQuery({ queryKey: unreadNotificationsQueryKey, queryFn: fetchUnreadCount, refetchInterval: polling, refetchIntervalInBackground: false });
@@ -21,6 +22,15 @@ export function NotificationBell({ onNavigate, onActionError }: { onNavigate(pat
   const readAll = useMutation({ mutationFn: markAllNotificationsRead, onSuccess: () => void refresh(), onError: reportActionError });
   const count = unread.data ?? 0;
 
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: MouseEvent) => { if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false); };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', outside);
+    document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', escape); };
+  }, [open]);
+
   async function choose(notification: Notification): Promise<void> {
     if (!notification.readAt) {
       try { await readOne.mutateAsync(notification.id); } catch { /* navigation remains available if marking read fails */ }
@@ -31,7 +41,7 @@ export function NotificationBell({ onNavigate, onActionError }: { onNavigate(pat
     else if (notification.householdId) onNavigate(`/?household=${encodeURIComponent(notification.householdId)}`);
   }
 
-  return <div className="notification-bell">
+  return <div className="notification-bell" ref={rootRef}>
     <button className="notification-bell__trigger" type="button" aria-expanded={open} aria-label={count ? `Notificaciones (${count} sin leer)` : 'Notificaciones'} onClick={() => setOpen((value) => !value)}><span aria-hidden="true">🔔</span>{count ? <span className="notification-bell__count" aria-hidden="true">{count}</span> : null}</button>
     {actionError ? <p role="alert">{actionError}</p> : null}
     {open ? <section className="notification-bell__panel" aria-label="Panel de notificaciones">
