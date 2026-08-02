@@ -42,7 +42,7 @@ export function ListsPage({ onNavigate, startCreating = false }: { onNavigate(pa
 
     {!homes.length ? <div className="route-page__empty"><p>Primero necesitas crear un hogar.</p><button className="button" type="button" onClick={() => onNavigate('/households?create=1')}>Crear hogar</button></div> : null}
 
-    {creating && homes.length ? <form className="route-create-form" onSubmit={submit}>
+    {creating && homes.length ? <form className="route-create-form route-create-form--list" onSubmit={submit}>
       <h2>Crear lista</h2>
       <label htmlFor="new-list-household">Hogar</label>
       <select id="new-list-household" value={householdId} onChange={(event) => setHouseholdId(event.target.value)}>{homes.map((home) => <option key={home.id} value={home.id}>{home.name}</option>)}</select>

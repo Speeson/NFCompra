@@ -92,6 +92,7 @@ El APK queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`.
 
 - La PWA autenticada muestra cabeceras y tarjetas compactas para hogares y listas; la pantalla de lista integra la creacion de producto en la cabecera, separa pendientes y comprados, y usa controles cuadrados para marcar, editar y eliminar productos.
 - La PWA autenticada usa tarjetas horizontales para hogares, resumen de listas dentro de cada hogar, botones contextuales para volver desde hogares y listas, cierre exterior del panel de notificaciones y un boton rojo con icono para cerrar sesion.
+- La vista de una lista agrupa visualmente pendientes y comprados con contenedores diferenciados; pendientes usa resplandor amarillo y comprados usa resplandor rojizo. Las tarjetas de hogares son mas compactas y el formulario web para crear listas usa un formato horizontal cuando hay ancho suficiente.
 
 ## Limites del MVP
 

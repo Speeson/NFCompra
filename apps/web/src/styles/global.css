@@ -207,3 +207,28 @@ h2 { font-size: 1rem; }
   .household-list-summary .button { justify-self: stretch; }
   .back-link--route { margin-top: var(--space-3); }
 }
+
+.shopping-section { padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+.shopping-section--pending { border-color: rgb(234 179 8 / 45%); box-shadow: 0 0 0 1px rgb(234 179 8 / 18%), 0 .85rem 2.2rem rgb(234 179 8 / 18%); }
+.shopping-section--pending h2 { border-color: rgb(234 179 8 / 36%); background: rgb(254 249 195 / 65%); color: #854d0e; }
+.shopping-section--checked { border-color: rgb(180 35 24 / 32%); box-shadow: 0 0 0 1px rgb(180 35 24 / 12%), 0 .85rem 2.2rem rgb(180 35 24 / 16%); }
+.shopping-section--checked h2 { border-color: rgb(180 35 24 / 26%); background: rgb(254 226 226 / 65%); color: #991b1b; }
+.shopping-section--checked .shopping-item { border-color: rgb(180 35 24 / 28%); box-shadow: 0 0 0 1px rgb(180 35 24 / 10%), 0 .6rem 1.5rem rgb(180 35 24 / 12%); }
+
+.route-card--household { min-height: 3.8rem; padding: .55rem .75rem; gap: var(--space-3); }
+.route-card__name { font-size: 1rem; }
+.route-card--household .button { min-height: 2.65rem; }
+
+.route-create-form--list { width: 100%; max-width: none; grid-template-columns: auto minmax(10rem, .8fr) auto minmax(14rem, 1fr) auto auto; align-items: center; gap: var(--space-3); padding: var(--space-4); }
+.route-create-form--list h2 { grid-column: 1 / -1; font-size: 1.05rem; }
+.route-create-form--list label { white-space: nowrap; }
+.route-create-form--list input, .route-create-form--list select { min-height: 2.65rem; }
+.route-create-form--list > div { display: contents; }
+.route-create-form--list > p[role="alert"] { grid-column: 1 / -1; margin: 0; }
+
+@media (max-width: 42rem) {
+  .shopping-section { padding: var(--space-3); }
+  .route-create-form--list { grid-template-columns: 1fr; }
+  .route-create-form--list > div { display: flex; }
+  .route-create-form--list label { white-space: normal; }
+}

@@ -48,7 +48,7 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
 }
 
 function ShoppingSection({ title, items, emptyMessage, isOffline, onToggle, onUpdate, onDelete }: { title: string; items: ShoppingItem[]; emptyMessage: string; isOffline: boolean; onToggle?: (item: ShoppingItem) => void; onUpdate?: (item: ShoppingItem, input: ProductInput) => void; onDelete?: (item: ShoppingItem) => void }): JSX.Element {
-  return <section className="shopping-section" aria-labelledby={`${title.toLowerCase()}-heading`}>
+  return <section className={title === 'Comprados' ? 'shopping-section shopping-section--checked' : 'shopping-section shopping-section--pending'} aria-labelledby={`${title.toLowerCase()}-heading`}>
     <h2 id={`${title.toLowerCase()}-heading`}>{title}</h2>
     {items.length === 0 ? <p className="empty-state">{emptyMessage}</p> : <ul className="shopping-items">{items.map((item) => <ShoppingItemRow key={item.id} item={item} isOffline={isOffline} onToggle={onToggle} onUpdate={onUpdate} onDelete={onDelete} />)}</ul>}
   </section>;
