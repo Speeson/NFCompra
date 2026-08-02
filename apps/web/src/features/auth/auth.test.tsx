@@ -209,7 +209,7 @@ describe('logout', () => {
   });
 
   it('clears the local session and shows non-blocking feedback when the API logout fails', async () => {
-    window.history.pushState({}, '', '/');
+    window.history.pushState({}, '', '/login');
     vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
       const url = String(input);
       if (url.endsWith('/auth/refresh')) return Promise.resolve(Response.json({ accessToken: 'access-token' }));
@@ -230,7 +230,7 @@ describe('logout', () => {
   });
 
   it('never renders one account cached shopping data after logout and login as another account', async () => {
-    window.history.pushState({}, '', '/');
+    window.history.pushState({}, '', '/login');
     let activeUser: 'a' | 'b' | null = null;
     let resolveBHouseholds: (response: Response) => void = () => undefined;
     const bHouseholds = new Promise<Response>((resolve) => { resolveBHouseholds = resolve; });
