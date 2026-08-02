@@ -7,6 +7,7 @@ import { ForgotPasswordPage, LoginPage, ResendVerificationPage } from '../featur
 import { RegisterPage, ResetPasswordPage, VerifyEmailPage } from '../features/auth/RegisterPage';
 import { AcceptInvitationPage } from '../features/invitations/AcceptInvitationPage';
 import { NotificationBell } from '../features/notifications/NotificationBell';
+import { PublicLanding } from '../features/landing/PublicLanding';
 
 export function App(): JSX.Element {
   const { user } = useSession();
@@ -62,6 +63,10 @@ function AppRoute(): JSX.Element {
   if (location.pathname === '/auth/reset-password') return <ResetPasswordPage token={location.searchParams.get('token')} onNavigate={navigate} />;
   if (location.pathname === '/auth/forgot-password') return <ForgotPasswordPage onNavigate={navigate} />;
   if (location.pathname === '/auth/resend-verification') return <ResendVerificationPage onNavigate={navigate} />;
+  if (status === 'anonymous' && location.pathname === '/') return <>
+    {logoutError && <p role="alert">No se pudo cerrar sesión en el servidor. La sesión local se ha cerrado.</p>}
+    <PublicLanding onOpenAuth={() => undefined} />
+  </>;
   if (status === 'anonymous') return <>
     {logoutError && <p role="alert">No se pudo cerrar sesión en el servidor. La sesión local se ha cerrado.</p>}
     <LoginPage onNavigate={navigate} />

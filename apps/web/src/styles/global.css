@@ -12,6 +12,37 @@ body {
 
 button { font: inherit; }
 button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+a { color: inherit; }
+
+.public-landing { min-height: 100vh; overflow: hidden; }
+.public-landing__header { width: min(100% - 2rem, 70rem); margin: 0 auto; padding: var(--space-4) 0; }
+.public-landing__nav { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
+.public-landing__brand { color: var(--color-text); font-size: 1.25rem; font-weight: 800; text-decoration: none; letter-spacing: -0.04em; }
+.public-landing__links { display: flex; gap: var(--space-6); color: var(--color-muted); font-size: 0.9375rem; }
+.public-landing__links a { text-decoration: none; }
+.public-landing__links a:hover { color: var(--color-primary); }
+.button { border: 0; border-radius: var(--radius-pill); padding: 0.7rem 1.1rem; background: var(--color-primary); color: var(--color-primary-contrast); cursor: pointer; font-weight: 800; }
+.button--secondary { background: var(--color-lime); color: var(--color-text); }
+.button--quiet { padding: 0.5rem 0; background: transparent; color: var(--color-primary); }
+.public-landing__hero, .public-landing__section, .public-landing__nfc { width: min(100% - 2rem, 70rem); margin: 0 auto; }
+.public-landing__hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(17rem, 0.8fr); align-items: center; gap: clamp(2rem, 7vw, 6rem); padding: clamp(4rem, 10vw, 8rem) 0; }
+.public-landing__eyebrow { margin: 0 0 var(--space-3); color: var(--color-primary); font-size: 0.8125rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.public-landing h1 { max-width: 9ch; font-size: clamp(3rem, 7vw, 5.5rem); line-height: 0.96; }
+.public-landing h2 { font-size: clamp(1.8rem, 4vw, 3rem); letter-spacing: -0.04em; }
+.public-landing__lead { max-width: 34rem; margin: var(--space-6) 0 0; color: var(--color-muted); font-size: 1.125rem; line-height: 1.6; }
+.public-landing__actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-6); }
+.public-landing__preview { padding: var(--space-4); border: 1px solid var(--color-border); border-radius: 1.25rem; background: var(--color-surface); box-shadow: var(--shadow-card); transform: rotate(3deg); }
+.public-landing__preview-header { display: flex; justify-content: space-between; padding-bottom: var(--space-3); font-weight: 800; }
+.public-landing__preview-header span:last-child, .public-landing__preview small { color: var(--color-muted); font-size: 0.8125rem; font-weight: 600; }
+.public-landing__preview ul { display: grid; gap: var(--space-2); padding: 0; margin: 0; list-style: none; }
+.public-landing__preview li { display: flex; gap: var(--space-2); align-items: center; padding: var(--space-3); border-radius: var(--radius-sm); background: var(--color-page); font-weight: 700; }
+.public-landing__preview li span { color: var(--color-primary); font-size: 1.25rem; }.public-landing__preview small { margin-left: auto; }.public-landing__preview .is-complete { color: var(--color-muted); text-decoration: line-through; }
+.public-landing__section { padding: clamp(3rem, 8vw, 6rem) 0; }
+.public-landing__benefits { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); margin-top: var(--space-6); }
+.public-landing__benefits article { padding: var(--space-6); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-card); }.public-landing__benefits article > span { color: var(--color-primary); font-size: 1.5rem; font-weight: 800; }.public-landing__benefits h3 { margin: var(--space-4) 0 var(--space-2); }.public-landing__benefits p { margin: 0; color: var(--color-muted); line-height: 1.5; }
+.public-landing__nfc { display: flex; justify-content: space-between; align-items: center; gap: var(--space-6); margin-bottom: var(--space-8); padding: clamp(2rem, 7vw, 5rem); border-radius: 1.5rem; background: var(--color-text); color: var(--color-surface); }.public-landing__nfc .public-landing__eyebrow { color: var(--color-lime); }.public-landing__nfc > div > p:last-child { max-width: 35rem; margin: var(--space-4) 0 0; color: #c8d9ce; line-height: 1.5; }.public-landing__nfc-mark { display: grid; flex: 0 0 auto; width: 6rem; aspect-ratio: 1; place-items: center; border: 2px solid var(--color-lime); border-radius: 50%; color: var(--color-lime); font-weight: 900; }
+
+@media (max-width: 42rem) { .public-landing__links { display: none; }.public-landing__hero { grid-template-columns: 1fr; padding-top: 3rem; }.public-landing__preview { transform: none; }.public-landing__benefits { grid-template-columns: 1fr; }.public-landing__nfc { align-items: flex-start; }.public-landing__nfc-mark { width: 4rem; } }
 
 .shopping-list { width: min(100% - 2rem, 42rem); margin: 0 auto; padding: var(--space-8) 0; }
 .shopping-list__header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-6); }
