@@ -52,21 +52,29 @@ export function ListsPage({ onNavigate, startCreating = false }: { onNavigate(pa
       {creation.isError ? <p role="alert">No se pudo crear la lista.</p> : null}
     </form> : null}
 
-    {homes.length ? <div className="route-list-groups route-list-groups--cards">{homes.flatMap((home, homeIndex) => {
+    {homes.length ? <div className="route-list-household-groups">{homes.map((home, homeIndex) => {
       const query = listQueries[homeIndex];
-      if (query.isPending) return [<article key={`${home.id}-loading`} className="route-list-card"><p role="status">Cargando listas…</p></article>];
-      if (query.isError) return [<article key={`${home.id}-error`} className="route-list-card"><p role="alert">No se pudieron cargar las listas de este hogar.</p></article>];
-      return (query.data ?? []).map((list) => {
-        const itemQuery = itemQueries[lists.findIndex((candidate) => candidate.id === list.id)];
-        return <article key={list.id} className="route-list-card" style={householdGlowStyle(home.id)}>
-          <div className="route-list-card__list">
-            <strong>{list.name}</strong>
-            {!itemQuery || itemQuery.isPending ? <span role="status">Cargando productos…</span> : itemQuery.isError ? <span role="alert">No se pudieron cargar los productos.</span> : <span>{itemQuery.data.filter((item) => !item.isChecked).length} pendientes</span>}
-          </div>
-          <div className="route-list-card__home"><span>Hogar</span><h2>{home.name}</h2></div>
-          <button className="button" type="button" aria-label={`Abrir ${list.name}`} onClick={() => onNavigate(`/lists/${encodeURIComponent(list.id)}`)}>Abrir lista</button>
-        </article>;
-      });
+      const groupTitleId = `route-list-household-${home.id}`;
+      const homeLists = query.data ?? [];
+      return <section key={home.id} className="route-list-household-group" style={householdGlowStyle(home.id)} aria-labelledby={groupTitleId}>
+        <header className="route-list-household-group__header">
+          <p className="eyebrow">Hogar</p>
+          <h2 id={groupTitleId}>{home.name}</h2>
+        </header>
+        {query.isPending ? <p className="route-list-household-group__status" role="status">Cargando listas…</p> : null}
+        {query.isError ? <p className="route-list-household-group__status" role="alert">No se pudieron cargar las listas de este hogar.</p> : null}
+        {!query.isPending && !query.isError && !homeLists.length ? <p className="route-list-household-group__status">No hay listas asociadas a este hogar.</p> : null}
+        {!query.isPending && !query.isError && homeLists.length ? <div className="route-list-household-group__cards">{homeLists.map((list) => {
+          const itemQuery = itemQueries[lists.findIndex((candidate) => candidate.id === list.id)];
+          return <article key={list.id} className="route-list-card">
+            <div className="route-list-card__list">
+              <strong>{list.name}</strong>
+              {!itemQuery || itemQuery.isPending ? <span role="status">Cargando productos…</span> : itemQuery.isError ? <span role="alert">No se pudieron cargar los productos.</span> : <span>{itemQuery.data.filter((item) => !item.isChecked).length} pendientes</span>}
+            </div>
+            <button className="button" type="button" aria-label={`Abrir ${list.name}`} onClick={() => onNavigate(`/lists/${encodeURIComponent(list.id)}`)}>Abrir lista</button>
+          </article>;
+        })}</div> : null}
+      </section>;
     })}</div> : null}
   </section>;
 }
