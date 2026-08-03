@@ -27,7 +27,7 @@ beforeEach(async () => {
   await env.DB.prepare('INSERT INTO users (id, name, email, password_hash, email_verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .bind('user-a', 'Ana', 'ana@example.test', 'hash', now, now, now).run();
   await env.DB.prepare('INSERT INTO product_categories (id, name, normalized_name, icon_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind('cat-dairy', 'Lácteos', 'lacteos', 'milk', now, now).run();
+    .bind('cat-dairy', 'Lacteos', 'lacteos', 'milk', now, now).run();
   await env.DB.prepare('INSERT INTO product_catalog (id, name, normalized_name, category_id, icon_key, brand, package_size, source, source_product_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .bind('prod-milk', 'Leche entera', 'leche entera', 'cat-dairy', 'milk', 'Hacendado', '1 L', 'spanish-supermarkets', 'milk-1', now, now).run();
   await env.DB.prepare('INSERT INTO product_aliases (id, product_id, alias, normalized_alias, created_at) VALUES (?, ?, ?, ?, ?)')
@@ -37,7 +37,7 @@ beforeEach(async () => {
 it('lists categories and searches the supermarket catalog for autocomplete', async () => {
   const categoriesResponse = await dispatch('/v1/product-categories', 'GET');
   expect(categoriesResponse.status).toBe(200);
-  expect(await categoriesResponse.json()).toMatchObject({ categories: [{ id: 'cat-dairy', name: 'Lácteos', iconKey: 'milk' }] });
+  expect(await categoriesResponse.json()).toMatchObject({ categories: [{ id: 'cat-dairy', name: 'Lacteos', iconKey: 'milk' }] });
 
   const searchResponse = await dispatch('/v1/product-catalog?search=normal', 'GET');
   expect(searchResponse.status).toBe(200);
@@ -47,10 +47,37 @@ it('lists categories and searches the supermarket catalog for autocomplete', asy
       name: 'Leche entera',
       normalizedName: 'leche entera',
       categoryId: 'cat-dairy',
-      categoryName: 'Lácteos',
+      categoryName: 'Lacteos',
       iconKey: 'milk',
       brand: 'Hacendado',
       packageSize: '1 L',
+    }],
+  });
+});
+
+it('returns a compact catalog snapshot and version for client-side autocomplete caches', async () => {
+  const versionResponse = await dispatch('/v1/product-catalog/version', 'GET');
+  expect(versionResponse.status).toBe(200);
+  expect(await versionResponse.json()).toMatchObject({
+    version: expect.any(String),
+    productCount: 1,
+  });
+
+  const snapshotResponse = await dispatch('/v1/product-catalog/snapshot', 'GET');
+  expect(snapshotResponse.status).toBe(200);
+  expect(await snapshotResponse.json()).toMatchObject({
+    version: expect.any(String),
+    products: [{
+      id: 'prod-milk',
+      name: 'Leche entera',
+      normalizedName: 'leche entera',
+      categoryId: 'cat-dairy',
+      categoryName: 'Lacteos',
+      iconKey: 'milk',
+      brand: 'Hacendado',
+      packageSize: '1 L',
+      source: 'spanish-supermarkets',
+      sourceProductId: 'milk-1',
     }],
   });
 });

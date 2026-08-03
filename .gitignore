@@ -5,6 +5,8 @@ build/
 node_modules/
 dist/
 .wrangler/
+.tmp/
+apps/api/catalog/*.seed.sql
 .dev.vars
 .env*
 !.env.example

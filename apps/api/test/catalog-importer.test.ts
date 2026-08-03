@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildCatalogImportSql, catalogRecordsFromJson, normalizeCatalogImport } from '../src/catalog/importer';
+import { buildCatalogImportSql, catalogRecordsFromJson, cleanDisplayText, normalizeCatalogImport } from '../src/catalog/importer';
 
 describe('catalog importer', () => {
-  it('normalizes supermarket products into deterministic categories, products and aliases', () => {
+  it('normalizes supermarket products into deterministic accent-free categories, products and aliases', () => {
     const result = normalizeCatalogImport([
       {
         name: 'Leche entera',
-        category: 'Lácteos',
+        category: 'LÃ¡cteos',
         brand: 'Marca blanca',
         packageSize: '1 L',
         source: 'spanish-supermarkets',
@@ -22,8 +22,8 @@ describe('catalog importer', () => {
     ], { defaultSource: 'manual' });
 
     expect(result.categories).toEqual([
-      expect.objectContaining({ id: 'cat-lacteos', name: 'Lácteos', normalizedName: 'lacteos' }),
-      expect.objectContaining({ id: 'cat-panaderia', name: 'Panadería', normalizedName: 'panaderia' }),
+      expect.objectContaining({ id: 'cat-lacteos', name: 'Lacteos', normalizedName: 'lacteos' }),
+      expect.objectContaining({ id: 'cat-panaderia', name: 'Panaderia', normalizedName: 'panaderia' }),
     ]);
     expect(result.products).toEqual([
       expect.objectContaining({ id: 'prod-spanish-supermarkets-milk-1', name: 'Leche entera', normalizedName: 'leche entera', categoryId: 'cat-lacteos', brand: 'Marca blanca', packageSize: '1 L', source: 'spanish-supermarkets' }),
@@ -56,6 +56,13 @@ describe('catalog importer', () => {
     expect(sql).not.toContain('BEGIN TRANSACTION;');
     expect(sql).not.toContain('COMMIT;');
     expect(sql).toContain('INSERT INTO product_catalog');
+    expect(sql).toContain('Lacteos');
+  });
+
+  it('repairs mojibake and strips accents from display text', () => {
+    expect(cleanDisplayText('LÃ¡cteos')).toBe('Lacteos');
+    expect(cleanDisplayText('Panadería')).toBe('Panaderia');
+    expect(cleanDisplayText('Café, cacao e infusiones')).toBe('Cafe, cacao e infusiones');
   });
 
   it('maps exported supermarket JSON fields into generic catalog records', () => {
@@ -74,6 +81,7 @@ describe('catalog importer', () => {
       packageSize: '1 L',
       source: 'supermercados-espana',
       sourceProductId: '10005',
+      sourceCategoryId: null,
       aliases: [],
     }]);
   });

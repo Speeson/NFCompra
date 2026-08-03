@@ -7,6 +7,7 @@ export interface CatalogImportInput {
   packageSize?: string | null;
   source?: string | null;
   sourceProductId?: string | null;
+  sourceCategoryId?: string | null;
   aliases?: string[];
   iconKey?: string | null;
 }
@@ -56,11 +57,12 @@ export function normalizeCatalogImport(records: CatalogImportInput[], options: {
   const aliases = new Map<string, NormalizedCatalogAlias>();
 
   for (const record of records) {
-    const name = clean(record.name);
-    const categoryName = clean(record.category);
+    const name = cleanDisplayText(record.name);
+    const categoryName = cleanDisplayText(record.category);
     if (!name || !categoryName) continue;
     const source = clean(record.source) || options.defaultSource;
     const sourceProductId = clean(record.sourceProductId) || slug(name);
+    const sourceCategoryId = clean(record.sourceCategoryId) || categoryIdFrom(categoryName, source);
     const categoryNormalized = normalizedName(categoryName);
     const categoryId = `cat-${slug(categoryName)}`;
     const productId = `prod-${slug(source)}-${slug(sourceProductId)}`;
@@ -73,7 +75,7 @@ export function normalizeCatalogImport(records: CatalogImportInput[], options: {
         normalizedName: categoryNormalized,
         iconKey,
         source,
-        sourceCategoryId: categoryId,
+        sourceCategoryId,
       });
     }
 
@@ -83,14 +85,14 @@ export function normalizeCatalogImport(records: CatalogImportInput[], options: {
       normalizedName: normalizedName(name),
       categoryId,
       iconKey,
-      brand: clean(record.brand),
-      packageSize: clean(record.packageSize),
+      brand: cleanDisplayText(record.brand),
+      packageSize: cleanDisplayText(record.packageSize),
       source,
       sourceProductId,
     });
 
     for (const alias of record.aliases ?? []) {
-      const cleanedAlias = clean(alias);
+      const cleanedAlias = cleanDisplayText(alias);
       if (!cleanedAlias) continue;
       const aliasId = `alias-${productId}-${slug(cleanedAlias)}`;
       aliases.set(aliasId, { id: aliasId, productId, alias: cleanedAlias, normalizedAlias: normalizedName(cleanedAlias) });
@@ -118,6 +120,7 @@ export function catalogRecordsFromJson(payload: unknown, options: ImportJsonOpti
       packageSize: firstText(candidate, ['packageSize', 'package_size', 'packaging']) ?? priceInstructionText(candidate, 'unit_size') ?? priceInstructionText(candidate, 'bulk_price') ?? null,
       source: firstText(candidate, ['source']) ?? options.defaultSource,
       sourceProductId: firstText(candidate, ['sourceProductId', 'source_product_id', 'id']) ?? null,
+      sourceCategoryId: firstText(candidate, ['sourceCategoryId', 'source_category_id', 'categoryId', 'category_id']) ?? null,
       aliases: aliasesFrom(candidate),
     });
   }
@@ -147,6 +150,26 @@ export function buildCatalogImportSql(catalog: NormalizedCatalogImport, options:
 
 function clean(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+export function cleanDisplayText(value: unknown): string | null {
+  const text = clean(value);
+  if (!text) return null;
+  return stripAccents(repairMojibake(text)).replace(/\s+/g, ' ').trim();
+}
+
+function repairMojibake(value: string): string {
+  const replacements: Array<[RegExp, string]> = [
+    [/Ã¡/g, 'á'], [/Ã©/g, 'é'], [/Ã­/g, 'í'], [/Ã³/g, 'ó'], [/Ãº/g, 'ú'],
+    [/ÃÁ/g, 'Á'], [/Ã‰/g, 'É'], [/Ã/g, 'Í'], [/Ã“/g, 'Ó'], [/Ãš/g, 'Ú'],
+    [/Ã±/g, 'ñ'], [/Ã‘/g, 'Ñ'], [/Ã¼/g, 'ü'], [/Ãœ/g, 'Ü'],
+    [/Âº/g, 'º'], [/Âª/g, 'ª'], [/Â·/g, '·'], [/Â/g, ''],
+  ];
+  return replacements.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), value);
+}
+
+function stripAccents(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
 function extractObjects(payload: unknown): Record<string, unknown>[] {
@@ -193,6 +216,10 @@ function brandFrom(record: Record<string, unknown>): string | null {
 
 function aliasesFrom(record: Record<string, unknown>): string[] {
   return Array.isArray(record.aliases) ? record.aliases.map(clean).filter((alias): alias is string => alias !== null) : [];
+}
+
+function categoryIdFrom(categoryName: string, source: string): string {
+  return `${slug(source)}-${slug(categoryName)}`;
 }
 
 function priceInstructionText(record: Record<string, unknown>, key: string): string | null {

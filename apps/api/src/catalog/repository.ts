@@ -51,6 +51,11 @@ interface ProductRow {
   source_product_id: string | null;
 }
 
+interface CatalogVersionRow {
+  version: string | null;
+  product_count: number;
+}
+
 export async function listProductCategories(env: Env): Promise<ProductCategory[]> {
   const { results } = await env.DB.prepare('SELECT * FROM product_categories ORDER BY name ASC').all<CategoryRow>();
   return results.map((row) => ({
@@ -64,6 +69,32 @@ export async function listProductCategories(env: Env): Promise<ProductCategory[]
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }));
+}
+
+export async function getProductCatalogVersion(env: Env): Promise<{ version: string; productCount: number }> {
+  const row = await env.DB.prepare(`
+    SELECT MAX(updated_at) AS version, COUNT(*) AS product_count
+    FROM product_catalog
+    WHERE is_active = 1
+  `).first<CatalogVersionRow>();
+  return {
+    version: row?.version ?? 'empty',
+    productCount: row?.product_count ?? 0,
+  };
+}
+
+export async function listProductCatalogSnapshot(env: Env): Promise<ProductCatalogItem[]> {
+  const { results } = await env.DB.prepare(`
+    SELECT product_catalog.id, product_catalog.name, product_catalog.normalized_name, product_catalog.category_id,
+      product_categories.name AS category_name, product_catalog.icon_key, product_catalog.brand, product_catalog.package_size,
+      product_catalog.source, product_catalog.source_product_id
+    FROM product_catalog
+    LEFT JOIN product_categories ON product_categories.id = product_catalog.category_id
+    WHERE product_catalog.is_active = 1
+    ORDER BY product_catalog.name ASC
+  `).all<ProductRow>();
+
+  return results.map(productRow);
 }
 
 export async function searchProductCatalog(env: Env, search: string, limit: number): Promise<ProductCatalogItem[]> {
@@ -88,7 +119,11 @@ export async function searchProductCatalog(env: Env, search: string, limit: numb
     LIMIT ?
   `).bind(normalizedSearch, normalizedSearch, safeLimit).all<ProductRow>();
 
-  return results.map((row) => ({
+  return results.map(productRow);
+}
+
+function productRow(row: ProductRow): ProductCatalogItem {
+  return {
     id: row.id,
     name: row.name,
     normalizedName: row.normalized_name,
@@ -99,5 +134,5 @@ export async function searchProductCatalog(env: Env, search: string, limit: numb
     packageSize: row.package_size,
     source: row.source,
     sourceProductId: row.source_product_id,
-  }));
+  };
 }

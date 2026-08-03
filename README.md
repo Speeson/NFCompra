@@ -37,7 +37,12 @@ npm run catalog:build-sql -- ../../catalogo-productos.json ../../catalog-import.
 npx wrangler d1 execute DB --local --file ../../catalog-import.sql
 ```
 
-El repositorio incluye un seed inicial propio en `apps/api/catalog/supermercados-espana.seed.json`. Para cargarlo en la D1 local:
+El repositorio incluye dos seeds sin acentos ni mojibake:
+
+- `apps/api/catalog/supermercados-espana.seed.json`: base propia inicial.
+- `apps/api/catalog/mercadona.seed.json`: catalogo publico Mercadona transformado desde el dataset MIT `datania/mercadona-catalog`, con 4.358 productos, 26 categorias principales y 2.840 aliases.
+
+Para cargar un seed en la D1 local:
 
 ```sh
 cd apps/api
@@ -53,7 +58,14 @@ npm run catalog:build-sql -- catalog/supermercados-espana.seed.json catalog/supe
 npx wrangler d1 execute nfcompra-production --remote --config wrangler.production.jsonc --file catalog/supermercados-espana.seed.sql
 ```
 
-El importador acepta campos genericos como `name`, `category`, `brand`, `packageSize`, `sourceProductId` y `aliases`. Tambien reconoce exportaciones JSON con `results[]`, `display_name`, `category_name` y `price_instructions.unit_size`. No descarga imagenes ni precios.
+Para regenerar el seed Mercadona desde un snapshot local del dataset:
+
+```sh
+cd apps/api
+npm run catalog:build-mercadona -- catalog/mercadona.seed.json --dataset-dir ../../.tmp/mercadona-catalog
+```
+
+El importador acepta campos genericos como `name`, `category`, `brand`, `packageSize`, `sourceProductId` y `aliases`. Tambien reconoce exportaciones JSON con `results[]`, `display_name`, `category_name` y `price_instructions.unit_size`. No descarga imagenes ni precios. Antes de generar SQL, repara mojibake comun y guarda texto visible sin acentos.
 
 La variante `debug` de Android usa `http://10.0.2.2:8787/` como base de API para el emulador. Se puede sustituir mediante la propiedad de Gradle `NFCompraApiBaseUrl` o la variable de entorno `NFCOMPRA_API_BASE_URL`.
 
@@ -84,7 +96,7 @@ El APK queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`.
 ## Funcionalidad actual
 
 - La API permite registro, verificacion y reenvio de verificacion de correo, inicio y cierre de sesion, renovacion, recuperacion y restablecimiento de contrasena, y consulta y edicion de perfil. El registro acepta nombre, apellidos, fecha de nacimiento, username, email y password; la contrasena se guarda solo como hash. Los correos de verificacion y recuperacion se envian con HTML de marca, boton principal y enlace manual, sin mostrar un bloque de token independiente. Las pruebas usan un remitente falso; no se documentan claves ni se verifica el envio de correo real.
-- D1 incluye la base del catalogo de productos de supermercado con `product_categories`, `product_catalog` y `product_aliases`, ademas de la referencia opcional `shopping_items.catalog_product_id`. La API expone `GET /v1/product-categories` y `GET /v1/product-catalog?search=...` para categorias y busqueda/autocompletado de productos. La PWA consulta el catalogo desde la API configurada y, si una version cacheada intenta usar el origen web y recibe 404, reintenta contra `https://api.nfcompra.esgarpe.dev/v1`. El repositorio no incluye importacion automatica de datos externos ni scraping en directo.
+- D1 incluye la base del catalogo de productos de supermercado con `product_categories`, `product_catalog` y `product_aliases`, ademas de la referencia opcional `shopping_items.catalog_product_id`. La base productiva verificada incluye 4.386 productos, 38 categorias y 2.872 aliases, sin acentos ni mojibake en nombres visibles. La API expone `GET /v1/product-categories`, `GET /v1/product-catalog?search=...`, `GET /v1/product-catalog/version` y `GET /v1/product-catalog/snapshot`. La PWA descarga el snapshot compacto una vez, lo mantiene en memoria y filtra localmente para autocompletado; si el snapshot falla, conserva la busqueda remota como fallback. El mismo contrato queda preparado para cache local en Android con Room. El repositorio no incluye scraping en directo.
 - Una persona puede crear varios hogares manualmente; cada hogar obtiene una lista predeterminada y puede tener listas adicionales. Las mutaciones de productos requieren autenticacion y cubren alta, edicion, marcado, borrado, purga, busqueda normalizada y conflictos de version. Un `operationId` completado reproduce su respuesta y una operacion pendiente devuelve `409 OPERATION_IN_PROGRESS`.
 - Los propietarios de un hogar pueden crear, renovar, listar y revocar invitaciones en `/v1/households/:householdId/invitations`, y eliminar miembros. Cualquier miembro del hogar puede consultar `/v1/households/:householdId/members`. Las invitaciones se aceptan mediante `POST /v1/invitations/accept` o, desde una notificación, `POST /v1/invitations/:invitationId/accept`; ambas rutas requieren la cuenta verificada destinataria. Caducan a los siete dias y los tokens se guardan solo como hashes.
 - Hito 3A: la API persiste notificaciones internas en `/v1/notifications`: lista reciente, contador de no leídas, marcado individual y marcado total. Las invitaciones, altas y bajas de miembros y cambios remotos de productos notifican solo a las otras personas afectadas; la actividad de una lista se agrupa por destinatario, autor, lista y tipo durante cinco minutos. No incluye notificaciones push.
