@@ -88,6 +88,10 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
     setCardQuantities((current) => ({ ...current, [productId]: Math.max(0, (current[productId] ?? 0) + delta) }));
   }
 
+  function updateManualQuantity(delta: number): void {
+    setQuantity((current) => String(Math.max(1, Math.round((Number(current) || 1) + delta))));
+  }
+
   function addSuggestionToWaitlist(suggestion: ProductCatalogItem): void {
     const selectedQuantity = cardQuantities[suggestion.id] ?? 0;
     if (selectedQuantity <= 0) return;
@@ -117,19 +121,17 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
 
   return <main className="shopping-list">
     <header className="shopping-list__header">
-      <div className="shopping-list__title"><p className="eyebrow">Lista de la compra</p><h1>{title}</h1></div>
+      <div className="shopping-list__title">
+        <h1>{title}</h1>
+        {onAdd ? <ProductPickerToggle pickerMode={pickerMode} onChange={changePickerMode} /> : null}
+      </div>
       {onAdd ? <>
         <form className={`product-form product-form--${pickerMode}`} onSubmit={addItem}>
-          <div className="product-picker-toggle" role="group" aria-label="Vista del autocompletado">
-            <button type="button" aria-label="Vista de lista" aria-pressed={pickerMode === 'list'} onClick={() => changePickerMode('list')}>☰</button>
-            <button type="button" aria-label="Vista de tarjetas" aria-pressed={pickerMode === 'cards'} onClick={() => changePickerMode('cards')}>▦</button>
-          </div>
           <label htmlFor="new-product-name">Producto</label>
           <div className="product-autocomplete"><input id="new-product-name" disabled={isOffline} value={name} onChange={(event) => setName(event.target.value)} required maxLength={200} autoComplete="off" />
             {pickerMode === 'list' && suggestions.length ? <div className="product-suggestions" role="listbox" aria-label="Sugerencias de productos">{suggestions.map((suggestion) => <button key={suggestion.id} type="button" className="product-suggestion" onClick={() => selectSuggestion(suggestion)}>{suggestionLabel(suggestion)}</button>)}</div> : null}
           </div>
-          <label htmlFor="new-product-quantity">Cantidad</label>
-          <input id="new-product-quantity" disabled={isOffline} type="number" min="0.01" step="any" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />
+          <ManualQuantityStepper quantity={quantity} disabled={isOffline} onChange={updateManualQuantity} />
           <button type="submit" disabled={isOffline}>Añadir</button>
         </form>
         {pickerMode === 'cards' && suggestions.length ? <ProductCardResults suggestions={suggestions} quantities={cardQuantities} recentlyAddedId={recentlyAddedId} onQuantityChange={updateCardQuantity} onSelect={addSuggestionToWaitlist} /> : null}
@@ -140,6 +142,21 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
     <ShoppingSection title="Pendientes" items={pendingItems} emptyMessage="No quedan productos pendientes." isOffline={isOffline} onToggle={onToggle} onUpdate={onUpdate} onDelete={onDelete} />
     <ShoppingSection title="Comprados" items={checkedItems} emptyMessage="Aún no has marcado ningún producto." isOffline={isOffline} onToggle={onToggle} onUpdate={onUpdate} onDelete={onDelete} />
   </main>;
+}
+
+function ProductPickerToggle({ pickerMode, onChange }: { pickerMode: ProductPickerMode; onChange(mode: ProductPickerMode): void }): JSX.Element {
+  return <div className="product-picker-toggle" role="group" aria-label="Vista del autocompletado">
+    <button type="button" aria-label="Vista de lista" aria-pressed={pickerMode === 'list'} onClick={() => onChange('list')}>☰</button>
+    <button type="button" aria-label="Vista de tarjetas" aria-pressed={pickerMode === 'cards'} onClick={() => onChange('cards')}>▦</button>
+  </div>;
+}
+
+function ManualQuantityStepper({ quantity, disabled, onChange }: { quantity: string; disabled: boolean; onChange(delta: number): void }): JSX.Element {
+  return <div className="manual-quantity-stepper" role="group" aria-label="Cantidad del producto">
+    <button type="button" aria-label="Reducir cantidad del producto" disabled={disabled || Number(quantity) <= 1} onClick={() => onChange(-1)}>−</button>
+    <span aria-label="Cantidad seleccionada">{quantity}</span>
+    <button type="button" aria-label="Aumentar cantidad del producto" disabled={disabled} onClick={() => onChange(1)}>+</button>
+  </div>;
 }
 
 function ProductCardResults({ suggestions, quantities, recentlyAddedId, onQuantityChange, onSelect }: { suggestions: ProductCatalogItem[]; quantities: Record<string, number>; recentlyAddedId: string | null; onQuantityChange(productId: string, delta: number): void; onSelect(suggestion: ProductCatalogItem): void }): JSX.Element {
@@ -154,7 +171,7 @@ function ProductCardResults({ suggestions, quantities, recentlyAddedId, onQuanti
         </button>
         <div className="product-result-card__quantity" aria-label={`Cantidad de ${suggestion.name}`}>
           <button type="button" aria-label={`Reducir cantidad de ${suggestion.name}`} onClick={() => onQuantityChange(suggestion.id, -1)} disabled={selectedQuantity === 0}>−</button>
-          <output>{selectedQuantity}</output>
+          <span>{selectedQuantity}</span>
           <button type="button" aria-label={`Aumentar cantidad de ${suggestion.name}`} onClick={() => onQuantityChange(suggestion.id, 1)}>+</button>
         </div>
       </article>;

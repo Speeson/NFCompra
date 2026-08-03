@@ -13,19 +13,26 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('keeps the compact list autocomplete mode available', async () => {
+it('keeps the compact list autocomplete mode with the header quantity stepper', async () => {
   const onAdd = vi.fn();
   stubCatalogSnapshot();
   localStorage.setItem('nfcompra.product-picker-mode', 'list');
 
   render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} />);
+  expect(screen.getByRole('heading', { name: 'Compra' })).toBeInTheDocument();
+  expect(screen.queryByText('Lista de la compra')).not.toBeInTheDocument();
+
   fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'lech' } });
 
   const suggestion = await screen.findByRole('button', { name: 'Leche entera · Lacteos · 1 L' });
   fireEvent.click(suggestion);
+  fireEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad del producto' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad del producto' }));
+
+  expect(screen.getByLabelText('Cantidad seleccionada')).toHaveTextContent('3');
   fireEvent.click(screen.getByRole('button', { name: 'Añadir' }));
 
-  await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Leche entera', quantity: 1, unit: null }));
+  await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Leche entera', quantity: 3, unit: null }));
 });
 
 it('adds product cards to a removable waitlist before committing them to pending items', async () => {
