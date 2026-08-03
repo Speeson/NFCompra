@@ -243,9 +243,10 @@ h2 { font-size: 1rem; }
 .auth-copy-button { display: inline-grid; width: 2.75rem; min-width: 2.75rem; height: 2.75rem; place-items: center; padding: 0; }
 .auth-copy-button span { font-size: 1.1rem; line-height: 1; }
 
-.route-card--household { min-height: 3.8rem; padding: .55rem .75rem; gap: var(--space-3); }
+.route-card--household { min-height: 3.35rem; padding: .35rem .75rem; gap: var(--space-3); align-items: center; }
+.route-card--household > * { align-self: center; }
 .route-card__name { font-size: 1rem; }
-.route-card--household .button { min-height: 2.65rem; }
+.route-card--household .button { min-height: 2.65rem; align-self: center; }
 
 .route-create-form--list { width: 100%; max-width: none; grid-template-columns: auto minmax(10rem, .8fr) auto minmax(14rem, 1fr) auto auto; align-items: center; gap: var(--space-3); padding: var(--space-4); }
 .route-create-form--list h2 { grid-column: 1 / -1; font-size: 1.05rem; }
