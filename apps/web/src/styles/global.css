@@ -105,7 +105,7 @@ h2 { font-size: 1rem; }
 .shopping-item__quantity { color: var(--color-muted); }
 .empty-state { margin: var(--space-3) 0 0; color: var(--color-muted); }
 
-.dashboard { width: min(100% - 2rem, 70rem); margin: 0 auto; padding: var(--space-8) 0; }.dashboard__header { margin-bottom: var(--space-6); }.dashboard__header > div > p:last-child { margin: var(--space-3) 0 0; color: var(--color-muted); }.dashboard__households { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: var(--space-4); }.dashboard__household-card, .dashboard__activity, .dashboard__quick-actions { padding: var(--space-6); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-card); }.dashboard__household-card { display: grid; gap: var(--space-4); }.dashboard__stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); margin: 0; }.dashboard__stats div { padding: var(--space-2); border-radius: var(--radius-sm); background: var(--color-page); }.dashboard__stats dt { color: var(--color-muted); font-size: 0.75rem; font-weight: 700; }.dashboard__stats dd { margin: var(--space-1) 0 0; font-weight: 800; }.dashboard__list-progress { display: grid; gap: var(--space-2); }.dashboard__list-progress button, .dashboard__activity li button { display: grid; gap: var(--space-1); width: 100%; border: 0; padding: var(--space-3); border-radius: var(--radius-sm); background: var(--color-page); color: var(--color-text); cursor: pointer; text-align: left; }.dashboard__list-progress span, .dashboard__activity li span { color: var(--color-muted); font-size: 0.875rem; }.dashboard__activity, .dashboard__quick-actions { margin-top: var(--space-6); }.dashboard__activity ul { display: grid; gap: var(--space-2); padding: 0; margin: var(--space-4) 0 0; list-style: none; }.dashboard__quick-actions > div { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-4); }.dashboard__empty { color: var(--color-muted); }
+.dashboard { width: min(100% - 2rem, 70rem); margin: 0 auto; padding: var(--space-8) 0; }.dashboard__header { margin-bottom: var(--space-6); }.dashboard__header > div > p:last-child { margin: var(--space-3) 0 0; color: var(--color-muted); }.dashboard__households { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: var(--space-4); }.dashboard__household-card, .dashboard__activity, .dashboard__quick-actions { padding: var(--space-6); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-card); }.dashboard__household-card { display: grid; gap: var(--space-4); }.dashboard__household-card > .button { min-width: 10rem; justify-self: start; }.dashboard__stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); margin: 0; }.dashboard__stats div { padding: var(--space-2); border-radius: var(--radius-sm); background: var(--color-page); }.dashboard__stats dt { color: var(--color-muted); font-size: 0.75rem; font-weight: 700; }.dashboard__stats dd { margin: var(--space-1) 0 0; font-weight: 800; }.dashboard__list-progress { display: grid; gap: var(--space-2); }.dashboard__list-progress button, .dashboard__activity li button { display: grid; gap: var(--space-1); width: 100%; border: 0; padding: var(--space-3); border-radius: var(--radius-sm); background: var(--color-page); color: var(--color-text); cursor: pointer; text-align: left; }.dashboard__list-progress span, .dashboard__activity li span { color: var(--color-muted); font-size: 0.875rem; }.dashboard__activity, .dashboard__quick-actions { margin-top: var(--space-6); }.dashboard__activity ul { display: grid; gap: var(--space-2); padding: 0; margin: var(--space-4) 0 0; list-style: none; }.dashboard__quick-actions > div { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-4); }.dashboard__empty { color: var(--color-muted); }
 
 @media (max-width: 42rem) { .dashboard { padding-top: var(--space-6); }.dashboard__household-card, .dashboard__activity, .dashboard__quick-actions { padding: var(--space-4); }.dashboard__quick-actions > div > .button { flex: 1 1 9rem; } }
 
@@ -117,7 +117,7 @@ h2 { font-size: 1rem; }
 @media (max-width: 42rem) { .list-selectors { grid-template-columns: 1fr; } }
 
 .route-list-groups--cards { grid-template-columns: repeat(auto-fit, minmax(17rem, 24rem)); align-items: stretch; }
-.route-list-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto 1fr auto; gap: var(--space-4); min-height: 9.5rem; padding: var(--space-4); border: 1px solid color-mix(in srgb, var(--household-glow, var(--color-border)) 35%, var(--color-border)); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: 0 0 0 1px color-mix(in srgb, var(--household-glow, transparent) 16%, transparent), 0 .8rem 2rem color-mix(in srgb, var(--household-glow, rgb(15 23 42)) 18%, transparent); }
+.route-list-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto 1fr auto; gap: var(--space-4); min-height: 9.5rem; padding: var(--space-4); border: 1px solid color-mix(in srgb, var(--household-glow, var(--color-border)) 32%, var(--color-border)); border-radius: var(--radius-md); background: linear-gradient(135deg, color-mix(in srgb, var(--household-glow, var(--color-surface)) 15%, var(--color-surface)), var(--color-surface) 62%); box-shadow: var(--shadow-card); }
 .route-list-card__list { display: grid; gap: var(--space-1); min-width: 0; text-align: left; }
 .route-list-card__list strong { overflow-wrap: anywhere; font-size: 1.05rem; }
 .route-list-card__list span, .route-list-card__home span { color: var(--color-muted); font-size: .8125rem; font-weight: 700; }
@@ -210,7 +210,9 @@ h2 { font-size: 1rem; }
 
 @media (max-width: 42rem) {
   .route-card--household { grid-template-columns: 1fr; gap: var(--space-3); }
-  .route-card--household .route-card__metric, .route-card--household .route-card__members, .route-card--household .button { justify-self: stretch; white-space: normal; }
+  .route-card--household .route-card__metric, .route-card--household .route-card__members, .route-card--household .button, .household-card-actions { justify-self: stretch; white-space: normal; }
+  .household-card-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .household-card-action { width: 100%; }
   .household-list-summary li { grid-template-columns: 1fr; }
   .household-list-summary .button { justify-self: stretch; }
   .back-link--route { margin-top: var(--space-3); }
@@ -243,10 +245,16 @@ h2 { font-size: 1rem; }
 .auth-copy-button { display: inline-grid; width: 2.75rem; min-width: 2.75rem; height: 2.75rem; place-items: center; padding: 0; }
 .auth-copy-button span { font-size: 1.1rem; line-height: 1; }
 
-.route-card--household { min-height: 3.35rem; padding: .35rem .75rem; gap: var(--space-3); align-items: center; }
+.route-card--household { grid-template-columns: minmax(10rem, 1fr) auto auto auto auto; grid-template-rows: auto; align-content: center; min-height: 0; height: auto; padding: .35rem .75rem; gap: var(--space-3); align-items: center; text-align: left; }
 .route-card--household > * { align-self: center; }
 .route-card__name { font-size: 1rem; }
 .route-card--household .button { min-height: 2.65rem; align-self: center; }
+.household-card-actions { display: inline-flex; align-items: center; gap: .35rem; }
+.household-card-action { display: inline-grid; width: 2.35rem; height: 2.35rem; place-items: center; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-page); color: var(--color-text); cursor: pointer; font-weight: 900; line-height: 1; }
+.household-card-action--save { border-color: var(--color-primary); background: var(--color-primary); color: var(--color-primary-contrast); }
+.household-card-action--danger { border-color: rgb(180 35 24 / 34%); background: rgb(180 35 24 / 8%); color: #b42318; }
+.household-card-edit { display: grid; grid-template-columns: minmax(8rem, 1fr) auto auto; align-items: center; gap: .35rem; min-width: 0; }
+.household-card-edit input { min-width: 0; min-height: 2.35rem; padding: 0 .65rem; border: 1px solid var(--color-primary); border-radius: var(--radius-sm); background: var(--color-page); color: var(--color-text); font: inherit; font-weight: 800; }
 
 .route-create-form--list { width: 100%; max-width: none; grid-template-columns: auto minmax(10rem, .8fr) auto minmax(14rem, 1fr) auto auto; align-items: center; gap: var(--space-3); padding: var(--space-4); }
 .route-create-form--list h2 { grid-column: 1 / -1; font-size: 1.05rem; }

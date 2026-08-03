@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom/vitest';
 
 import { QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -49,6 +49,40 @@ describe('household route views', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Abrir Casa' }));
 
     expect(navigate).toHaveBeenCalledWith('/households/home-1');
+  });
+
+  it('renames and deletes a household from the household list', async () => {
+    window.confirm = vi.fn(() => true);
+    let householdName = 'Casa';
+    let deleted = false;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/households/home-1') && init?.method === 'PATCH') {
+        householdName = JSON.parse(String(init.body)).name;
+        return Promise.resolve(Response.json({ household: { id: 'home-1', name: householdName, ownerId: 'user-1', createdAt: '', updatedAt: '' } }));
+      }
+      if (url.endsWith('/households/home-1') && init?.method === 'DELETE') {
+        deleted = true;
+        return Promise.resolve(Response.json({ status: 'deleted' }));
+      }
+      if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: deleted ? [] : [{ id: 'home-1', name: householdName, ownerId: 'user-1', createdAt: '', updatedAt: '' }] }));
+      if (url.endsWith('/households/home-1/lists')) return Promise.resolve(Response.json({ lists: [] }));
+      if (url.endsWith('/households/home-1/members')) return Promise.resolve(Response.json({ members: [{ userId: 'user-1', role: 'owner' }] }));
+      throw new Error(`Ruta inesperada: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage(<HouseholdsPage onNavigate={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar Casa' }));
+    fireEvent.change(screen.getByLabelText('Nombre del hogar'), { target: { value: 'Costa Marina III' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar hogar Casa' }));
+
+    expect(await screen.findByRole('heading', { name: 'Costa Marina III' })).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/\/households\/home-1$/), expect.objectContaining({ method: 'PATCH' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar Costa Marina III' }));
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Costa Marina III' })).not.toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/\/households\/home-1$/), expect.objectContaining({ method: 'DELETE' }));
   });
 
   it('keeps list and member workflows in separate household detail tabs', async () => {

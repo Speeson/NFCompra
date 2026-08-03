@@ -281,6 +281,31 @@ it('creates a personal household without creating an automatic shopping list', a
   expect(await listResponse.json()).toEqual({ lists: [] });
 });
 
+it('lets only the owner rename and delete a household with its lists and products', async () => {
+  const owner = await authorizationFor('Ana');
+  const foreign = await authorizationFor('Bea');
+  const household = await (await dispatch('/v1/households', { name: 'Casa' }, owner)).json<{ household: { id: string } }>();
+  const list = await createListFor(household.household.id, owner);
+  await dispatch(`/v1/lists/${list.id}/items`, { name: 'Pan', operationId: crypto.randomUUID() }, owner);
+
+  const foreignRename = await dispatch(`/v1/households/${household.household.id}`, { name: 'Piso' }, foreign, 'PATCH');
+  expect(foreignRename.status).toBe(403);
+
+  const renamed = await dispatch(`/v1/households/${household.household.id}`, { name: 'Costa Marina III' }, owner, 'PATCH');
+  expect(renamed.status).toBe(200);
+  expect(await renamed.json()).toMatchObject({ household: { id: household.household.id, name: 'Costa Marina III' } });
+
+  const foreignDelete = await dispatch(`/v1/households/${household.household.id}`, undefined, foreign, 'DELETE');
+  expect(foreignDelete.status).toBe(403);
+
+  const deleted = await dispatch(`/v1/households/${household.household.id}`, undefined, owner, 'DELETE');
+  expect(deleted.status).toBe(200);
+  expect(await deleted.json()).toEqual({ status: 'deleted' });
+  expect(await env.DB.prepare('SELECT COUNT(*) AS count FROM shopping_items WHERE list_id = ?').bind(list.id).first<{ count: number }>()).toEqual({ count: 0 });
+  expect(await env.DB.prepare('SELECT COUNT(*) AS count FROM shopping_lists WHERE household_id = ?').bind(household.household.id).first<{ count: number }>()).toEqual({ count: 0 });
+  expect(await env.DB.prepare('SELECT COUNT(*) AS count FROM household_members WHERE household_id = ?').bind(household.household.id).first<{ count: number }>()).toEqual({ count: 0 });
+});
+
 it('lists only the caller households and allows several lists in one household', async () => {
   const ana = await authorizationFor('Ana');
   const bea = await authorizationFor('Bea');

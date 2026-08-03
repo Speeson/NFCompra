@@ -39,6 +39,30 @@ export async function listHouseholdsForUser(env: Env, userId: string): Promise<H
   return rows.results.map((row) => ({ id: row.id, name: row.name, ownerId: row.owner_id, createdAt: row.created_at, updatedAt: row.updated_at }));
 }
 
+export async function findHousehold(env: Env, householdId: string): Promise<Household | null> {
+  const row = await env.DB.prepare('SELECT id, name, owner_id, created_at, updated_at FROM households WHERE id = ?').bind(householdId).first<{ id: string; name: string; owner_id: string; created_at: string; updated_at: string }>();
+  return row ? { id: row.id, name: row.name, ownerId: row.owner_id, createdAt: row.created_at, updatedAt: row.updated_at } : null;
+}
+
+export async function updateHousehold(env: Env, householdId: string, name: string): Promise<Household | null> {
+  const now = new Date().toISOString();
+  const row = await env.DB.prepare('UPDATE households SET name = ?, updated_at = ? WHERE id = ? RETURNING id, name, owner_id, created_at, updated_at')
+    .bind(name, now, householdId).first<{ id: string; name: string; owner_id: string; created_at: string; updated_at: string }>();
+  return row ? { id: row.id, name: row.name, ownerId: row.owner_id, createdAt: row.created_at, updatedAt: row.updated_at } : null;
+}
+
+export async function deleteHousehold(env: Env, householdId: string): Promise<boolean> {
+  const results = await env.DB.batch([
+    env.DB.prepare('DELETE FROM notifications WHERE household_id = ?').bind(householdId),
+    env.DB.prepare('DELETE FROM invitations WHERE household_id = ?').bind(householdId),
+    env.DB.prepare('DELETE FROM shopping_items WHERE list_id IN (SELECT id FROM shopping_lists WHERE household_id = ?)').bind(householdId),
+    env.DB.prepare('DELETE FROM shopping_lists WHERE household_id = ?').bind(householdId),
+    env.DB.prepare('DELETE FROM household_members WHERE household_id = ?').bind(householdId),
+    env.DB.prepare('DELETE FROM households WHERE id = ?').bind(householdId),
+  ]);
+  return results.at(-1)?.meta.changes === 1;
+}
+
 export async function isHouseholdMember(env: Env, householdId: string, userId: string): Promise<boolean> {
   return !!(await env.DB.prepare('SELECT 1 FROM household_members WHERE household_id = ? AND user_id = ?').bind(householdId, userId).first());
 }

@@ -1,9 +1,9 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState, type FormEvent, type JSX, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type JSX, type KeyboardEvent } from 'react';
 
 import { MembersPanel } from './MembersPanel';
 import { fetchMembers, memberQueryKey } from './household-api';
-import { createHousehold, fetchHouseholds, fetchItems, fetchLists, householdQueryKey, itemQueryKey, listQueryKey, type Household } from '../shopping-list/queries';
+import { createHousehold, deleteHousehold, fetchHouseholds, fetchItems, fetchLists, householdQueryKey, itemQueryKey, listQueryKey, updateHousehold, type Household } from '../shopping-list/queries';
 
 export function HouseholdsPage({ onNavigate, startCreating = false }: { onNavigate(path: string): void; startCreating?: boolean }): JSX.Element {
   const queryClient = useQueryClient();
@@ -20,6 +20,18 @@ export function HouseholdsPage({ onNavigate, startCreating = false }: { onNaviga
       onNavigate(`/households/${encodeURIComponent(household.id)}`);
     },
   });
+  const renameHouseholdMutation = useMutation({
+    mutationFn: ({ household, nextName }: { household: Household; nextName: string }) => updateHousehold(household, nextName),
+    onSuccess: (updated) => queryClient.setQueryData<Household[]>(householdQueryKey, (current = []) => current.map((household) => household.id === updated.id ? updated : household)),
+  });
+  const deleteHouseholdMutation = useMutation({
+    mutationFn: deleteHousehold,
+    onSuccess: (_result, household) => {
+      queryClient.setQueryData<Household[]>(householdQueryKey, (current = []) => current.filter((candidate) => candidate.id !== household.id));
+      queryClient.removeQueries({ queryKey: listQueryKey(household.id), exact: true });
+      queryClient.removeQueries({ queryKey: memberQueryKey(household.id), exact: true });
+    },
+  });
 
   function submit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
@@ -33,19 +45,38 @@ export function HouseholdsPage({ onNavigate, startCreating = false }: { onNaviga
   return <section className="route-page">
     <header className="route-page__header route-page__header--compact"><div><h1>Tus hogares</h1><p>Organiza las listas y las personas con las que compras.</p></div>{hasHouseholds ? <button className="button" type="button" onClick={() => setCreating(true)}>Nuevo hogar</button> : null}</header>
     {creating || !hasHouseholds ? <form className="route-create-form" onSubmit={submit}><h2>{hasHouseholds ? 'Crear otro hogar' : 'Crea tu primer hogar'}</h2><label htmlFor="new-household-name">Nombre del nuevo hogar</label><input id="new-household-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={100} autoFocus /><div><button className="button" type="submit" disabled={creation.isPending}>{creation.isPending ? 'Creando...' : 'Crear hogar'}</button>{hasHouseholds ? <button className="button button--quiet" type="button" onClick={() => setCreating(false)}>Cancelar</button> : null}</div>{creation.isError ? <p role="alert">No se pudo crear el hogar.</p> : null}</form> : null}
-    {hasHouseholds ? <div className="route-card-grid">{households.data!.map((household) => <HouseholdCard key={household.id} household={household} onNavigate={onNavigate} />)}</div> : null}
+    {hasHouseholds ? <div className="route-card-grid">{households.data!.map((household) => <HouseholdCard key={household.id} household={household} onNavigate={onNavigate} onRename={(nextName) => renameHouseholdMutation.mutate({ household, nextName })} onDelete={() => { if (window.confirm(`Se eliminará el hogar ${household.name}, sus listas y sus productos.`)) deleteHouseholdMutation.mutate(household); }} />)}</div> : null}
   </section>;
 }
 
-function HouseholdCard({ household, onNavigate }: { household: Household; onNavigate(path: string): void }): JSX.Element {
+function HouseholdCard({ household, onNavigate, onRename, onDelete }: { household: Household; onNavigate(path: string): void; onRename(name: string): void; onDelete(): void }): JSX.Element {
   const lists = useQuery({ queryKey: listQueryKey(household.id), queryFn: () => fetchLists(household.id) });
   const members = useQuery({ queryKey: memberQueryKey(household.id), queryFn: () => fetchMembers(household.id) });
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftName, setDraftName] = useState(household.name);
+  useEffect(() => { if (!isEditing) setDraftName(household.name); }, [household.name, isEditing]);
   const listCount = lists.data?.length ?? 0;
   const memberCount = members.data?.length ?? 0;
+  function save(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const nextName = draftName.trim();
+    if (!nextName) return;
+    onRename(nextName);
+    setIsEditing(false);
+  }
   return <article className="route-card route-card--household">
-    <h2 className="route-card__name">{household.name}</h2>
+    {isEditing ? <form className="household-card-edit" onSubmit={save}>
+      <label className="sr-only" htmlFor={`household-name-${household.id}`}>Nombre del hogar</label>
+      <input id={`household-name-${household.id}`} aria-label="Nombre del hogar" value={draftName} onChange={(event) => setDraftName(event.target.value)} maxLength={100} autoFocus />
+      <button className="household-card-action household-card-action--save" type="submit" aria-label={`Guardar hogar ${household.name}`}>✓</button>
+      <button className="household-card-action" type="button" aria-label={`Cancelar edición de ${household.name}`} onClick={() => { setDraftName(household.name); setIsEditing(false); }}>×</button>
+    </form> : <h2 className="route-card__name">{household.name}</h2>}
     {lists.isPending ? <p className="route-card__metric" role="status">Cargando listas...</p> : lists.isError ? <p className="route-card__metric" role="alert">No se pudieron cargar las listas.</p> : <p className="route-card__metric">{listCount} {listCount === 1 ? 'lista activa' : 'listas activas'}</p>}
     {members.isPending ? <p className="route-card__members" role="status">Cargando usuarios...</p> : members.isError ? <p className="route-card__members" role="alert">Usuarios no disponibles</p> : <p className="route-card__members">{memberCount} {memberCount === 1 ? 'usuario activo' : 'usuarios activos'}</p>}
+    <div className="household-card-actions" aria-label={`Acciones de ${household.name}`}>
+      {!isEditing ? <button className="household-card-action" type="button" aria-label={`Editar ${household.name}`} onClick={() => setIsEditing(true)}>✎</button> : null}
+      <button className="household-card-action household-card-action--danger" type="button" aria-label={`Eliminar ${household.name}`} onClick={onDelete}>×</button>
+    </div>
     <button className="button" type="button" aria-label={`Abrir ${household.name}`} onClick={() => onNavigate(`/households/${encodeURIComponent(household.id)}`)}>Abrir hogar</button>
   </article>;
 }

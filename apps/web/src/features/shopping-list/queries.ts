@@ -19,6 +19,14 @@ export async function createHousehold(name: string): Promise<{ household: Househ
   return apiClient.request('/households', { method: 'POST', body: { name } });
 }
 
+export async function updateHousehold(household: Household, name: string): Promise<Household> {
+  return (await apiClient.request<{ household: Household }>(`/households/${household.id}`, { method: 'PATCH', body: { name } })).household;
+}
+
+export async function deleteHousehold(household: Household): Promise<void> {
+  await apiClient.request(`/households/${household.id}`, { method: 'DELETE' });
+}
+
 export async function fetchLists(householdId: string): Promise<ShoppingList[]> {
   return (await apiClient.request<{ lists: ShoppingList[] }>(`/households/${householdId}/lists`)).lists;
 }
