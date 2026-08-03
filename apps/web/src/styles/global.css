@@ -391,11 +391,13 @@ h2 { font-size: 1rem; }
 .dashboard__household-card > .button {
   width: 100%;
   min-width: 0;
+  height: 2.75rem;
   min-height: 2.75rem;
   justify-self: stretch;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding-block: 0;
   text-align: center;
   line-height: 1.1;
   white-space: nowrap;
