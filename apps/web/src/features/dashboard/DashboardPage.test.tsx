@@ -50,7 +50,7 @@ describe('DashboardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Crear lista' }));
     fireEvent.click(screen.getByRole('button', { name: 'Abrir NFC' }));
 
-    expect(navigate).toHaveBeenNthCalledWith(1, '/?household=home-1');
+    expect(navigate).toHaveBeenNthCalledWith(1, '/households/home-1');
     expect(navigate).toHaveBeenNthCalledWith(2, '/households?create=1');
     expect(navigate).toHaveBeenNthCalledWith(3, '/lists?create=1');
     expect(navigate).toHaveBeenNthCalledWith(4, '/nfc');

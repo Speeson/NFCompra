@@ -10,7 +10,7 @@ interface DashboardPageProps {
   onNavigate(path: string): void;
 }
 
-function householdPath(householdId: string): string { return `/?household=${encodeURIComponent(householdId)}`; }
+function householdPath(householdId: string): string { return `/households/${encodeURIComponent(householdId)}`; }
 
 export function DashboardPage({ userName, onNavigate }: DashboardPageProps): JSX.Element {
   const households = useQuery({ queryKey: householdQueryKey, queryFn: fetchHouseholds });

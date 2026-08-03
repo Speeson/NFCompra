@@ -1,5 +1,5 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState, type FormEvent, type JSX } from 'react';
+import { useEffect, useState, type CSSProperties, type FormEvent, type JSX } from 'react';
 
 import { createList, fetchHouseholds, fetchItems, fetchLists, householdQueryKey, itemQueryKey, listQueryKey, type ShoppingList } from './queries';
 
@@ -58,7 +58,7 @@ export function ListsPage({ onNavigate, startCreating = false }: { onNavigate(pa
       if (query.isError) return [<article key={`${home.id}-error`} className="route-list-card"><p role="alert">No se pudieron cargar las listas de este hogar.</p></article>];
       return (query.data ?? []).map((list) => {
         const itemQuery = itemQueries[lists.findIndex((candidate) => candidate.id === list.id)];
-        return <article key={list.id} className="route-list-card">
+        return <article key={list.id} className="route-list-card" style={householdGlowStyle(home.id)}>
           <div className="route-list-card__list">
             <strong>{list.name}</strong>
             {!itemQuery || itemQuery.isPending ? <span role="status">Cargando productos…</span> : itemQuery.isError ? <span role="alert">No se pudieron cargar los productos.</span> : <span>{itemQuery.data.filter((item) => !item.isChecked).length} pendientes</span>}
@@ -69,4 +69,11 @@ export function ListsPage({ onNavigate, startCreating = false }: { onNavigate(pa
       });
     })}</div> : null}
   </section>;
+}
+
+function householdGlowStyle(householdId: string): CSSProperties {
+  const palette = ['#10b981', '#84cc16', '#06b6d4', '#f59e0b', '#8b5cf6', '#ec4899'];
+  let hash = 0;
+  for (const character of householdId) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  return { '--household-glow': palette[hash % palette.length] } as CSSProperties;
 }
