@@ -68,6 +68,64 @@ it('adds product cards to a removable waitlist before committing them to pending
   await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Atun claro al natural Hacendado', quantity: 1, unit: null }));
 });
 
+it('closes and reopens product search results when focus leaves and returns to the product field', async () => {
+  const onAdd = vi.fn();
+  stubCatalogSnapshot();
+  localStorage.setItem('nfcompra.product-picker-mode', 'cards');
+
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} />);
+  const productInput = screen.getByLabelText('Producto');
+  fireEvent.change(productInput, { target: { value: 'atun' } });
+
+  expect(await screen.findByRole('button', { name: /Seleccionar Atun claro al natural Hacendado/i })).toBeInTheDocument();
+  fireEvent.pointerDown(document.body);
+  expect(screen.queryByRole('button', { name: /Seleccionar Atun claro al natural Hacendado/i })).not.toBeInTheDocument();
+
+  fireEvent.focus(productInput);
+  expect(screen.getByRole('button', { name: /Seleccionar Atun claro al natural Hacendado/i })).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Vista de lista' }));
+  expect(await screen.findByRole('button', { name: 'Atun claro al natural Hacendado · Conservas, caldos y cremas · 0.48 kg' })).toBeInTheDocument();
+  fireEvent.pointerDown(document.body);
+  expect(screen.queryByRole('button', { name: 'Atun claro al natural Hacendado · Conservas, caldos y cremas · 0.48 kg' })).not.toBeInTheDocument();
+
+  fireEvent.focus(productInput);
+  expect(screen.getByRole('button', { name: 'Atun claro al natural Hacendado · Conservas, caldos y cremas · 0.48 kg' })).toBeInTheDocument();
+});
+
+it('edits a shopping item with the compact name and quantity stepper layout', async () => {
+  const onUpdate = vi.fn();
+  render(<ShoppingListScreen title="Compra" items={[{ id: 'item-1', name: 'Pan', quantity: 2, unit: 'kg', isChecked: false }]} isOffline={false} onUpdate={onUpdate} />);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Editar Pan' }));
+
+  expect(screen.getByText('Nombre')).toBeInTheDocument();
+  expect(screen.getByLabelText('Nombre del producto')).toHaveValue('Pan');
+  expect(screen.queryByLabelText('Unidad del producto')).not.toBeInTheDocument();
+  expect(screen.getByLabelText('Cantidad seleccionada de Pan')).toHaveTextContent('2');
+  expect(screen.getByRole('button', { name: 'Guardar Pan' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Cancelar edición de Pan' })).toBeInTheDocument();
+
+  fireEvent.change(screen.getByLabelText('Nombre del producto'), { target: { value: 'Pan integral' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad de Pan' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar Pan' }));
+
+  expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ id: 'item-1' }), { name: 'Pan integral', quantity: 3, unit: null });
+});
+
+it('cancels a shopping item edit without saving local field changes', async () => {
+  const onUpdate = vi.fn();
+  render(<ShoppingListScreen title="Compra" items={[{ id: 'item-1', name: 'Pan', quantity: 2, isChecked: true }]} isOffline={false} onUpdate={onUpdate} />);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Editar Pan' }));
+  fireEvent.change(screen.getByLabelText('Nombre del producto'), { target: { value: 'Pan integral' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Cancelar edición de Pan' }));
+
+  expect(onUpdate).not.toHaveBeenCalled();
+  expect(screen.getByText('Pan')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Nombre del producto')).not.toBeInTheDocument();
+});
+
 function stubCatalogSnapshot(): void {
   vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
     const url = String(input);

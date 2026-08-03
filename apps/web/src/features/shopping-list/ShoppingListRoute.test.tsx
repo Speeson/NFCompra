@@ -421,7 +421,7 @@ describe('ShoppingListRoute', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Editar Leche' }));
     fireEvent.change(screen.getByLabelText('Nombre del producto'), { target: { value: 'Leche entera' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar Leche' }));
     expect(await screen.findByText('Leche entera')).toBeVisible();
     rejectEdit(new Error('Sin conexión'));
     expect(await screen.findByText('Leche')).toBeVisible();

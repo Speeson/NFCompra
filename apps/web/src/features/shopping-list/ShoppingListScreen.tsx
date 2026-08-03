@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type JSX, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type JSX, type PointerEvent } from 'react';
 
 import { searchProductCatalog, type ProductCatalogItem } from '../catalog/product-catalog-api';
 import type { ShoppingItem } from './model';
@@ -34,6 +34,18 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
   const [cardQuantities, setCardQuantities] = useState<Record<string, number>>({});
   const [waitlist, setWaitlist] = useState<PendingProduct[]>([]);
   const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
+  const [isProductSearchOpen, setIsProductSearchOpen] = useState(true);
+  const productSearchRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function closeProductSearchOnOutsidePointer(event: globalThis.PointerEvent): void {
+      const target = event.target;
+      if (target instanceof Node && !productSearchRef.current?.contains(target)) setIsProductSearchOpen(false);
+    }
+
+    document.addEventListener('pointerdown', closeProductSearchOnOutsidePointer);
+    return () => document.removeEventListener('pointerdown', closeProductSearchOnOutsidePointer);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -58,6 +70,7 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
     localStorage.setItem(pickerModeStorageKey, mode);
     setSuggestions([]);
     setCardQuantities({});
+    setIsProductSearchOpen(true);
   }
 
   function addItem(event: FormEvent<HTMLFormElement>): void {
@@ -68,6 +81,7 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
     setName('');
     setQuantity('1');
     setSuggestions([]);
+    setIsProductSearchOpen(false);
   }
 
   function addWaitlist(): void {
@@ -77,11 +91,13 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
     setSuggestions([]);
     setCardQuantities({});
     setName('');
+    setIsProductSearchOpen(false);
   }
 
   function selectSuggestion(suggestion: ProductCatalogItem): void {
     setName(suggestion.name);
     setSuggestions([]);
+    setIsProductSearchOpen(false);
   }
 
   function updateCardQuantity(productId: string, delta: number): void {
@@ -126,16 +142,18 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
         {onAdd ? <ProductPickerToggle pickerMode={pickerMode} onChange={changePickerMode} /> : null}
       </div>
       {onAdd ? <>
-        <form className={`product-form product-form--${pickerMode}`} onSubmit={addItem}>
-          <label htmlFor="new-product-name">Producto</label>
-          <div className="product-autocomplete"><input id="new-product-name" disabled={isOffline} value={name} onChange={(event) => setName(event.target.value)} required maxLength={200} autoComplete="off" />
-            {pickerMode === 'list' && suggestions.length ? <div className="product-suggestions" role="listbox" aria-label="Sugerencias de productos">{suggestions.map((suggestion) => <button key={suggestion.id} type="button" className="product-suggestion" onClick={() => selectSuggestion(suggestion)}>{suggestionLabel(suggestion)}</button>)}</div> : null}
-          </div>
-          <ManualQuantityStepper quantity={quantity} disabled={isOffline} onChange={updateManualQuantity} />
-          <button type="submit" disabled={isOffline}>Añadir</button>
-        </form>
-        {pickerMode === 'cards' && suggestions.length ? <ProductCardResults suggestions={suggestions} quantities={cardQuantities} recentlyAddedId={recentlyAddedId} onQuantityChange={updateCardQuantity} onSelect={addSuggestionToWaitlist} /> : null}
-        {pickerMode === 'cards' && waitlist.length ? <PendingProductWaitlist products={waitlist} onRemove={removeFromWaitlist} onCommit={addWaitlist} /> : null}
+        <div className="product-search-area" ref={productSearchRef}>
+          <form className={`product-form product-form--${pickerMode}`} onSubmit={addItem}>
+            <label htmlFor="new-product-name">Producto</label>
+            <div className="product-autocomplete"><input id="new-product-name" disabled={isOffline} value={name} onFocus={() => setIsProductSearchOpen(true)} onChange={(event) => { setName(event.target.value); setIsProductSearchOpen(true); }} required maxLength={200} autoComplete="off" />
+              {pickerMode === 'list' && isProductSearchOpen && suggestions.length ? <div className="product-suggestions" role="listbox" aria-label="Sugerencias de productos">{suggestions.map((suggestion) => <button key={suggestion.id} type="button" className="product-suggestion" onClick={() => selectSuggestion(suggestion)}>{suggestionLabel(suggestion)}</button>)}</div> : null}
+            </div>
+            <ManualQuantityStepper quantity={quantity} disabled={isOffline} onChange={updateManualQuantity} />
+            <button type="submit" disabled={isOffline}>Añadir</button>
+          </form>
+          {pickerMode === 'cards' && isProductSearchOpen && suggestions.length ? <ProductCardResults suggestions={suggestions} quantities={cardQuantities} recentlyAddedId={recentlyAddedId} onQuantityChange={updateCardQuantity} onSelect={addSuggestionToWaitlist} /> : null}
+          {pickerMode === 'cards' && waitlist.length ? <PendingProductWaitlist products={waitlist} onRemove={removeFromWaitlist} onCommit={addWaitlist} /> : null}
+        </div>
       </> : null}
     </header>
     {isOffline ? <p className="offline-notice" role="status">Sin conexión</p> : null}
@@ -247,25 +265,43 @@ function ShoppingItemRow({ item, isOffline, onToggle, onUpdate, onDelete }: { it
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
   const [quantity, setQuantity] = useState(String(item.quantity));
-  const [unit, setUnit] = useState(item.unit ?? '');
 
   function save(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     const parsedQuantity = Number(quantity);
     if (isOffline || !name.trim() || !Number.isFinite(parsedQuantity) || parsedQuantity <= 0) return;
-    onUpdate?.(item, { name: name.trim(), quantity: parsedQuantity, unit: unit.trim() || null });
+    onUpdate?.(item, { name: name.trim(), quantity: parsedQuantity, unit: null });
+    setEditing(false);
+  }
+
+  function updateEditQuantity(delta: number): void {
+    setQuantity((current) => String(Math.max(1, Math.round((Number(current) || 1) + delta))));
+  }
+
+  function cancelEdit(): void {
+    setName(item.name);
+    setQuantity(String(item.quantity));
     setEditing(false);
   }
 
   return <li className={item.isChecked ? 'shopping-item shopping-item--checked' : 'shopping-item'}>
     <button type="button" className="check-button" aria-label={`${item.isChecked ? 'Desmarcar' : 'Marcar'} ${item.name}`} aria-pressed={item.isChecked} disabled={isOffline} onClick={() => onToggle?.(item)}><span aria-hidden="true">{item.isChecked ? '✓' : ''}</span></button>
-    {editing ? <form onSubmit={save} className="product-edit-form">
-      <label>Nombre<input aria-label="Nombre del producto" disabled={isOffline} value={name} onChange={(event) => setName(event.target.value)} /></label>
-      <label>Cantidad<input aria-label="Cantidad del producto" disabled={isOffline} type="number" min="0.01" step="any" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label>
-      <label>Unidad<input aria-label="Unidad del producto" disabled={isOffline} value={unit} onChange={(event) => setUnit(event.target.value)} /></label>
-      <button type="submit" disabled={isOffline}>Guardar</button><button type="button" disabled={isOffline} onClick={() => setEditing(false)}>Cancelar</button>
+    {editing ? <form onSubmit={save} className={item.isChecked ? 'product-edit-form product-edit-form--checked' : 'product-edit-form product-edit-form--pending'}>
+      <label htmlFor={`edit-product-name-${item.id}`}>Nombre</label>
+      <input id={`edit-product-name-${item.id}`} aria-label="Nombre del producto" disabled={isOffline} value={name} onChange={(event) => setName(event.target.value)} />
+      <EditQuantityStepper itemName={item.name} quantity={quantity} disabled={isOffline} isChecked={item.isChecked} onChange={updateEditQuantity} />
+      <button type="submit" className="edit-form-action edit-form-action--save" aria-label={`Guardar ${item.name}`} disabled={isOffline}>Guardar</button>
+      <button type="button" className="edit-form-action edit-form-action--cancel" aria-label={`Cancelar edición de ${item.name}`} disabled={isOffline} onClick={cancelEdit}>Cancelar</button>
     </form> : <><span className="shopping-item__name">{item.name}</span><span className="shopping-item__quantity">{item.quantity}{item.unit ? ` ${item.unit}` : ''}</span></>}
-    {onUpdate ? <button type="button" className="item-action item-action--edit" aria-label={`Editar ${item.name}`} disabled={isOffline} onClick={() => setEditing(true)}>✎</button> : null}
+    {onUpdate && !editing ? <button type="button" className="item-action item-action--edit" aria-label={`Editar ${item.name}`} aria-pressed="false" disabled={isOffline} onClick={() => setEditing(true)}>✎</button> : null}
     {onDelete ? <button type="button" className="item-action item-action--delete" aria-label={`Eliminar ${item.name}`} disabled={isOffline} onClick={() => onDelete(item)}>×</button> : null}
   </li>;
+}
+
+function EditQuantityStepper({ itemName, quantity, disabled, isChecked, onChange }: { itemName: string; quantity: string; disabled: boolean; isChecked: boolean; onChange(delta: number): void }): JSX.Element {
+  return <div className={isChecked ? 'edit-quantity-stepper edit-quantity-stepper--checked' : 'edit-quantity-stepper edit-quantity-stepper--pending'} role="group" aria-label={`Cantidad de ${itemName}`}>
+    <button type="button" aria-label={`Reducir cantidad de ${itemName}`} disabled={disabled || Number(quantity) <= 1} onClick={() => onChange(-1)}>−</button>
+    <span aria-label={`Cantidad seleccionada de ${itemName}`}>{quantity}</span>
+    <button type="button" aria-label={`Aumentar cantidad de ${itemName}`} disabled={disabled} onClick={() => onChange(1)}>+</button>
+  </div>;
 }

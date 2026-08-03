@@ -263,6 +263,7 @@ h2 { font-size: 1rem; }
 .product-picker-toggle button { display: inline-grid; width: 2.2rem; min-height: 2.2rem; place-items: center; padding: 0; border: 0; border-radius: calc(var(--radius-sm) - .25rem); background: transparent; color: var(--color-muted); font-size: 1rem; line-height: 1; cursor: pointer; }
 .product-picker-toggle button[aria-pressed="true"] { background: var(--color-primary); color: white; box-shadow: 0 .45rem 1rem rgb(16 185 129 / 18%); }
 .product-picker-toggle button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.product-search-area { display: grid; gap: var(--space-3); }
 
 .product-card-results { display: grid; grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr)); gap: var(--space-3); margin-top: var(--space-3); }
 .product-result-card { display: grid; grid-template-rows: 1fr auto; gap: var(--space-3); min-width: 0; padding: var(--space-3); border: 1px solid color-mix(in srgb, var(--color-border) 80%, var(--color-primary) 20%); border-radius: var(--radius-md); background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 92%, white 8%), var(--color-surface)); box-shadow: 0 .65rem 1.7rem rgb(15 23 42 / 8%); transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
@@ -333,4 +334,30 @@ h2 { font-size: 1rem; }
   .product-form--cards { grid-template-columns: auto minmax(0, 1fr); }
   .product-form .manual-quantity-stepper { grid-column: 1 / -1; justify-self: stretch; grid-template-columns: 1fr minmax(3rem, auto) 1fr; }
   .product-form > button[type="submit"] { grid-column: 1 / -1; width: 100%; }
+}
+
+.product-edit-form { grid-column: 2 / 5; display: grid; grid-template-columns: auto minmax(8rem, 1fr) auto auto auto; align-items: center; gap: var(--space-2); min-width: 0; }
+.product-edit-form label { font-weight: 900; white-space: nowrap; }
+.product-edit-form input { min-width: 0; min-height: 2rem; padding: 0 .7rem; border: 1px solid currentColor; border-radius: var(--radius-sm); background: var(--color-page); color: var(--color-text); font: inherit; font-weight: 700; }
+.product-edit-form input:focus { outline: none; box-shadow: var(--focus-ring); }
+.product-edit-form--pending { color: #854d0e; }
+.product-edit-form--checked { color: #991b1b; }
+.edit-form-action { min-height: 2rem; border: 1px solid currentColor; border-radius: var(--radius-sm); padding: 0 .7rem; background: transparent; cursor: pointer; font: inherit; font-size: .82rem; font-weight: 900; }
+.edit-form-action--save { color: white; }
+.product-edit-form--pending .edit-form-action--save { border-color: #ca8a04; background: #ca8a04; }
+.product-edit-form--checked .edit-form-action--save { border-color: #b42318; background: #b42318; }
+.edit-form-action--cancel { background: var(--color-page); color: currentColor; }
+.edit-form-action:disabled { cursor: not-allowed; opacity: .55; }
+
+.edit-quantity-stepper { display: inline-grid; grid-template-columns: 2rem minmax(2.25rem, auto) 2rem; align-items: center; min-height: 2rem; overflow: hidden; border: 1px solid currentColor; border-radius: var(--radius-sm); background: var(--color-page); }
+.edit-quantity-stepper button { display: inline-grid; width: 2rem; min-height: 2rem; place-items: center; border: 0; border-radius: 0; background: transparent; color: currentColor; cursor: pointer; font-size: 1rem; font-weight: 900; padding: 0; }
+.edit-quantity-stepper button:disabled { cursor: not-allowed; opacity: .45; }
+.edit-quantity-stepper span { display: inline-grid; min-height: 2rem; place-items: center; padding: 0 .35rem; border-left: 1px solid currentColor; border-right: 1px solid currentColor; color: var(--color-text); font-weight: 900; }
+.edit-quantity-stepper--pending { color: #ca8a04; }
+.edit-quantity-stepper--checked { color: #b42318; }
+
+@media (max-width: 42rem) {
+  .product-edit-form { grid-column: 2 / -1; grid-template-columns: auto minmax(0, 1fr); }
+  .product-edit-form .edit-quantity-stepper { grid-column: 1 / -1; grid-template-columns: 1fr minmax(2.75rem, auto) 1fr; }
+  .product-edit-form .edit-form-action { width: 100%; }
 }
