@@ -83,6 +83,9 @@ a { color: inherit; }
 
 .shopping-list { width: min(100% - 2rem, 42rem); margin: 0 auto; padding: var(--space-8) 0; }
 .shopping-list__header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-6); }
+.shopping-empty-list-state { display: grid; gap: var(--space-3); padding: var(--space-6); border: 1px dashed var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); text-align: center; box-shadow: var(--shadow-card); }
+.shopping-empty-list-state h1 { font-size: clamp(1.4rem, 4vw, 2rem); }
+.shopping-empty-list-state p { margin: 0; color: var(--color-muted); font-weight: 700; }
 .list-selectors { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); width: min(100% - 2rem, 42rem); margin: var(--space-6) auto 0; padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-card); }.list-selectors label, .list-selectors form { display: grid; gap: var(--space-2); font-weight: 800; }.list-selectors select, .list-selectors input { min-width: 0; padding: .65rem .75rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-page); font: inherit; }.list-selectors form button { border: 0; border-radius: var(--radius-sm); padding: .65rem; background: var(--color-primary); color: white; font-weight: 800; }
 .eyebrow { margin: 0 0 var(--space-1); color: var(--color-muted); font-size: 0.875rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
 h1, h2 { margin: 0; }

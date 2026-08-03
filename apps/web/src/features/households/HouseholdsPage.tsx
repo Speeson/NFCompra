@@ -12,9 +12,9 @@ export function HouseholdsPage({ onNavigate, startCreating = false }: { onNaviga
   const households = useQuery({ queryKey: householdQueryKey, queryFn: fetchHouseholds });
   const creation = useMutation({
     mutationFn: createHousehold,
-    onSuccess: ({ household, defaultList }) => {
+    onSuccess: ({ household }) => {
       queryClient.setQueryData<Household[]>(householdQueryKey, (current = []) => [...current, household]);
-      queryClient.setQueryData(listQueryKey(household.id), [defaultList]);
+      queryClient.setQueryData(listQueryKey(household.id), []);
       setCreating(false);
       setName('');
       onNavigate(`/households/${encodeURIComponent(household.id)}`);
@@ -79,7 +79,7 @@ export function HouseholdDetailPage({ householdId, currentUserId, onNavigate }: 
     <div role="tablist" aria-label="Secciones del hogar" className="route-tabs">
       {tabs.map((name, index) => <button key={name} ref={(element) => { tabRefs.current[index] = element; }} id={tabId(name)} role="tab" type="button" tabIndex={tab === name ? 0 : -1} aria-controls={panelId(name)} aria-selected={tab === name} onClick={() => setTab(name)} onKeyDown={(event) => onTabKeyDown(event, index)}>{name === 'lists' ? 'Listas' : name === 'members' ? 'Miembros' : 'NFC'}</button>)}
     </div>
-    {tab === 'lists' ? <section className="route-panel route-panel--flat" id={panelId('lists')} role="tabpanel" aria-labelledby={tabId('lists')}>{lists.isPending ? <p role="status">Cargando listas...</p> : lists.isError ? <p role="alert">No se pudieron cargar las listas.</p> : <ul className="household-list-summary">{lists.data?.map((list, index) => {
+    {tab === 'lists' ? <section className="route-panel route-panel--flat" id={panelId('lists')} role="tabpanel" aria-labelledby={tabId('lists')}>{lists.isPending ? <p role="status">Cargando listas...</p> : lists.isError ? <p role="alert">No se pudieron cargar las listas.</p> : !lists.data?.length ? <p className="route-page__empty">No hay listas asociadas a este hogar.</p> : <ul className="household-list-summary">{lists.data.map((list, index) => {
       const items = itemQueries[index];
       const pending = items.data?.filter((item) => !item.isChecked).length ?? 0;
       const total = items.data?.length ?? 0;

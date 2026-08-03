@@ -47,7 +47,7 @@ export async function deleteShoppingList(env: Env, listId: string, expectedVersi
   if (!lease) return null;
   const result = await env.DB.prepare(`
     DELETE FROM shopping_lists
-    WHERE id = ? AND version = ? AND is_default = 0 AND EXISTS (SELECT 1 FROM sync_operations WHERE lease_token = ? AND response_body IS NULL)
+    WHERE id = ? AND version = ? AND EXISTS (SELECT 1 FROM sync_operations WHERE lease_token = ? AND response_body IS NULL)
   `).bind(listId, expectedVersion, leaseToken).run();
   return result.meta.changes >= 1;
 }

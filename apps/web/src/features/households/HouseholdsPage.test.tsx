@@ -25,7 +25,7 @@ describe('household route views', () => {
     const navigate = vi.fn();
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.endsWith('/households') && init?.method === 'POST') return Promise.resolve(Response.json({ household: { id: 'home-2', name: 'Piso' }, defaultList: { id: 'list-2', householdId: 'home-2', name: 'Compra', isDefault: true } }));
+      if (url.endsWith('/households') && init?.method === 'POST') return Promise.resolve(Response.json({ household: { id: 'home-2', name: 'Piso' } }));
       if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'home-1', name: 'Casa' }] }));
       if (url.endsWith('/households/home-1/lists')) return Promise.resolve(Response.json({ lists: [] }));
       throw new Error(`Ruta inesperada: ${url}`);

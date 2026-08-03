@@ -46,7 +46,6 @@ async function handleSingleListRoute(request: Request, env: Env, user: AuthUser,
   const current = await findShoppingList(env, listId);
   if (!current) return missingListResponse();
   if (!(await isListMember(env, listId, user.id))) return errorResponse('FORBIDDEN', 'No tienes acceso a esta lista.', 403);
-  if (request.method === 'DELETE' && current.isDefault) return errorResponse('DEFAULT_LIST_CANNOT_BE_DELETED', 'La lista predeterminada del hogar no se puede eliminar.', 409);
   const claimed = await claimOperation(env, op, user.id);
   const replay = operationResponse(claimed);
   if (replay) return replay;
@@ -57,7 +56,7 @@ async function handleSingleListRoute(request: Request, env: Env, user: AuthUser,
     if (!deleted) {
       const latest = await findShoppingList(env, listId);
       if (!latest) return missingListResponse(env, op, user.id, claimed.leaseToken);
-      const responseBody = JSON.stringify({ error: { code: latest.isDefault ? 'DEFAULT_LIST_CANNOT_BE_DELETED' : 'LIST_VERSION_CONFLICT', message: latest.isDefault ? 'La lista predeterminada del hogar no se puede eliminar.' : 'La lista ha cambiado.', details: latest.isDefault ? {} : { current: latest } } });
+      const responseBody = JSON.stringify({ error: { code: 'LIST_VERSION_CONFLICT', message: 'La lista ha cambiado.', details: { current: latest } } });
       await completeOperation(env, op, user.id, claimed.leaseToken, 409, responseBody);
       return new Response(responseBody, { status: 409, headers: { 'content-type': 'application/json' } });
     }

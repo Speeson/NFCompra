@@ -18,18 +18,15 @@ export interface ShoppingListSummary {
   updatedAt: string;
 }
 
-export async function createHousehold(env: Env, ownerId: string, name: string): Promise<{ household: Household; defaultList: ShoppingListSummary }> {
+export async function createHousehold(env: Env, ownerId: string, name: string): Promise<{ household: Household }> {
   const id = crypto.randomUUID();
-  const defaultListId = crypto.randomUUID();
   const now = new Date().toISOString();
   await env.DB.batch([
     env.DB.prepare('INSERT INTO households (id, name, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').bind(id, name, ownerId, now, now),
     env.DB.prepare("INSERT INTO household_members (household_id, user_id, role, created_at) VALUES (?, ?, 'owner', ?)").bind(id, ownerId, now),
-    env.DB.prepare('INSERT INTO shopping_lists (id, household_id, name, is_default, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)').bind(defaultListId, id, 'Compra', now, now),
   ]);
   return {
     household: { id, name, ownerId, createdAt: now, updatedAt: now },
-    defaultList: { id: defaultListId, householdId: id, name: 'Compra', isDefault: true, version: 1, createdAt: now, updatedAt: now },
   };
 }
 

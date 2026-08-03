@@ -94,8 +94,9 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
   useEffect(() => {
     const lists = listsQuery.data ?? [];
     const first = lists[0];
+    if (householdId && !first && listId) setListId(undefined);
     if (first && !lists.some((list) => list.id === listId)) setListId(first.id);
-  }, [listId, listsQuery.data]);
+  }, [householdId, listId, listsQuery.data]);
 
   const isOffline = offlineSnapshot?.source === offlineSource(currentUserId, listId ?? '');
   const isDirectOfflineRoute = Boolean(requestedListId && !householdId && isOffline && !itemsQuery.isPending);
@@ -209,10 +210,10 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
   const householdMutation = useMutation({
     mutationFn: createHousehold,
     onMutate: () => resetFeedback(),
-    onSuccess: ({ household, defaultList }) => {
+    onSuccess: ({ household }) => {
       queryClient.setQueryData(householdQueryKey, (households: typeof householdsQuery.data = []) => [...households, household]);
-      queryClient.setQueryData(listQueryKey(household.id), [defaultList]);
-      setHouseholdId(household.id); setListId(defaultList.id);
+      queryClient.setQueryData(listQueryKey(household.id), []);
+      setHouseholdId(household.id); setListId(undefined);
     },
     onError: () => setMessage('No se pudo crear el hogar.'),
   });
@@ -234,7 +235,7 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
     },
     onError: (error) => {
       if (error instanceof ApiError && error.status === 409 && error.code === 'LIST_VERSION_CONFLICT') void queryClient.invalidateQueries({ queryKey: listQueryKey(householdId ?? '') });
-      setMessage(error instanceof ApiError && error.code === 'DEFAULT_LIST_CANNOT_BE_DELETED' ? 'La lista predeterminada no se puede eliminar.' : 'No se pudo cambiar el nombre de la lista.');
+      setMessage('No se pudo cambiar el nombre de la lista.');
     },
   });
   const clearCheckedMutation = useMutation<number, Error, string>({
@@ -263,7 +264,7 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
         queryClient.setQueryData<ShoppingList[]>(listQueryKey(context.householdId), (lists = []) => lists.some((list) => list.id === context.list.id) ? lists : [...lists, context.list]);
         if (context.previousListId) setListId(context.previousListId);
       }
-      setMessage(error instanceof ApiError && error.code === 'DEFAULT_LIST_CANNOT_BE_DELETED' ? 'La lista predeterminada no se puede eliminar.' : 'No se pudo eliminar la lista.');
+      setMessage('No se pudo eliminar la lista.');
     },
     onSuccess: (_unused, list) => {
       queryClient.removeQueries({ queryKey: itemQueryKey(list.id), exact: true });
@@ -273,16 +274,29 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
 
   if (isDirectOfflineRoute) return <ShoppingListScreen title="Lista" items={(itemsQuery.data ?? []).map((item) => ({ ...item, unit: item.unit ?? undefined }))} isOffline />;
   if (householdsQuery.isPending) return <main><p role="status">Cargando hogares…</p></main>;
+  if (isDirectListRoute && householdsQuery.isError && itemsQuery.isPending) return <main><p role="status">Cargando lista…</p></main>;
   if (householdsQuery.isError) return <main><p role="alert">No se pudieron cargar los hogares.</p></main>;
   if (isDirectListRoute && !resolvedHouseholdId && ownershipQueries.some((query) => query.isError)) return <main><p role="alert">No se pudo localizar la lista.</p></main>;
   if (isDirectListRoute && !resolvedHouseholdId && ownershipQueries.some((query) => query.isPending)) return <main><p role="status">Cargando lista…</p></main>;
   if (isDirectListRoute && !resolvedHouseholdId && ownershipQueries.length > 0) return <main><p role="alert">No se encontró esta lista.</p></main>;
   if (!householdsQuery.data?.length) return <HouseholdSetup onCreate={async (name) => { try { await householdMutation.mutateAsync(name); } catch { /* mutation exposes feedback */ } }} isCreating={householdMutation.isPending} error={message} />;
-  if (!householdId || listsQuery.isPending || !listId || itemsQuery.isPending) return <main><p role="status">Cargando lista…</p></main>;
-  if (listsQuery.isError || itemsQuery.isError) return <main><p role="alert">No se pudo cargar la lista.</p></main>;
+  if (!householdId || listsQuery.isPending) return <main><p role="status">Cargando lista…</p></main>;
+  if (listsQuery.isError) return <main><p role="alert">No se pudo cargar la lista.</p></main>;
 
   const currentHousehold = householdsQuery.data.find((household) => household.id === householdId);
   const currentList = listsQuery.data?.find((list) => list.id === listId);
+  const hasLists = Boolean(listsQuery.data?.length);
+  if (!hasLists || !listId) return <>
+    {onNavigate ? <button className="back-link back-link--route" type="button" onClick={() => currentHousehold ? onNavigate(`/households/${encodeURIComponent(currentHousehold.id)}`) : onNavigate('/lists')}>← Volver a {currentHousehold?.name ?? 'listas'}</button> : null}
+    <section className="list-selectors" aria-label="Seleccionar hogar y lista">
+      <label>Hogar<select value={householdId} onChange={(event) => { setHouseholdId(event.target.value); setListId(undefined); }}>{householdsQuery.data.map((household) => <option key={household.id} value={household.id}>{household.name}</option>)}</select></label>
+      <NewListForm disabled={false} onCreate={(name) => listMutation.mutate({ targetHouseholdId: householdId, name })} />
+    </section>
+    {message ? <p role="alert">{message}</p> : null}
+    <main className="shopping-list"><section className="shopping-empty-list-state" aria-label="Hogar sin listas"><h1>No hay listas asociadas a este hogar</h1><p>Crea una lista para empezar a añadir productos.</p></section></main>
+  </>;
+  if (itemsQuery.isPending) return <main><p role="status">Cargando lista…</p></main>;
+  if (itemsQuery.isError) return <main><p role="alert">No se pudo cargar la lista.</p></main>;
   return <>
     {onNavigate ? <button className="back-link back-link--route" type="button" onClick={() => currentHousehold ? onNavigate(`/households/${encodeURIComponent(currentHousehold.id)}`) : onNavigate('/lists')}>← Volver a {currentHousehold?.name ?? 'listas'}</button> : null}
     <section className="list-selectors" aria-label="Seleccionar hogar y lista">
@@ -296,7 +310,7 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
       onAdd={(input) => { if (!isOffline) createItemMutation.mutate({ listId, ...input }); }}
       onRenameList={(name) => { if (!isOffline && currentList) renameListMutation.mutate({ list: currentList, name }); }}
       onClearChecked={() => { if (!isOffline && window.confirm('Se eliminarán los productos comprados de esta lista.')) clearCheckedMutation.mutate(listId); }}
-      onDeleteList={currentList && !currentList.isDefault ? () => { if (!isOffline && window.confirm('Se eliminará esta lista y sus productos.')) deleteListMutation.mutate(currentList); } : undefined}
+      onDeleteList={currentList ? () => { if (!isOffline && window.confirm('Se eliminará esta lista y sus productos.')) deleteListMutation.mutate(currentList); } : undefined}
       onToggle={(item) => { if (!isOffline) updateMutation.mutate({ item: item as ApiShoppingItem, patch: { isChecked: !item.isChecked } }); }}
       onUpdate={(item, input) => { if (!isOffline) updateMutation.mutate({ item: item as ApiShoppingItem, patch: input }); }}
       onDelete={(item) => { if (!isOffline) deleteMutation.mutate(item as ApiShoppingItem); }} />

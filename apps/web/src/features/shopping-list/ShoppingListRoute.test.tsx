@@ -432,25 +432,26 @@ describe('ShoppingListRoute', () => {
     expect(await screen.findByText('Leche')).toBeVisible();
   });
 
-  it('creates the first household and its default list', async () => {
+  it('creates the first household without an automatic list and shows the empty household state', async () => {
     vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000006' });
     let hasHousehold = false;
     vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
-      if (url.endsWith('/households') && init?.method === 'POST') { hasHousehold = true; return Promise.resolve(Response.json({ household: { id: 'home-1', name: 'Casa', ownerId: 'user-1', createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' }, defaultList: { id: 'list-1', householdId: 'home-1', name: 'Compra', isDefault: true, version: 1, createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' } }, { status: 201 })); }
+      if (url.endsWith('/households') && init?.method === 'POST') { hasHousehold = true; return Promise.resolve(Response.json({ household: { id: 'home-1', name: 'Casa', ownerId: 'user-1', createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' } }, { status: 201 })); }
       if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: hasHousehold ? [{ id: 'home-1', name: 'Casa' }, { id: 'home-2', name: 'Piso' }] : [] }));
-      if (url.endsWith('/households/home-1/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-1', householdId: 'home-1', name: 'Compra', isDefault: true, version: 1, createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' }] }));
+      if (url.endsWith('/households/home-1/lists')) return Promise.resolve(Response.json({ lists: [] }));
       if (url.endsWith('/households/home-2/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-2', householdId: 'home-2', name: 'Fin de semana', isDefault: true, version: 1, createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' }] }));
-      if (url.endsWith('/lists/list-1/items') || url.endsWith('/lists/list-2/items')) return Promise.resolve(Response.json({ items: [] }));
+      if (url.endsWith('/lists/list-2/items')) return Promise.resolve(Response.json({ items: [] }));
       throw new Error(`Solicitud inesperada: ${url}`);
     }));
 
     render(<QueryClientProvider client={createWebQueryClient()}><ShoppingListRoute /></QueryClientProvider>);
     fireEvent.change(await screen.findByLabelText('Nombre del hogar'), { target: { value: 'Casa' } });
     fireEvent.click(screen.getByRole('button', { name: 'Crear hogar' }));
-    await screen.findByRole('heading', { name: 'Compra' });
+    await screen.findByRole('heading', { name: 'No hay listas asociadas a este hogar' });
 
     expect(screen.getByLabelText('Hogar')).toHaveValue('home-1');
+    expect(screen.queryByLabelText('Lista')).not.toBeInTheDocument();
   });
 
   it('loads the selected household list', async () => {

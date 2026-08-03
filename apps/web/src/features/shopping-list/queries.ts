@@ -15,7 +15,7 @@ export async function fetchHouseholds(): Promise<Household[]> {
   return (await apiClient.request<{ households: Household[] }>('/households')).households;
 }
 
-export async function createHousehold(name: string): Promise<{ household: Household; defaultList: ShoppingList }> {
+export async function createHousehold(name: string): Promise<{ household: Household }> {
   return apiClient.request('/households', { method: 'POST', body: { name } });
 }
 
