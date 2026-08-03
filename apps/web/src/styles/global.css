@@ -405,6 +405,20 @@ h2 { font-size: 1rem; }
   text-overflow: ellipsis;
 }
 
+.dashboard__household-card {
+  height: 100%;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  align-content: stretch;
+}
+
+.dashboard__list-progress {
+  align-self: start;
+}
+
+.dashboard__household-card > .button {
+  align-self: end;
+}
+
 .route-list-household-groups {
   display: grid;
   gap: var(--space-5);
