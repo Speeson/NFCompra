@@ -60,6 +60,7 @@ function isShoppingRoute(path: string): boolean {
     || /^\/v1\/notifications\/[^/]+\/read$/.test(path)
     || /^\/v1\/households\/[^/]+\/(?:invitations|members)(?:\/[^/]+)?$/.test(path)
     || /^\/v1\/households\/[^/]+\/lists$/.test(path)
+    || /^\/v1\/lists\/[^/]+$/.test(path)
     || /^\/v1\/lists\/[^/]+\/items(?:\/checked)?$/.test(path)
     || /^\/v1\/items\/[^/]+$/.test(path);
 }

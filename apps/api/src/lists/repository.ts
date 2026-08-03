@@ -27,6 +27,31 @@ export async function listShoppingLists(env: Env, householdId: string): Promise<
   return rows.results.map(mapList);
 }
 
+export async function findShoppingList(env: Env, listId: string): Promise<ShoppingListSummary | null> {
+  const row = await env.DB.prepare('SELECT * FROM shopping_lists WHERE id = ?').bind(listId).first<ShoppingListRow>();
+  return row ? mapList(row) : null;
+}
+
+export async function updateShoppingList(env: Env, listId: string, expectedVersion: number, name: string, leaseToken: string): Promise<ShoppingListSummary | null> {
+  const now = new Date().toISOString();
+  const row = await env.DB.prepare(`
+    UPDATE shopping_lists SET name = ?, updated_at = ?, version = version + 1
+    WHERE id = ? AND version = ? AND EXISTS (SELECT 1 FROM sync_operations WHERE lease_token = ? AND response_body IS NULL)
+    RETURNING *
+  `).bind(name, now, listId, expectedVersion, leaseToken).first<ShoppingListRow>();
+  return row ? mapList(row) : null;
+}
+
+export async function deleteShoppingList(env: Env, listId: string, expectedVersion: number, leaseToken: string): Promise<boolean | null> {
+  const lease = await env.DB.prepare('SELECT 1 FROM sync_operations WHERE lease_token = ? AND response_body IS NULL').bind(leaseToken).first();
+  if (!lease) return null;
+  const result = await env.DB.prepare(`
+    DELETE FROM shopping_lists
+    WHERE id = ? AND version = ? AND is_default = 0 AND EXISTS (SELECT 1 FROM sync_operations WHERE lease_token = ? AND response_body IS NULL)
+  `).bind(listId, expectedVersion, leaseToken).run();
+  return result.meta.changes >= 1;
+}
+
 export async function findListHouseholdId(env: Env, listId: string): Promise<string | null> {
   const row = await env.DB.prepare('SELECT household_id FROM shopping_lists WHERE id = ?').bind(listId).first<{ household_id: string }>();
   return row?.household_id ?? null;

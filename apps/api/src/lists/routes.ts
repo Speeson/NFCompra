@@ -2,15 +2,18 @@ import type { Env } from '../env';
 import type { AuthUser } from '../middleware/auth';
 import { isHouseholdMember } from '../households/repository';
 import { errorResponse } from '../shared/http';
-import { claimOperation, completeMissingItemOperation, completeOperation, createShoppingItem, createShoppingList, deleteCheckedShoppingItems, deleteShoppingItem, findShoppingItem, isListMember, listShoppingItems, listShoppingLists, replayOperation, updateShoppingItem, type ItemPatch } from './repository';
+import { claimOperation, completeMissingItemOperation, completeOperation, createShoppingItem, createShoppingList, deleteCheckedShoppingItems, deleteShoppingItem, deleteShoppingList, findShoppingItem, findShoppingList, isListMember, listShoppingItems, listShoppingLists, replayOperation, updateShoppingItem, updateShoppingList, type ItemPatch } from './repository';
 import { boundedText, jsonObject, normalizedName, operationId, optionalBoundedText } from './validation';
 
 const householdListsPattern = /^\/v1\/households\/([^/]+)\/lists$/;
+const listPattern = /^\/v1\/lists\/([^/]+)$/;
 const listItemsPattern = /^\/v1\/lists\/([^/]+)\/items$/;
 const checkedItemsPattern = /^\/v1\/lists\/([^/]+)\/items\/checked$/;
 const itemPattern = /^\/v1\/items\/([^/]+)$/;
 
 export async function handleListRoute(request: Request, env: Env, user: AuthUser): Promise<Response | null> {
+  const listMatch = new URL(request.url).pathname.match(listPattern);
+  if (listMatch) return handleSingleListRoute(request, env, user, listMatch[1]);
   const checkedItemsMatch = new URL(request.url).pathname.match(checkedItemsPattern);
   if (checkedItemsMatch) return handleCheckedItemsRoute(request, env, user, checkedItemsMatch[1]);
   const singleItemMatch = new URL(request.url).pathname.match(itemPattern);
@@ -27,6 +30,52 @@ export async function handleListRoute(request: Request, env: Env, user: AuthUser
   const name = boundedText(body?.name, 100);
   if (!name) return errorResponse('VALIDATION_ERROR', 'La solicitud no es válida.', 422);
   return Response.json({ list: await createShoppingList(env, householdId, name) }, { status: 201 });
+}
+
+async function handleSingleListRoute(request: Request, env: Env, user: AuthUser, listId: string): Promise<Response | null> {
+  if (request.method !== 'PATCH' && request.method !== 'DELETE') return null;
+  const body = await jsonObject(request);
+  const op = operationId(body?.operationId);
+  const expectedVersion = body?.expectedVersion;
+  if (!op || !Number.isInteger(expectedVersion) || (expectedVersion as number) < 1) return errorResponse('VALIDATION_ERROR', 'La solicitud no es vÃ¡lida.', 422);
+  const name = request.method === 'PATCH' ? boundedText(body?.name, 100) : null;
+  if (request.method === 'PATCH' && !name) return errorResponse('VALIDATION_ERROR', 'La solicitud no es vÃ¡lida.', 422);
+  const pending = await replayOperation(env, op, user.id);
+  const previous = operationResponse(pending);
+  if (previous) return previous;
+  const current = await findShoppingList(env, listId);
+  if (!current) return missingListResponse();
+  if (!(await isListMember(env, listId, user.id))) return errorResponse('FORBIDDEN', 'No tienes acceso a esta lista.', 403);
+  if (request.method === 'DELETE' && current.isDefault) return errorResponse('DEFAULT_LIST_CANNOT_BE_DELETED', 'La lista predeterminada del hogar no se puede eliminar.', 409);
+  const claimed = await claimOperation(env, op, user.id);
+  const replay = operationResponse(claimed);
+  if (replay) return replay;
+  if (claimed.state !== 'claimed') return errorResponse('OPERATION_LOST', 'La operaciÃ³n ya no tiene un lease vÃ¡lido.', 409);
+  if (request.method === 'DELETE') {
+    const deleted = await deleteShoppingList(env, listId, expectedVersion as number, claimed.leaseToken);
+    if (deleted === null) return errorResponse('OPERATION_LOST', 'La operaciÃ³n ya no tiene un lease vÃ¡lido.', 409);
+    if (!deleted) {
+      const latest = await findShoppingList(env, listId);
+      if (!latest) return missingListResponse(env, op, user.id, claimed.leaseToken);
+      const responseBody = JSON.stringify({ error: { code: latest.isDefault ? 'DEFAULT_LIST_CANNOT_BE_DELETED' : 'LIST_VERSION_CONFLICT', message: latest.isDefault ? 'La lista predeterminada del hogar no se puede eliminar.' : 'La lista ha cambiado.', details: latest.isDefault ? {} : { current: latest } } });
+      await completeOperation(env, op, user.id, claimed.leaseToken, 409, responseBody);
+      return new Response(responseBody, { status: 409, headers: { 'content-type': 'application/json' } });
+    }
+    const responseBody = JSON.stringify({ status: 'deleted' });
+    if (!(await completeOperation(env, op, user.id, claimed.leaseToken, 200, responseBody))) return errorResponse('OPERATION_LOST', 'La operaciÃ³n ya no tiene un lease vÃ¡lido.', 409);
+    return new Response(responseBody, { status: 200, headers: { 'content-type': 'application/json' } });
+  }
+  const updated = await updateShoppingList(env, listId, expectedVersion as number, name!, claimed.leaseToken);
+  if (!updated) {
+    const latest = await findShoppingList(env, listId);
+    if (!latest) return missingListResponse(env, op, user.id, claimed.leaseToken);
+    const responseBody = JSON.stringify({ error: { code: 'LIST_VERSION_CONFLICT', message: 'La lista ha cambiado.', details: { current: latest } } });
+    await completeOperation(env, op, user.id, claimed.leaseToken, 409, responseBody);
+    return new Response(responseBody, { status: 409, headers: { 'content-type': 'application/json' } });
+  }
+  const responseBody = JSON.stringify({ list: updated });
+  if (!(await completeOperation(env, op, user.id, claimed.leaseToken, 200, responseBody))) return errorResponse('OPERATION_LOST', 'La operaciÃ³n ya no tiene un lease vÃ¡lido.', 409);
+  return new Response(responseBody, { status: 200, headers: { 'content-type': 'application/json' } });
 }
 
 async function handleCheckedItemsRoute(request: Request, env: Env, user: AuthUser, listId: string): Promise<Response | null> {
@@ -158,5 +207,12 @@ async function missingItemResponse(env?: Env, operationId?: string, userId?: str
   const body = JSON.stringify({ error: { code: 'ITEM_NOT_FOUND', message: 'El producto no existe.', details: {} } });
   if (!env || !operationId || !userId || !leaseToken) return new Response(body, { status: 404, headers: { 'content-type': 'application/json' } });
   await completeMissingItemOperation(env, operationId, userId, leaseToken, body);
+  return operationResponse(await replayOperation(env, operationId, userId)) ?? new Response(body, { status: 404, headers: { 'content-type': 'application/json' } });
+}
+
+async function missingListResponse(env?: Env, operationId?: string, userId?: string, leaseToken?: string): Promise<Response> {
+  const body = JSON.stringify({ error: { code: 'LIST_NOT_FOUND', message: 'La lista no existe.', details: {} } });
+  if (!env || !operationId || !userId || !leaseToken) return new Response(body, { status: 404, headers: { 'content-type': 'application/json' } });
+  await completeOperation(env, operationId, userId, leaseToken, 404, body);
   return operationResponse(await replayOperation(env, operationId, userId)) ?? new Response(body, { status: 404, headers: { 'content-type': 'application/json' } });
 }

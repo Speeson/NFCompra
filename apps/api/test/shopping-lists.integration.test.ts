@@ -367,6 +367,42 @@ it('purges only checked items from a list', async () => {
   expect(await itemsResponse.json()).toMatchObject({ items: [{ name: 'Arroz', isChecked: false }] });
 });
 
+it('renames and deletes non-default lists with idempotent list operations', async () => {
+  const authorization = await authorizationFor('Ana');
+  const household = await (await dispatch('/v1/households', { name: 'Casa' }, authorization)).json<{ household: { id: string }; defaultList: { id: string; version: number } }>();
+  const created = await (await dispatch(`/v1/households/${household.household.id}/lists`, { name: 'Mercado' }, authorization)).json<{ list: { id: string; version: number } }>();
+
+  const renameOperationId = crypto.randomUUID();
+  const renameBody = { name: 'Mercadona', expectedVersion: created.list.version, operationId: renameOperationId };
+  const renamedResponse = await dispatch(`/v1/lists/${created.list.id}`, renameBody, authorization, 'PATCH');
+  expect(renamedResponse.status).toBe(200);
+  const renamed = await renamedResponse.json<{ list: { id: string; name: string; version: number } }>();
+  expect(renamed).toMatchObject({ list: { id: created.list.id, name: 'Mercadona', version: 2 } });
+  const repeatedRename = await dispatch(`/v1/lists/${created.list.id}`, renameBody, authorization, 'PATCH');
+  expect(repeatedRename.status).toBe(200);
+  expect(await repeatedRename.json()).toEqual(renamed);
+
+  const staleRename = await dispatch(`/v1/lists/${created.list.id}`, { name: 'Otra', expectedVersion: 1, operationId: crypto.randomUUID() }, authorization, 'PATCH');
+  expect(staleRename.status).toBe(409);
+  expect(await staleRename.json()).toMatchObject({ error: { code: 'LIST_VERSION_CONFLICT', details: { current: { name: 'Mercadona', version: 2 } } } });
+
+  const defaultDelete = await dispatch(`/v1/lists/${household.defaultList.id}`, { expectedVersion: household.defaultList.version, operationId: crypto.randomUUID() }, authorization, 'DELETE');
+  expect(defaultDelete.status).toBe(409);
+  expect(await defaultDelete.json()).toMatchObject({ error: { code: 'DEFAULT_LIST_CANNOT_BE_DELETED' } });
+
+  const deleteOperationId = crypto.randomUUID();
+  const deleteBody = { expectedVersion: 2, operationId: deleteOperationId };
+  const deletedResponse = await dispatch(`/v1/lists/${created.list.id}`, deleteBody, authorization, 'DELETE');
+  expect(deletedResponse.status).toBe(200);
+  expect(await deletedResponse.json()).toEqual({ status: 'deleted' });
+  const repeatedDelete = await dispatch(`/v1/lists/${created.list.id}`, deleteBody, authorization, 'DELETE');
+  expect(repeatedDelete.status).toBe(200);
+  expect(await repeatedDelete.json()).toEqual({ status: 'deleted' });
+
+  const listsResponse = await dispatch(`/v1/households/${household.household.id}/lists`, undefined, authorization, 'GET');
+  expect(await listsResponse.json()).toMatchObject({ lists: [{ id: household.defaultList.id, name: 'Compra' }] });
+});
+
 it('replays concurrent updates with the same operation identifier', async () => {
   const authorization = await authorizationFor('Ana');
   const household = await (await dispatch('/v1/households', { name: 'Casa' }, authorization)).json<{ defaultList: { id: string } }>();

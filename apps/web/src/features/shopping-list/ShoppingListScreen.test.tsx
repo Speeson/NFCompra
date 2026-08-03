@@ -126,6 +126,26 @@ it('cancels a shopping item edit without saving local field changes', async () =
   expect(screen.queryByLabelText('Nombre del producto')).not.toBeInTheDocument();
 });
 
+it('exposes list header actions for renaming, emptying checked products and deleting the list', async () => {
+  const onRenameList = vi.fn();
+  const onClearChecked = vi.fn();
+  const onDeleteList = vi.fn();
+
+  render(<ShoppingListScreen title="Compra semanal" items={[]} isOffline={false} onRenameList={onRenameList} onClearChecked={onClearChecked} onDeleteList={onDeleteList} />);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Cambiar nombre de Compra semanal' }));
+  fireEvent.change(screen.getByLabelText('Nombre de la lista'), { target: { value: 'Mercadona' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar nombre de Compra semanal' }));
+
+  expect(onRenameList).toHaveBeenCalledWith('Mercadona');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Vaciar lista Compra semanal' }));
+  expect(onClearChecked).toHaveBeenCalledTimes(1);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Eliminar lista Compra semanal' }));
+  expect(onDeleteList).toHaveBeenCalledTimes(1);
+});
+
 function stubCatalogSnapshot(): void {
   vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
     const url = String(input);

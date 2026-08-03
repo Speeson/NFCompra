@@ -27,6 +27,14 @@ export async function createList(householdId: string, name: string): Promise<Sho
   return (await apiClient.request<{ list: ShoppingList }>(`/households/${householdId}/lists`, { method: 'POST', body: { name } })).list;
 }
 
+export async function updateList(list: ShoppingList, name: string, operationId: string): Promise<ShoppingList> {
+  return (await apiClient.request<{ list: ShoppingList }>(`/lists/${list.id}`, { method: 'PATCH', body: { name, expectedVersion: list.version, operationId } })).list;
+}
+
+export async function deleteList(list: ShoppingList, operationId: string): Promise<void> {
+  await apiClient.request(`/lists/${list.id}`, { method: 'DELETE', body: { expectedVersion: list.version, operationId } });
+}
+
 export async function fetchItems(listId: string): Promise<ApiShoppingItem[]> {
   return (await apiClient.request<{ items: ApiShoppingItem[] }>(`/lists/${listId}/items`)).items;
 }
@@ -41,4 +49,8 @@ export async function updateItem(item: ApiShoppingItem, patch: Partial<Pick<ApiS
 
 export async function deleteItem(item: ApiShoppingItem, operationId: string): Promise<void> {
   await apiClient.request(`/items/${item.id}`, { method: 'DELETE', body: { expectedVersion: item.version, operationId } });
+}
+
+export async function deleteCheckedItems(listId: string, operationId: string): Promise<number> {
+  return (await apiClient.request<{ removed: number }>(`/lists/${listId}/items/checked`, { method: 'DELETE', body: { operationId } })).removed;
 }

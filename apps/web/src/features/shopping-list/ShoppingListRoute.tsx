@@ -6,7 +6,7 @@ import { HouseholdSetup } from '../households/HouseholdSetup';
 import { notificationsQueryKey, unreadNotificationsQueryKey } from '../notifications/notification-api';
 import { ShoppingListScreen } from './ShoppingListScreen';
 import { loadOfflineList, saveOfflineList } from './offline-cache';
-import { createHousehold, createItem, createList, deleteItem, fetchHouseholds, fetchItems, fetchLists, householdQueryKey, itemQueryKey, listQueryKey, updateItem, type ApiShoppingItem } from './queries';
+import { createHousehold, createItem, createList, deleteCheckedItems, deleteItem, deleteList, fetchHouseholds, fetchItems, fetchLists, householdQueryKey, itemQueryKey, listQueryKey, updateItem, updateList, type ApiShoppingItem, type ShoppingList } from './queries';
 
 type ItemPatch = Partial<Pick<ApiShoppingItem, 'name' | 'quantity' | 'unit' | 'isChecked'>>;
 type UpdateVariables = { item: ApiShoppingItem; patch: ItemPatch };
@@ -15,6 +15,7 @@ type OptimisticUpdate = { revision: number; patch: ItemPatch };
 type OptimisticItemState = { base: ApiShoppingItem; updates: OptimisticUpdate[] };
 type CreateContext = { listId: string; optimisticId: string };
 type DeleteContext = { listId: string; item: ApiShoppingItem };
+type DeleteListContext = { householdId: string; list: ShoppingList; previousListId: string };
 type OfflineSnapshot = { source: string; items: ApiShoppingItem[] };
 
 export function createWebQueryClient(): QueryClient {
@@ -224,6 +225,51 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
     },
     onError: () => setMessage('No se pudo crear la lista.'),
   });
+  const renameListMutation = useMutation<ShoppingList, Error, { list: ShoppingList; name: string }>({
+    mutationFn: ({ list, name }) => updateList(list, name, operationId()),
+    onMutate: () => resetFeedback(),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<ShoppingList[]>(listQueryKey(updated.householdId), (lists = []) => lists.map((list) => list.id === updated.id ? updated : list));
+      invalidateNotifications();
+    },
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 409 && error.code === 'LIST_VERSION_CONFLICT') void queryClient.invalidateQueries({ queryKey: listQueryKey(householdId ?? '') });
+      setMessage(error instanceof ApiError && error.code === 'DEFAULT_LIST_CANNOT_BE_DELETED' ? 'La lista predeterminada no se puede eliminar.' : 'No se pudo cambiar el nombre de la lista.');
+    },
+  });
+  const clearCheckedMutation = useMutation<number, Error, string>({
+    mutationFn: (targetListId) => deleteCheckedItems(targetListId, operationId()),
+    onMutate: () => resetFeedback(),
+    onSuccess: (_removed, targetListId) => {
+      queryClient.setQueryData<ApiShoppingItem[]>(itemQueryKey(targetListId), (items = []) => items.filter((item) => !item.isChecked));
+      invalidateNotifications();
+    },
+    onError: () => setMessage('No se pudo vaciar la lista.'),
+  });
+  const deleteListMutation = useMutation<void, Error, ShoppingList, DeleteListContext>({
+    mutationFn: (list) => deleteList(list, operationId()),
+    onMutate: async (list) => {
+      resetFeedback();
+      await queryClient.cancelQueries({ queryKey: listQueryKey(list.householdId) });
+      queryClient.setQueryData<ShoppingList[]>(listQueryKey(list.householdId), (lists = []) => lists.filter((candidate) => candidate.id !== list.id));
+      if (listId === list.id) {
+        const fallback = queryClient.getQueryData<ShoppingList[]>(listQueryKey(list.householdId))?.[0];
+        setListId(fallback?.id);
+      }
+      return { householdId: list.householdId, list, previousListId: listId ?? '' };
+    },
+    onError: (error, _list, context) => {
+      if (context) {
+        queryClient.setQueryData<ShoppingList[]>(listQueryKey(context.householdId), (lists = []) => lists.some((list) => list.id === context.list.id) ? lists : [...lists, context.list]);
+        if (context.previousListId) setListId(context.previousListId);
+      }
+      setMessage(error instanceof ApiError && error.code === 'DEFAULT_LIST_CANNOT_BE_DELETED' ? 'La lista predeterminada no se puede eliminar.' : 'No se pudo eliminar la lista.');
+    },
+    onSuccess: (_unused, list) => {
+      queryClient.removeQueries({ queryKey: itemQueryKey(list.id), exact: true });
+      invalidateNotifications();
+    },
+  });
 
   if (isDirectOfflineRoute) return <ShoppingListScreen title="Lista" items={(itemsQuery.data ?? []).map((item) => ({ ...item, unit: item.unit ?? undefined }))} isOffline />;
   if (householdsQuery.isPending) return <main><p role="status">Cargando hogares…</p></main>;
@@ -236,6 +282,7 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
   if (listsQuery.isError || itemsQuery.isError) return <main><p role="alert">No se pudo cargar la lista.</p></main>;
 
   const currentHousehold = householdsQuery.data.find((household) => household.id === householdId);
+  const currentList = listsQuery.data?.find((list) => list.id === listId);
   return <>
     {onNavigate ? <button className="back-link back-link--route" type="button" onClick={() => currentHousehold ? onNavigate(`/households/${encodeURIComponent(currentHousehold.id)}`) : onNavigate('/lists')}>← Volver a {currentHousehold?.name ?? 'listas'}</button> : null}
     <section className="list-selectors" aria-label="Seleccionar hogar y lista">
@@ -245,8 +292,11 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
     </section>
     {message ? <p role="alert">{message}</p> : null}
     {conflict ? <aside role="alert">El producto ha cambiado en el servidor: {conflict.current.name} (versión {conflict.current.version}). <button type="button" disabled={isOffline} onClick={() => { if (!isOffline) conflict.retry(); }}>Reintentar</button></aside> : null}
-    <ShoppingListScreen title={listsQuery.data?.find((list) => list.id === listId)?.name ?? 'Lista'} items={(itemsQuery.data ?? []).map((item) => ({ ...item, unit: item.unit ?? undefined }))} isOffline={isOffline}
+    <ShoppingListScreen title={currentList?.name ?? 'Lista'} items={(itemsQuery.data ?? []).map((item) => ({ ...item, unit: item.unit ?? undefined }))} isOffline={isOffline}
       onAdd={(input) => { if (!isOffline) createItemMutation.mutate({ listId, ...input }); }}
+      onRenameList={(name) => { if (!isOffline && currentList) renameListMutation.mutate({ list: currentList, name }); }}
+      onClearChecked={() => { if (!isOffline && window.confirm('Se eliminarán los productos comprados de esta lista.')) clearCheckedMutation.mutate(listId); }}
+      onDeleteList={currentList && !currentList.isDefault ? () => { if (!isOffline && window.confirm('Se eliminará esta lista y sus productos.')) deleteListMutation.mutate(currentList); } : undefined}
       onToggle={(item) => { if (!isOffline) updateMutation.mutate({ item: item as ApiShoppingItem, patch: { isChecked: !item.isChecked } }); }}
       onUpdate={(item, input) => { if (!isOffline) updateMutation.mutate({ item: item as ApiShoppingItem, patch: input }); }}
       onDelete={(item) => { if (!isOffline) deleteMutation.mutate(item as ApiShoppingItem); }} />

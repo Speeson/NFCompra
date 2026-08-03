@@ -17,6 +17,9 @@ type ShoppingListScreenProps = {
   items: ShoppingItem[];
   isOffline: boolean;
   onAdd?: (input: ProductInput) => void;
+  onRenameList?: (name: string) => void;
+  onClearChecked?: () => void;
+  onDeleteList?: () => void;
   onToggle?: (item: ShoppingItem) => void;
   onUpdate?: (item: ShoppingItem, input: ProductInput) => void;
   onDelete?: (item: ShoppingItem) => void;
@@ -24,7 +27,7 @@ type ShoppingListScreenProps = {
 
 const pickerModeStorageKey = 'nfcompra.product-picker-mode';
 
-export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, onUpdate, onDelete }: ShoppingListScreenProps): JSX.Element {
+export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameList, onClearChecked, onDeleteList, onToggle, onUpdate, onDelete }: ShoppingListScreenProps): JSX.Element {
   const pendingItems = items.filter((item) => !item.isChecked);
   const checkedItems = items.filter((item) => item.isChecked);
   const [name, setName] = useState('');
@@ -35,7 +38,13 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
   const [waitlist, setWaitlist] = useState<PendingProduct[]>([]);
   const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
   const [isProductSearchOpen, setIsProductSearchOpen] = useState(true);
+  const [isRenamingList, setIsRenamingList] = useState(false);
+  const [listNameDraft, setListNameDraft] = useState(title);
   const productSearchRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isRenamingList) setListNameDraft(title);
+  }, [isRenamingList, title]);
 
   useEffect(() => {
     function closeProductSearchOnOutsidePointer(event: globalThis.PointerEvent): void {
@@ -135,10 +144,30 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onToggle, o
     setWaitlist((current) => current.filter((product) => product.catalogProductId !== productId));
   }
 
+  function renameList(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const nextName = listNameDraft.trim();
+    if (isOffline || !nextName) return;
+    onRenameList?.(nextName);
+    setIsRenamingList(false);
+  }
+
   return <main className="shopping-list">
     <header className="shopping-list__header">
       <div className="shopping-list__title">
-        <h1>{title}</h1>
+        <div className="shopping-list__title-actions">
+          {onDeleteList ? <button type="button" className="list-action-button list-action-button--danger" aria-label={`Eliminar lista ${title}`} disabled={isOffline} onClick={onDeleteList}>🗑</button> : null}
+          {onClearChecked ? <button type="button" className="list-empty-button" aria-label={`Vaciar lista ${title}`} disabled={isOffline} onClick={onClearChecked}>Vaciar</button> : null}
+        </div>
+        {isRenamingList ? <form className="list-title-form" onSubmit={renameList}>
+          <label className="sr-only" htmlFor="list-title-name">Nombre de la lista</label>
+          <input id="list-title-name" aria-label="Nombre de la lista" disabled={isOffline} value={listNameDraft} onChange={(event) => setListNameDraft(event.target.value)} maxLength={100} autoFocus />
+          <button type="submit" className="list-action-button list-action-button--save" aria-label={`Guardar nombre de ${title}`} disabled={isOffline || !listNameDraft.trim()}>✓</button>
+          <button type="button" className="list-action-button" aria-label={`Cancelar cambio de nombre de ${title}`} disabled={isOffline} onClick={() => { setListNameDraft(title); setIsRenamingList(false); }}>×</button>
+        </form> : <div className="list-title-display">
+          <h1>{title}</h1>
+          {onRenameList ? <button type="button" className="list-action-button" aria-label={`Cambiar nombre de ${title}`} disabled={isOffline} onClick={() => setIsRenamingList(true)}>✎</button> : null}
+        </div>}
         {onAdd ? <ProductPickerToggle pickerMode={pickerMode} onChange={changePickerMode} /> : null}
       </div>
       {onAdd ? <>
