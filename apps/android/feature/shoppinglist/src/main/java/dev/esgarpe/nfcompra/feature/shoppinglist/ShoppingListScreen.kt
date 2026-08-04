@@ -23,10 +23,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ListAlt
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.HomeWork
-import androidx.compose.material.icons.outlined.ListAlt
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Search
@@ -37,7 +37,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -45,9 +44,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -73,6 +69,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.esgarpe.nfcompra.core.designsystem.NFCompraTheme
+
+private val GroceryPrimaryGradient = listOf(Color(0xFFAEDC81), Color(0xFF6CC51D))
+private val GroceryPrimaryStrong = Color(0xFF6CC51D)
 
 @Composable
 fun ShoppingListApp(viewModel: ShoppingListViewModel, onLogout: () -> Unit = {}, onMembers: (String) -> Unit = {}) {
@@ -189,7 +188,7 @@ internal fun ShoppingListContent(
 private enum class DashboardTab(val label: String, val navLabel: String, val icon: ImageVector) {
     Home("Inicio", "Inicio", Icons.Outlined.Home),
     Households("Hogares", "Hogares", Icons.Outlined.HomeWork),
-    Lists("Listas", "Listas", Icons.Outlined.ListAlt),
+    Lists("Listas", "Listas", Icons.AutoMirrored.Outlined.ListAlt),
     Catalog("Catálogo", "Catálogo", Icons.Outlined.Category),
     Profile("Perfil", "Perfil", Icons.Outlined.Person),
 }
@@ -205,13 +204,10 @@ private fun ShoppingAppBanner(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(104.dp)
+            .height(82.dp)
             .background(
                 Brush.linearGradient(
-                    colors = listOf(
-                        Color(0xFFAEDC81),
-                        Color(0xFF6CC51D),
-                    ),
+                    colors = GroceryPrimaryGradient,
                 ),
             )
             .padding(horizontal = 20.dp),
@@ -294,9 +290,9 @@ private fun FloatingDashboardNavigation(selected: DashboardTab, onSelect: (Dashb
             animationSpec = tween(durationMillis = 260),
             label = "floating-nav-active-x",
         )
-        val navSurface = MaterialTheme.colorScheme.surface
-        val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
-        val activeColor = MaterialTheme.colorScheme.onSurface
+        val navSurface = Color.White
+        val inactiveColor = Color.White.copy(alpha = 0.78f)
+        val activeColor = Color.White
 
         Box(
             modifier = Modifier
@@ -305,7 +301,7 @@ private fun FloatingDashboardNavigation(selected: DashboardTab, onSelect: (Dashb
                 .height(68.dp)
                 .shadow(18.dp, shape = MaterialTheme.shapes.extraLarge, clip = false)
                 .clip(MaterialTheme.shapes.extraLarge)
-                .background(navSurface),
+                .background(Brush.linearGradient(GroceryPrimaryGradient)),
         )
 
         Row(
@@ -341,7 +337,7 @@ private fun FloatingDashboardNavigation(selected: DashboardTab, onSelect: (Dashb
             Icon(
                 imageVector = selected.icon,
                 contentDescription = null,
-                tint = activeColor,
+                tint = GroceryPrimaryStrong,
                 modifier = Modifier.size(25.dp),
             )
         }
@@ -400,7 +396,6 @@ private fun DashboardHome(
     onCreateList: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Inicio", style = MaterialTheme.typography.headlineSmall)
         Text("Resumen rápido de tus hogares y listas activas.")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onCreateHousehold) { Text("Nuevo hogar") }
@@ -429,7 +424,6 @@ private fun HouseholdsPanel(data: ShoppingListViewState.Data, onAction: (Shoppin
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
-                Text("Tus hogares", style = MaterialTheme.typography.headlineSmall)
                 Text("Organiza tus listas por casa, familia o supermercado.")
             }
             Button(onClick = onCreateHousehold) { Text("Nuevo hogar") }
@@ -447,7 +441,6 @@ private fun ListsPanel(data: ShoppingListViewState.Data, onAction: (ShoppingList
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
-                Text("Listas activas", style = MaterialTheme.typography.headlineSmall)
                 Text("Abre o crea listas dentro del hogar seleccionado.")
             }
             Button(onClick = onCreateList) { Text("Crear lista") }
@@ -474,12 +467,6 @@ private fun CatalogPanel() {
         verticalArrangement = Arrangement.spacedBy(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = "Categorías",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF181725),
-        )
         CatalogSearchBar()
         CatalogCategoriesGrid()
     }
@@ -571,7 +558,6 @@ private enum class CatalogCategory(
 @Composable
 private fun ProfilePanel(onLogout: () -> Unit) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Perfil", style = MaterialTheme.typography.headlineSmall)
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Cuenta NFCompra", style = MaterialTheme.typography.titleMedium)
@@ -702,13 +688,11 @@ private fun ConfirmDialog(title: String, message: String, onConfirm: () -> Unit,
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShoppingListScreen(state: ShoppingListUiState, onAction: (ShoppingListAction) -> Unit) {
     var addName by remember { mutableStateOf("") }
     var adding by remember { mutableStateOf(false) }
     Scaffold(
-        topBar = { TopAppBar(title = { Text(state.title) }, scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())) },
         floatingActionButton = { FloatingActionButton(modifier = Modifier.semantics { contentDescription = "Añadir producto" }, onClick = { adding = true }) { Text("+") } },
     ) { padding ->
         LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

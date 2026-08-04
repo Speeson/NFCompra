@@ -1,9 +1,11 @@
 package dev.esgarpe.nfcompra.feature.shoppinglist
 
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.assertCountEquals
 import dev.esgarpe.nfcompra.core.designsystem.NFCompraTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -47,6 +49,7 @@ class ShoppingListScreenTest {
         composeTestRule.onNodeWithContentDescription("Inicio seleccionado").assertExists()
         composeTestRule.onNodeWithContentDescription("Abrir notificaciones").assertExists()
         composeTestRule.onNodeWithContentDescription("Volver").assertDoesNotExist()
+        composeTestRule.onAllNodesWithText("Inicio").assertCountEquals(2)
         composeTestRule.onNodeWithText("NFCompra").assertDoesNotExist()
         composeTestRule.onNodeWithText("Miembros").assertDoesNotExist()
         composeTestRule.onNodeWithText("Salir").assertDoesNotExist()
@@ -77,7 +80,7 @@ class ShoppingListScreenTest {
 
         composeTestRule.onNodeWithContentDescription("Volver").assertExists()
         composeTestRule.onNodeWithText("Catálogo").assertExists()
-        composeTestRule.onNodeWithText("Categorías").assertExists()
+        composeTestRule.onNodeWithText("Categorías").assertDoesNotExist()
         composeTestRule.onNodeWithText("Buscar en catálogo").assertExists()
         composeTestRule.onNodeWithText("Frutas y verduras").assertExists()
         composeTestRule.onNodeWithText("Aceite y cocina").assertExists()
