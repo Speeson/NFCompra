@@ -204,7 +204,7 @@ private fun ShoppingAppBanner(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(82.dp)
+            .height(56.dp)
             .background(
                 Brush.linearGradient(
                     colors = GroceryPrimaryGradient,
@@ -218,7 +218,7 @@ private fun ShoppingAppBanner(
                 onClick = onBack,
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .size(48.dp)
+                    .size(44.dp)
                     .semantics { contentDescription = "Volver" },
             ) {
                 Icon(
@@ -248,6 +248,7 @@ private fun ShoppingAppBanner(
                 onClick = { onExpandedChange(true) },
                 modifier = Modifier
                     .size(48.dp)
+                    .padding(2.dp)
                     .semantics { contentDescription = "Abrir notificaciones" },
             ) {
                 Icon(
