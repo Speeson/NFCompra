@@ -4,7 +4,14 @@ import retrofit2.http.Body
 import retrofit2.http.POST
 
 data class LoginRequest(val email: String, val password: String, val clientType: String = "android")
-data class RegisterRequest(val name: String, val email: String, val password: String)
+data class RegisterRequest(
+    val firstName: String,
+    val lastName: String,
+    val birthDate: String,
+    val username: String,
+    val email: String,
+    val password: String,
+)
 data class ResendVerificationRequest(val email: String)
 data class TokenRequest(val token: String)
 data class ForgotPasswordRequest(val email: String)

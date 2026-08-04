@@ -250,13 +250,12 @@ class OfflineShoppingRepositoryTest {
     }
 
     @Test
-    fun `a partial create response does not claim a complete collection snapshot`() = runTest {
+    fun `creating a household stores it without inventing a default list or snapshot`() = runTest {
         server.enqueue(
             json(
                 """
                 {
-                  "household":{"id":"home-1","name":"Casa","ownerId":"owner-1","createdAt":"2026-07-27T00:00:00Z","updatedAt":"2026-07-27T00:00:00Z"},
-                  "defaultList":{"id":"list-1","householdId":"home-1","name":"Compra","isDefault":true,"version":1,"createdAt":"2026-07-27T00:00:00Z","updatedAt":"2026-07-27T00:00:00Z"}
+                  "household":{"id":"home-1","name":"Casa","ownerId":"owner-1","createdAt":"2026-07-27T00:00:00Z","updatedAt":"2026-07-27T00:00:00Z"}
                 }
                 """.trimIndent(),
             ),
@@ -265,7 +264,7 @@ class OfflineShoppingRepositoryTest {
         repository.createHousehold("Casa")
 
         assertEquals("home-1", database.shoppingDao().households().single().id)
-        assertEquals("list-1", database.shoppingDao().lists("home-1").single().id)
+        assertTrue(database.shoppingDao().lists("home-1").isEmpty())
         assertEquals(null, database.shoppingDao().snapshot(SnapshotCollection.HOUSEHOLDS))
         assertEquals(null, database.shoppingDao().snapshot(SnapshotCollection.lists("home-1")))
     }

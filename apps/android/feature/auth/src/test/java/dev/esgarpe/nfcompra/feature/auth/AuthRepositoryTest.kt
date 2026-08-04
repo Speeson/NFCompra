@@ -61,6 +61,37 @@ class AuthRepositoryTest {
     }
 
     @Test
+    fun `register sends the extended account fields expected by the API`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(201).setBody("""{"user":{"id":"user-1"}}"""))
+        server.start()
+        try {
+            val repository = AuthRepository(NetworkClient.authApi(server.url("/").toString()), FakeTokenStore())
+
+            repository.register(
+                firstName = "Esteban",
+                lastName = "García Pérez",
+                birthDate = "1995-04-23",
+                username = "Spee",
+                email = "esteban@example.test",
+                password = "a secure password",
+            ).test {
+                assertEquals(AuthResult.Success("Te hemos enviado un enlace de verificación."), awaitItem())
+                awaitComplete()
+            }
+
+            val request = server.takeRequest()
+            assertEquals("/v1/auth/register", request.path)
+            assertEquals(
+                """{"firstName":"Esteban","lastName":"García Pérez","birthDate":"1995-04-23","username":"Spee","email":"esteban@example.test","password":"a secure password"}""",
+                request.body.readUtf8(),
+            )
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
     fun `an unauthorized retry refreshes the session once only`() {
         val server = MockWebServer()
         var protectedRequests = 0

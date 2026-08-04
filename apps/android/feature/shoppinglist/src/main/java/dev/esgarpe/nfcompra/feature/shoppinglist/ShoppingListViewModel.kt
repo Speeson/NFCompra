@@ -27,7 +27,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
                 return@launch
             }
             if (current is ShoppingListViewState.InitialHouseholdLoadError) {
-                if (action is ShoppingListAction.RetryInitialHouseholdLoad) loadCreatedInitialHousehold(action.household, action.list)
+                if (action is ShoppingListAction.RetryInitialHouseholdLoad) publishNoList(listOf(action.household), emptyList(), action.household.id)
                 return@launch
             }
             val data = current as? ShoppingListViewState.Data ?: return@launch
@@ -37,8 +37,11 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
                     is ShoppingListAction.SelectList -> refresh(data, action.id)
                     is ShoppingListAction.CreateHousehold -> createHousehold(data, action.name)
                     is ShoppingListAction.CreateList -> createList(data, action.name)
+                    is ShoppingListAction.RenameList -> renameList(data, action.name)
+                    ShoppingListAction.DeleteSelectedList -> deleteSelectedList(data)
+                    ShoppingListAction.DeleteCheckedItems -> deleteCheckedItems(data)
                     is ShoppingListAction.RetryInitialHouseholdLoad -> Unit
-                    is ShoppingListAction.AddItem -> mutateAfter(data) { repository.createItem(data.selectedListId, action.name) }
+                    is ShoppingListAction.AddItem -> data.selectedListId?.let { mutateAfter(data) { repository.createItem(it, action.name) } }
                     is ShoppingListAction.EditItem -> mutateAfter(data) { repository.updateItem(data.item(action.id), name = action.name) }
                     is ShoppingListAction.ToggleItem -> mutateItem(data, action.id) { repository.updateItem(it, checked = !it.checked) }
                     is ShoppingListAction.DeleteItem -> mutateAfter(data) { repository.deleteItem(data.item(action.id)) }
@@ -47,9 +50,9 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
                     ShoppingListAction.RetryConflict -> data.retryAction?.let(::onAction)
                 }
             } catch (error: ShoppingListApiException) {
-                val current = error.current
-                val conflicted = current?.let { data.withCurrent(it) } ?: data
-                mutableState.value = conflicted.copy(message = error.message, conflict = current, retryAction = action)
+                val currentItem = error.current
+                val conflicted = currentItem?.let { data.withCurrent(it) } ?: data
+                mutableState.value = conflicted.copy(message = error.message, conflict = currentItem, retryAction = action)
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
@@ -77,52 +80,38 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         val context = pendingContext
         itemObservation?.cancel()
         viewModelScope.launch {
-        try {
-            cachedSelection(context)?.let { cached ->
+            try {
+                cachedSelection(context)?.let { cached ->
+                    if (generation != loadGeneration) return@launch
+                    publishSelection(
+                        cached.households,
+                        cached.lists,
+                        cached.household.id,
+                        cached.list?.id,
+                        refreshFromServer = false,
+                        expectedGeneration = generation,
+                    )
+                }
+                val households = repository.households()
+                if (households.isEmpty()) {
+                    if (generation == loadGeneration) mutableState.value = ShoppingListViewState.NoHouseholds
+                    return@launch
+                }
+                val household = context?.let { requested -> households.firstOrNull { it.id == requested.householdId } }
+                    ?: households.first()
+                val lists = repository.lists(household.id)
+                val list = context?.listId?.let { requested -> lists.firstOrNull { it.id == requested } }
+                    ?: lists.firstOrNull()
                 if (generation != loadGeneration) return@launch
-                publish(
-                    cached.households,
-                    cached.lists,
-                    cached.household.id,
-                    cached.list.id,
-                    refreshFromServer = false,
-                    expectedGeneration = generation,
-                )
+                publishSelection(households, lists, household.id, list?.id, expectedGeneration = generation)
+                if (pendingContext == context) pendingContext = null
+            } catch (error: ShoppingListApiException) {
+                if (generation == loadGeneration) mutableState.value = ShoppingListViewState.Error(error.message)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                if (generation == loadGeneration) mutableState.value = ShoppingListViewState.Error("No se pudo conectar con el servidor.")
             }
-            val households = repository.households()
-            if (households.isEmpty()) {
-                if (generation == loadGeneration) mutableState.value = ShoppingListViewState.NoHouseholds
-                return@launch
-            }
-            val household = context?.let { requested -> households.firstOrNull { it.id == requested.householdId } }
-                ?: households.first()
-            val lists = repository.lists(household.id)
-            val list = context?.listId?.let { requested -> lists.firstOrNull { it.id == requested } }
-                ?: lists.firstOrNull() ?: throw IllegalStateException("El hogar no tiene listas.")
-            repository.refreshItems(list.id)
-            val items = repository.observeItems(list.id).first()
-            if (generation != loadGeneration) return@launch
-            mutableState.value = ShoppingListViewState.Data(
-                content = ShoppingListUiState(
-                    list.name,
-                    items.filterNot { it.checked },
-                    items.filter { it.checked },
-                    repository.isOffline,
-                ),
-                households = households,
-                lists = lists,
-                selectedHouseholdId = household.id,
-                selectedListId = list.id,
-            )
-            observeSelectedList(list.id)
-            if (pendingContext == context) pendingContext = null
-        } catch (error: ShoppingListApiException) {
-            if (generation == loadGeneration) mutableState.value = ShoppingListViewState.Error(error.message)
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Exception) {
-            if (generation == loadGeneration) mutableState.value = ShoppingListViewState.Error("No se pudo conectar con el servidor.")
-        }
         }
     }
 
@@ -132,7 +121,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         val households: List<HouseholdUiModel>,
         val lists: List<ShoppingListSummaryUiModel>,
         val household: HouseholdUiModel,
-        val list: ShoppingListSummaryUiModel,
+        val list: ShoppingListSummaryUiModel?,
     )
 
     private suspend fun cachedSelection(context: ShoppingContext?): CachedSelection? {
@@ -141,23 +130,22 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
             ?: households.firstOrNull() ?: return null
         val lists = repository.cachedLists(household.id) ?: return null
         val list = context?.listId?.let { requested -> lists.firstOrNull { it.id == requested } }
-            ?: lists.firstOrNull() ?: return null
+            ?: lists.firstOrNull()
         return CachedSelection(households, lists, household, list)
     }
 
     private suspend fun selectHousehold(data: ShoppingListViewState.Data, householdId: String) {
         val lists = repository.lists(householdId)
-        val list = lists.firstOrNull() ?: throw IllegalStateException("El hogar no tiene listas.")
-        publish(data.households, lists, householdId, list.id)
+        publishSelection(data.households, lists, householdId, lists.firstOrNull()?.id)
     }
 
     private suspend fun createHousehold(data: ShoppingListViewState.Data, name: String) {
-        val (household, list) = repository.createHousehold(name)
-        publish(data.households + household, listOf(list), household.id, list.id)
+        val household = repository.createHousehold(name)
+        publishNoList(data.households + household, emptyList(), household.id)
     }
 
     private suspend fun createInitialHousehold(name: String) {
-        val created = try {
+        val household = try {
             repository.createHousehold(name)
         } catch (error: ShoppingListApiException) {
             mutableState.value = ShoppingListViewState.InitialHouseholdError(
@@ -174,54 +162,66 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
             )
             return
         }
-        loadCreatedInitialHousehold(created.first, created.second)
-    }
-
-    private suspend fun loadCreatedInitialHousehold(household: HouseholdUiModel, list: ShoppingListSummaryUiModel) {
-        try {
-            publish(listOf(household), listOf(list), household.id, list.id)
-        } catch (error: ShoppingListApiException) {
-            mutableState.value = ShoppingListViewState.InitialHouseholdLoadError(
-                message = error.message,
-                retryAction = ShoppingListAction.RetryInitialHouseholdLoad(household, list),
-            )
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Exception) {
-            mutableState.value = ShoppingListViewState.InitialHouseholdLoadError(
-                message = "No se pudo conectar con el servidor.",
-                retryAction = ShoppingListAction.RetryInitialHouseholdLoad(household, list),
-            )
-        }
+        publishNoList(listOf(household), emptyList(), household.id)
     }
 
     private suspend fun createList(data: ShoppingListViewState.Data, name: String) {
         val list = repository.createList(data.selectedHouseholdId, name)
-        publish(data.households, data.lists + list, data.selectedHouseholdId, list.id)
+        publishSelection(data.households, data.lists + list, data.selectedHouseholdId, list.id)
+    }
+
+    private suspend fun renameList(data: ShoppingListViewState.Data, name: String) {
+        val current = data.selectedList() ?: return
+        val updated = repository.updateList(current, name)
+        publishSelection(
+            data.households,
+            data.lists.map { if (it.id == updated.id) updated else it },
+            data.selectedHouseholdId,
+            updated.id,
+        )
+    }
+
+    private suspend fun deleteSelectedList(data: ShoppingListViewState.Data) {
+        val current = data.selectedList() ?: return
+        repository.deleteList(current)
+        val remaining = data.lists.filterNot { it.id == current.id }
+        publishSelection(data.households, remaining, data.selectedHouseholdId, remaining.firstOrNull()?.id)
+    }
+
+    private suspend fun deleteCheckedItems(data: ShoppingListViewState.Data) {
+        val listId = data.selectedListId ?: return
+        repository.deleteCheckedItems(listId)
+        publishSelection(data.households, data.lists, data.selectedHouseholdId, listId)
     }
 
     private suspend fun mutateAfter(data: ShoppingListViewState.Data, action: suspend () -> Unit) {
+        val listId = data.selectedListId ?: return
         action()
-        publish(data.households, data.lists, data.selectedHouseholdId, data.selectedListId, refreshFromServer = false)
+        publishSelection(data.households, data.lists, data.selectedHouseholdId, listId, refreshFromServer = false)
     }
 
     private suspend fun mutateItem(data: ShoppingListViewState.Data, itemId: String, action: suspend (ShoppingListItemUiModel) -> Unit) {
+        val listId = data.selectedListId ?: return
         action(data.item(itemId))
-        publish(data.households, data.lists, data.selectedHouseholdId, data.selectedListId, refreshFromServer = false)
+        publishSelection(data.households, data.lists, data.selectedHouseholdId, listId, refreshFromServer = false)
     }
 
     private suspend fun refresh(data: ShoppingListViewState.Data, listId: String) {
-        publish(data.households, data.lists, data.selectedHouseholdId, listId)
+        publishSelection(data.households, data.lists, data.selectedHouseholdId, listId)
     }
 
-    private suspend fun publish(
+    private suspend fun publishSelection(
         households: List<HouseholdUiModel>,
         lists: List<ShoppingListSummaryUiModel>,
         householdId: String,
-        listId: String,
+        listId: String?,
         refreshFromServer: Boolean = true,
         expectedGeneration: Int? = null,
     ) {
+        if (listId == null) {
+            publishNoList(households, lists, householdId, expectedGeneration)
+            return
+        }
         if (refreshFromServer) repository.refreshItems(listId)
         val items = repository.observeItems(listId).first()
         if (expectedGeneration != null && expectedGeneration != loadGeneration) return
@@ -241,6 +241,28 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         observeSelectedList(listId)
     }
 
+    private fun publishNoList(
+        households: List<HouseholdUiModel>,
+        lists: List<ShoppingListSummaryUiModel>,
+        householdId: String,
+        expectedGeneration: Int? = null,
+    ) {
+        if (expectedGeneration != null && expectedGeneration != loadGeneration) return
+        itemObservation?.cancel()
+        mutableState.value = ShoppingListViewState.Data(
+            content = ShoppingListUiState(
+                title = "Sin listas",
+                pending = emptyList(),
+                checked = emptyList(),
+                isOffline = repository.isOffline,
+            ),
+            households = households,
+            lists = lists,
+            selectedHouseholdId = householdId,
+            selectedListId = null,
+        )
+    }
+
     private fun observeSelectedList(listId: String) {
         itemObservation?.cancel()
         if (!repository.continuouslyObservesItems) return
@@ -257,6 +279,9 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
             }
         }
     }
+
+    private fun ShoppingListViewState.Data.selectedList(): ShoppingListSummaryUiModel? =
+        selectedListId?.let { id -> lists.firstOrNull { it.id == id } }
 
     private fun ShoppingListViewState.Data.item(id: String) =
         (content.pending + content.checked).first { it.id == id }

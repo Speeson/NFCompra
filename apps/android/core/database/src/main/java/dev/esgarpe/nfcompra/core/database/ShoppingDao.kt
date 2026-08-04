@@ -181,6 +181,11 @@ abstract class ShoppingDao {
     abstract suspend fun snapshot(collectionKey: String): SnapshotMetadata?
 
     @Transaction
+    open suspend fun upsertHousehold(household: LocalHousehold) {
+        upsertHouseholds(listOf(household))
+    }
+
+    @Transaction
     open suspend fun upsertHouseholdAndList(
         household: LocalHousehold,
         list: LocalShoppingList,
@@ -193,6 +198,12 @@ abstract class ShoppingDao {
     open suspend fun upsertList(list: LocalShoppingList) {
         upsertLists(listOf(list))
     }
+
+    @Query("DELETE FROM shopping_lists WHERE id = :listId")
+    abstract suspend fun deleteListById(listId: String)
+
+    @Query("DELETE FROM shopping_items WHERE listId = :listId AND isChecked = 1")
+    abstract suspend fun deleteCheckedItems(listId: String): Int
 
     @Query("SELECT * FROM households ORDER BY name, id")
     abstract fun observeHouseholds(): Flow<List<LocalHousehold>>

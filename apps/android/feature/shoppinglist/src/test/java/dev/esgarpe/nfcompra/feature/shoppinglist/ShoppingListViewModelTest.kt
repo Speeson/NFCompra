@@ -115,10 +115,38 @@ class ShoppingListViewModelTest {
         assertTrue(Regex("\"operationId\":\"[0-9a-f-]{36}\"").containsMatchIn(body))
     }
 
+    @Test fun `list mutations send optimistic concurrency fields to the API`() = runTest {
+        server.enqueue(json("{\"list\":{\"id\":\"list-1\",\"householdId\":\"home-1\",\"name\":\"Mercadona\",\"isDefault\":false,\"version\":8,\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}}"))
+        server.enqueue(json("{\"status\":\"deleted\"}"))
+        server.enqueue(json("{\"removed\":3}"))
+        val repository = ShoppingListRepository(
+            NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java),
+        )
+        val list = ShoppingListSummaryUiModel("list-1", "home-1", "Compra", version = 7)
+
+        val renamed = repository.updateList(list, "Mercadona")
+        repository.deleteList(renamed)
+        val removed = repository.deleteCheckedItems("list-1")
+
+        assertEquals("Mercadona", renamed.name)
+        assertEquals(3, removed)
+        val rename = server.takeRequest(1, TimeUnit.SECONDS)
+        val delete = server.takeRequest(1, TimeUnit.SECONDS)
+        val clear = server.takeRequest(1, TimeUnit.SECONDS)
+        assertEquals("PATCH", rename?.method)
+        assertEquals("/v1/lists/list-1", rename?.path)
+        assertTrue(rename?.body?.readUtf8()?.contains("\"expectedVersion\":7") == true)
+        assertEquals("DELETE", delete?.method)
+        assertEquals("/v1/lists/list-1", delete?.path)
+        assertTrue(delete?.body?.readUtf8()?.contains("\"expectedVersion\":8") == true)
+        assertEquals("DELETE", clear?.method)
+        assertEquals("/v1/lists/list-1/items/checked", clear?.path)
+        assertTrue(Regex("\"operationId\":\"[0-9a-f-]{36}\"").containsMatchIn(clear?.body?.readUtf8().orEmpty()))
+    }
+
     @Test fun `an authenticated user without homes can create the first household`() = runTest {
         server.enqueue(json("{\"households\":[]}"))
-        server.enqueue(json("{\"household\":{\"id\":\"home-1\",\"name\":\"Casa\",\"ownerId\":\"user-1\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"},\"defaultList\":{\"id\":\"list-1\",\"householdId\":\"home-1\",\"name\":\"Compra\",\"isDefault\":true,\"version\":1,\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}}", 201))
-        server.enqueue(json("{\"items\":[]}"))
+        server.enqueue(json("{\"household\":{\"id\":\"home-1\",\"name\":\"Casa\",\"ownerId\":\"user-1\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}}", 201))
         val viewModel = ShoppingListViewModel(
             ShoppingListRepository(NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java)),
         )
@@ -130,7 +158,9 @@ class ShoppingListViewModelTest {
             viewModel.onAction(ShoppingListAction.CreateHousehold("Casa"))
             val data = awaitItem() as ShoppingListViewState.Data
             assertEquals("home-1", data.selectedHouseholdId)
-            assertEquals("list-1", data.selectedListId)
+            assertEquals(null, data.selectedListId)
+            assertEquals("Sin listas", data.content.title)
+            assertTrue(data.lists.isEmpty())
         }
 
         server.takeRequest(1, TimeUnit.SECONDS)
@@ -139,11 +169,54 @@ class ShoppingListViewModelTest {
         assertEquals("{\"name\":\"Casa\"}", create?.body?.readUtf8())
     }
 
+    @Test fun `a household without lists loads as selected household without selected list`() = runTest {
+        server.enqueue(json("{\"households\":[{\"id\":\"home-1\",\"name\":\"Casa\",\"ownerId\":\"user-1\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}"))
+        server.enqueue(json("{\"lists\":[]}"))
+        val viewModel = ShoppingListViewModel(
+            ShoppingListRepository(NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java)),
+        )
+        viewModel.load()
+
+        viewModel.state.test {
+            assertEquals(ShoppingListViewState.Loading, awaitItem())
+            val data = awaitItem() as ShoppingListViewState.Data
+            assertEquals("home-1", data.selectedHouseholdId)
+            assertEquals(null, data.selectedListId)
+            assertEquals("Sin listas", data.content.title)
+            assertTrue(data.lists.isEmpty())
+        }
+    }
+
+    @Test fun `creates the first list inside a selected household without lists`() = runTest {
+        server.enqueue(json("{\"households\":[{\"id\":\"home-1\",\"name\":\"Casa\",\"ownerId\":\"user-1\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}"))
+        server.enqueue(json("{\"lists\":[]}"))
+        server.enqueue(json("{\"list\":{\"id\":\"list-1\",\"householdId\":\"home-1\",\"name\":\"Compra\",\"isDefault\":false,\"version\":1,\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}}", 201))
+        server.enqueue(json("{\"items\":[]}"))
+        val viewModel = ShoppingListViewModel(
+            ShoppingListRepository(NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java)),
+        )
+        viewModel.load()
+
+        viewModel.state.test {
+            assertEquals(ShoppingListViewState.Loading, awaitItem())
+            val noLists = awaitItem() as ShoppingListViewState.Data
+            assertEquals(null, noLists.selectedListId)
+            viewModel.onAction(ShoppingListAction.CreateList("Compra"))
+            val data = awaitItem() as ShoppingListViewState.Data
+            assertEquals("list-1", data.selectedListId)
+            assertEquals("Compra", data.content.title)
+        }
+
+        server.takeRequest(1, TimeUnit.SECONDS)
+        server.takeRequest(1, TimeUnit.SECONDS)
+        val create = server.takeRequest(1, TimeUnit.SECONDS)
+        assertEquals("/v1/households/home-1/lists", create?.path)
+    }
+
     @Test fun `failed first household creation preserves its name and can be retried`() = runTest {
         server.enqueue(json("{\"households\":[]}"))
         server.enqueue(json("{\"error\":{\"code\":\"REQUEST_FAILED\",\"message\":\"No se pudo crear el hogar.\",\"details\":{}}}", 503))
-        server.enqueue(json("{\"household\":{\"id\":\"home-1\",\"name\":\"Casa\",\"ownerId\":\"user-1\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"},\"defaultList\":{\"id\":\"list-1\",\"householdId\":\"home-1\",\"name\":\"Compra\",\"isDefault\":true,\"version\":1,\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}}", 201))
-        server.enqueue(json("{\"items\":[]}"))
+        server.enqueue(json("{\"household\":{\"id\":\"home-1\",\"name\":\"Casa\",\"ownerId\":\"user-1\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}}", 201))
         val viewModel = ShoppingListViewModel(
             ShoppingListRepository(NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java)),
         )
@@ -159,7 +232,7 @@ class ShoppingListViewModelTest {
             viewModel.onAction(failed.retryAction)
             val data = awaitItem() as ShoppingListViewState.Data
             assertEquals("home-1", data.selectedHouseholdId)
-            assertEquals("list-1", data.selectedListId)
+            assertEquals(null, data.selectedListId)
         }
 
         server.takeRequest(1, TimeUnit.SECONDS)
@@ -167,33 +240,6 @@ class ShoppingListViewModelTest {
         val retriedCreate = server.takeRequest(1, TimeUnit.SECONDS)
         assertEquals("{\"name\":\"Casa\"}", failedCreate?.body?.readUtf8())
         assertEquals("{\"name\":\"Casa\"}", retriedCreate?.body?.readUtf8())
-    }
-
-    @Test fun `retry after first household was created only reloads its list`() = runTest {
-        server.enqueue(json("{\"households\":[]}"))
-        server.enqueue(json("{\"household\":{\"id\":\"home-1\",\"name\":\"Casa\",\"ownerId\":\"user-1\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"},\"defaultList\":{\"id\":\"list-1\",\"householdId\":\"home-1\",\"name\":\"Compra\",\"isDefault\":true,\"version\":1,\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}}", 201))
-        server.enqueue(json("{\"error\":{\"code\":\"REQUEST_FAILED\",\"message\":\"No se pudo cargar la lista.\",\"details\":{}}}", 503))
-        server.enqueue(json("{\"items\":[]}"))
-        val viewModel = ShoppingListViewModel(
-            ShoppingListRepository(NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java)),
-        )
-        viewModel.load()
-
-        viewModel.state.test {
-            assertEquals(ShoppingListViewState.Loading, awaitItem())
-            assertEquals(ShoppingListViewState.NoHouseholds, awaitItem())
-            viewModel.onAction(ShoppingListAction.CreateHousehold("Casa"))
-            val failed = awaitItem() as ShoppingListViewState.InitialHouseholdLoadError
-            assertEquals("No se pudo cargar la lista.", failed.message)
-            viewModel.onAction(failed.retryAction)
-            val data = awaitItem() as ShoppingListViewState.Data
-            assertEquals("home-1", data.selectedHouseholdId)
-            assertEquals("list-1", data.selectedListId)
-        }
-
-        val requests = List(4) { server.takeRequest(1, TimeUnit.SECONDS) }
-        assertEquals(1, requests.count { it?.method == "POST" && it.path == "/v1/households" })
-        assertEquals(2, requests.count { it?.method == "GET" && it.path == "/v1/lists/list-1/items" })
     }
 
     @Test fun `the household selector can create and select another list`() = runTest {

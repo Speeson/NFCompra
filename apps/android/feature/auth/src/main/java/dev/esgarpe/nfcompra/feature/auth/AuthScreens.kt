@@ -2,6 +2,7 @@ package dev.esgarpe.nfcompra.feature.auth
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
@@ -9,9 +10,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -53,7 +54,7 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     AuthForm("Iniciar sesión", state) {
         EmailField(email) { email = it }
-        PasswordField(password) { password = it }
+        PasswordField(password, "Contraseña") { password = it }
         SubmitButton("Entrar", state) { onLogin(email, password) }
         TextButton(onClick = onForgotPassword) { Text("He olvidado mi contraseña") }
         TextButton(onClick = onRegister) { Text("Crear cuenta") }
@@ -63,19 +64,42 @@ fun LoginScreen(
 @Composable
 fun RegisterScreen(
     state: AuthUiState,
-    onRegister: (String, String, String) -> Unit,
+    onRegister: (String, String, String, String, String, String) -> Unit,
     onResendVerification: (String) -> Unit,
     onBack: () -> Unit,
     onVerify: () -> Unit,
 ) {
-    var name by remember { mutableStateOf("") }
+    var firstName by remember { mutableStateOf("") }
+    var lastName by remember { mutableStateOf("") }
+    var day by remember { mutableStateOf("") }
+    var month by remember { mutableStateOf("") }
+    var year by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    val birthDate = remember(year, month, day) {
+        if (year.length == 4 && month.isNotBlank() && day.isNotBlank()) {
+            "${year.padStart(4, '0')}-${month.padStart(2, '0')}-${day.padStart(2, '0')}"
+        } else {
+            ""
+        }
+    }
     AuthForm("Crear cuenta", state) {
-        OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth().semantics { contentDescription = "Nombre" }, label = { Text("Nombre") })
+        OutlinedTextField(firstName, { firstName = it }, Modifier.fillMaxWidth().semantics { contentDescription = "Nombre" }, label = { Text("Nombre") })
+        OutlinedTextField(lastName, { lastName = it }, Modifier.fillMaxWidth().semantics { contentDescription = "Apellidos" }, label = { Text("Apellidos") })
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(day, { day = it }, Modifier.weight(1f).semantics { contentDescription = "Día" }, label = { Text("Día") })
+            OutlinedTextField(month, { month = it }, Modifier.weight(1f).semantics { contentDescription = "Mes" }, label = { Text("Mes") })
+            OutlinedTextField(year, { year = it }, Modifier.weight(1f).semantics { contentDescription = "Año" }, label = { Text("Año") })
+        }
+        OutlinedTextField(username, { username = it }, Modifier.fillMaxWidth().semantics { contentDescription = "Username" }, label = { Text("Username") })
         EmailField(email) { email = it }
-        PasswordField(password) { password = it }
-        SubmitButton("Registrarme", state) { onRegister(name, email, password) }
+        PasswordField(password, "Password") { password = it }
+        PasswordField(confirmPassword, "Confirmar password") { confirmPassword = it }
+        SubmitButton("Registrarme", state) {
+            if (password == confirmPassword) onRegister(firstName, lastName, birthDate, username, email, password)
+        }
         TextButton(onClick = { onResendVerification(email) }, enabled = email.isNotBlank() && !state.isSubmitting) {
             Text("Reenviar verificación")
         }
@@ -110,7 +134,7 @@ fun ResetPasswordScreen(state: AuthUiState, onReset: (String, String) -> Unit, o
     var password by remember { mutableStateOf("") }
     AuthForm("Restablecer contraseña", state) {
         OutlinedTextField(token, { token = it }, Modifier.fillMaxWidth().semantics { contentDescription = "Código de recuperación" }, label = { Text("Código") })
-        PasswordField(password) { password = it }
+        PasswordField(password, "Contraseña") { password = it }
         SubmitButton("Restablecer", state) { onReset(token, password) }
         TextButton(onClick = onBack) { Text("Volver a iniciar sesión") }
     }
@@ -134,8 +158,8 @@ private fun EmailField(value: String, onValueChange: (String) -> Unit) {
 }
 
 @Composable
-private fun PasswordField(value: String, onValueChange: (String) -> Unit) {
-    OutlinedTextField(value, onValueChange, Modifier.fillMaxWidth().semantics { contentDescription = "Contraseña" }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation())
+private fun PasswordField(value: String, label: String, onValueChange: (String) -> Unit) {
+    OutlinedTextField(value, onValueChange, Modifier.fillMaxWidth().semantics { contentDescription = label }, label = { Text(label) }, visualTransformation = PasswordVisualTransformation())
 }
 
 @Composable

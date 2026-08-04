@@ -33,9 +33,11 @@ sealed interface ShoppingListAction {
     data class SelectList(val id: String) : ShoppingListAction
     data class CreateHousehold(val name: String) : ShoppingListAction
     data class CreateList(val name: String) : ShoppingListAction
+    data class RenameList(val name: String) : ShoppingListAction
+    data object DeleteSelectedList : ShoppingListAction
+    data object DeleteCheckedItems : ShoppingListAction
     data class RetryInitialHouseholdLoad(
         val household: HouseholdUiModel,
-        val list: ShoppingListSummaryUiModel,
     ) : ShoppingListAction
     data object RetryConflict : ShoppingListAction
 }
@@ -57,7 +59,7 @@ sealed interface ShoppingListViewState {
         val households: List<HouseholdUiModel>,
         val lists: List<ShoppingListSummaryUiModel>,
         val selectedHouseholdId: String,
-        val selectedListId: String,
+        val selectedListId: String?,
         val message: String? = null,
         val conflict: ShoppingListItemUiModel? = null,
         val retryAction: ShoppingListAction? = null,

@@ -33,7 +33,7 @@ import java.io.IOException
 import java.util.UUID
 
 data class HouseholdUiModel(val id: String, val name: String)
-data class ShoppingListSummaryUiModel(val id: String, val householdId: String, val name: String)
+data class ShoppingListSummaryUiModel(val id: String, val householdId: String, val name: String, val version: Int = 1)
 
 class ShoppingListApiException(
     val status: Int,
@@ -51,8 +51,11 @@ interface ShoppingRepository {
     suspend fun cachedLists(householdId: String): List<ShoppingListSummaryUiModel>? = null
     suspend fun refreshItems(listId: String) = Unit
     fun observeItems(listId: String): Flow<List<ShoppingListItemUiModel>>
-    suspend fun createHousehold(name: String): Pair<HouseholdUiModel, ShoppingListSummaryUiModel>
+    suspend fun createHousehold(name: String): HouseholdUiModel
     suspend fun createList(householdId: String, name: String): ShoppingListSummaryUiModel
+    suspend fun updateList(list: ShoppingListSummaryUiModel, name: String): ShoppingListSummaryUiModel = error("No se usa en este repositorio.")
+    suspend fun deleteList(list: ShoppingListSummaryUiModel): Unit = error("No se usa en este repositorio.")
+    suspend fun deleteCheckedItems(listId: String): Int = error("No se usa en este repositorio.")
     suspend fun createItem(listId: String, name: String)
     suspend fun updateItem(item: ShoppingListItemUiModel, name: String? = null, checked: Boolean? = null)
     suspend fun deleteItem(item: ShoppingListItemUiModel)
@@ -70,13 +73,23 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
         emit(api.items(listId).bodyOrThrow().items.map(::toUiModel))
     }
 
-    override suspend fun createHousehold(name: String): Pair<HouseholdUiModel, ShoppingListSummaryUiModel> {
+    override suspend fun createHousehold(name: String): HouseholdUiModel {
         val response = api.createHousehold(CreateHouseholdRequest(name)).bodyOrThrow()
-        return HouseholdUiModel(response.household.id, response.household.name) to response.defaultList.toUiModel()
+        return HouseholdUiModel(response.household.id, response.household.name)
     }
 
     override suspend fun createList(householdId: String, name: String): ShoppingListSummaryUiModel =
         api.createList(householdId, CreateListRequest(name)).bodyOrThrow().list.toUiModel()
+
+    override suspend fun updateList(list: ShoppingListSummaryUiModel, name: String): ShoppingListSummaryUiModel =
+        api.updateList(list.id, UpdateListRequest(name = name, expectedVersion = list.version, operationId = UUID.randomUUID().toString())).bodyOrThrow().list.toUiModel()
+
+    override suspend fun deleteList(list: ShoppingListSummaryUiModel) {
+        api.deleteList(list.id, DeleteListRequest(expectedVersion = list.version, operationId = UUID.randomUUID().toString())).bodyOrThrow()
+    }
+
+    override suspend fun deleteCheckedItems(listId: String): Int =
+        api.deleteCheckedItems(listId, DeleteCheckedItemsRequest(operationId = UUID.randomUUID().toString())).bodyOrThrow().removed
 
     override suspend fun createItem(listId: String, name: String) {
         api.createItem(listId, CreateItemRequest(name = name, operationId = UUID.randomUUID().toString())).bodyOrThrow()
@@ -90,7 +103,7 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
         api.deleteItem(item.id, DeleteItemRequest(item.version, UUID.randomUUID().toString())).bodyOrThrow()
     }
 
-    private fun ShoppingListDto.toUiModel() = ShoppingListSummaryUiModel(id, householdId, name)
+    private fun ShoppingListDto.toUiModel() = ShoppingListSummaryUiModel(id, householdId, name, version)
 
     private fun toUiModel(item: ShoppingItemDto) = ShoppingListItemUiModel(
         id = item.id,
@@ -232,11 +245,10 @@ class OfflineShoppingRepository(
 
     override suspend fun createHousehold(
         name: String,
-    ): Pair<HouseholdUiModel, ShoppingListSummaryUiModel> = accountOperation {
+    ): HouseholdUiModel = accountOperation {
         val response = api.createHousehold(CreateHouseholdRequest(name)).also { isOffline = false }.bodyOrThrow()
-        dao.upsertHouseholdAndList(response.household.toLocal(), response.defaultList.toLocal())
-        HouseholdUiModel(response.household.id, response.household.name) to
-            ShoppingListSummaryUiModel(response.defaultList.id, response.defaultList.householdId, response.defaultList.name)
+        dao.upsertHousehold(response.household.toLocal())
+        HouseholdUiModel(response.household.id, response.household.name)
     }
 
     override suspend fun createList(
@@ -245,7 +257,37 @@ class OfflineShoppingRepository(
     ): ShoppingListSummaryUiModel = accountOperation {
         val remote = api.createList(householdId, CreateListRequest(name)).also { isOffline = false }.bodyOrThrow().list
         dao.upsertList(remote.toLocal())
-        ShoppingListSummaryUiModel(remote.id, remote.householdId, remote.name)
+        ShoppingListSummaryUiModel(remote.id, remote.householdId, remote.name, remote.version)
+    }
+
+    override suspend fun updateList(
+        list: ShoppingListSummaryUiModel,
+        name: String,
+    ): ShoppingListSummaryUiModel = accountOperation {
+        val remote = api.updateList(
+            list.id,
+            UpdateListRequest(name = name, expectedVersion = list.version, operationId = operationId()),
+        ).also { isOffline = false }.bodyOrThrow().list
+        dao.upsertList(remote.toLocal())
+        ShoppingListSummaryUiModel(remote.id, remote.householdId, remote.name, remote.version)
+    }
+
+    override suspend fun deleteList(list: ShoppingListSummaryUiModel) = accountOperation {
+        api.deleteList(
+            list.id,
+            DeleteListRequest(expectedVersion = list.version, operationId = operationId()),
+        ).also { isOffline = false }.bodyOrThrow()
+        dao.deleteListById(list.id)
+        Unit
+    }
+
+    override suspend fun deleteCheckedItems(listId: String): Int = accountOperation {
+        val removed = api.deleteCheckedItems(
+            listId,
+            DeleteCheckedItemsRequest(operationId = operationId()),
+        ).also { isOffline = false }.bodyOrThrow().removed
+        dao.deleteCheckedItems(listId)
+        removed
     }
 
     override suspend fun createItem(listId: String, name: String) = accountOperation {

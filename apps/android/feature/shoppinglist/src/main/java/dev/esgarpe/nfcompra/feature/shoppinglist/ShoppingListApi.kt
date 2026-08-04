@@ -20,14 +20,18 @@ data class ShoppingItemDto(
 data class HouseholdsResponse(val households: List<HouseholdDto>)
 data class ListsResponse(val lists: List<ShoppingListDto>)
 data class ItemsResponse(val items: List<ShoppingItemDto>)
-data class HouseholdResponse(val household: HouseholdDto, val defaultList: ShoppingListDto)
+data class HouseholdResponse(val household: HouseholdDto)
 data class ListResponse(val list: ShoppingListDto)
 data class ItemResponse(val item: ShoppingItemDto)
+data class DeleteCheckedItemsResponse(val removed: Int)
 data class ErrorResponse(val error: ApiError)
 data class ApiError(val code: String, val message: String, val details: ApiErrorDetails = ApiErrorDetails())
 data class ApiErrorDetails(val current: ShoppingItemDto? = null)
 data class CreateHouseholdRequest(val name: String)
 data class CreateListRequest(val name: String)
+data class UpdateListRequest(val name: String, val expectedVersion: Int, val operationId: String)
+data class DeleteListRequest(val expectedVersion: Int, val operationId: String)
+data class DeleteCheckedItemsRequest(val operationId: String)
 data class CreateItemRequest(val name: String, val quantity: Double = 1.0, val unit: String? = null, val operationId: String)
 data class UpdateItemRequest(val name: String? = null, val quantity: Double? = null, val unit: String? = null, val isChecked: Boolean? = null, val expectedVersion: Int, val operationId: String)
 data class DeleteItemRequest(val expectedVersion: Int, val operationId: String)
@@ -37,8 +41,13 @@ interface ShoppingListApi {
     @POST("v1/households") suspend fun createHousehold(@Body request: CreateHouseholdRequest): Response<HouseholdResponse>
     @GET("v1/households/{householdId}/lists") suspend fun lists(@Path("householdId") householdId: String): Response<ListsResponse>
     @POST("v1/households/{householdId}/lists") suspend fun createList(@Path("householdId") householdId: String, @Body request: CreateListRequest): Response<ListResponse>
+    @PATCH("v1/lists/{listId}") suspend fun updateList(@Path("listId") listId: String, @Body request: UpdateListRequest): Response<ListResponse>
+    @HTTP(method = "DELETE", path = "v1/lists/{listId}", hasBody = true)
+    suspend fun deleteList(@Path("listId") listId: String, @Body request: DeleteListRequest): Response<Unit>
     @GET("v1/lists/{listId}/items") suspend fun items(@Path("listId") listId: String): Response<ItemsResponse>
     @POST("v1/lists/{listId}/items") suspend fun createItem(@Path("listId") listId: String, @Body request: CreateItemRequest): Response<ItemResponse>
+    @HTTP(method = "DELETE", path = "v1/lists/{listId}/items/checked", hasBody = true)
+    suspend fun deleteCheckedItems(@Path("listId") listId: String, @Body request: DeleteCheckedItemsRequest): Response<DeleteCheckedItemsResponse>
     @PATCH("v1/items/{itemId}") suspend fun updateItem(@Path("itemId") itemId: String, @Body request: UpdateItemRequest): Response<ItemResponse>
     @HTTP(method = "DELETE", path = "v1/items/{itemId}", hasBody = true)
     suspend fun deleteItem(@Path("itemId") itemId: String, @Body request: DeleteItemRequest): Response<Unit>

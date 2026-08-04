@@ -19,7 +19,8 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     val state: StateFlow<AuthUiState> = mutableState.asStateFlow()
 
     fun login(email: String, password: String) = submit { repository.login(email, password) }
-    fun register(name: String, email: String, password: String) = submit { repository.register(name, email, password) }
+    fun register(firstName: String, lastName: String, birthDate: String, username: String, email: String, password: String) =
+        submit { repository.register(firstName, lastName, birthDate, username, email, password) }
     fun resendVerification(email: String) = submit { repository.resendVerification(email) }
     fun verify(token: String) = submit { repository.verifyEmail(token) }
     fun forgotPassword(email: String) = submit { repository.requestPasswordReset(email) }

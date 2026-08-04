@@ -44,14 +44,20 @@ class AuthRepository(private val api: AuthApi, private val tokenStore: TokenStor
         }
     }
 
-    fun register(name: String, email: String, password: String): Flow<AuthResult> =
-        complete("Te hemos enviado un enlace de verificación.") { api.register(RegisterRequest(name, email, password)) }
+    fun register(firstName: String, lastName: String, birthDate: String, username: String, email: String, password: String): Flow<AuthResult> =
+        complete("Te hemos enviado un enlace de verificación.") {
+            api.register(RegisterRequest(firstName, lastName, birthDate, username, email, password))
+        }
+
     fun resendVerification(email: String): Flow<AuthResult> =
         complete("Hemos vuelto a enviar el correo de verificación.") { api.resendVerification(ResendVerificationRequest(email)) }
+
     fun verifyEmail(token: String): Flow<AuthResult> =
         complete("Correo verificado. Ya puedes iniciar sesión.") { api.verifyEmail(TokenRequest(token)) }
+
     fun requestPasswordReset(email: String): Flow<AuthResult> =
         complete("Si existe una cuenta, te hemos enviado un enlace.") { api.forgotPassword(ForgotPasswordRequest(email)) }
+
     fun resetPassword(token: String, password: String): Flow<AuthResult> =
         complete("Contraseña restablecida. Ya puedes iniciar sesión.") { api.resetPassword(ResetPasswordRequest(token, password)) }
 
@@ -83,8 +89,12 @@ class AuthRepository(private val api: AuthApi, private val tokenStore: TokenStor
     }
 
     private fun complete(message: String, request: suspend () -> Unit): Flow<AuthResult> = flow {
-        try { request(); emit(AuthResult.Success(message)) }
-        catch (error: Exception) { emit(AuthResult.Failure(error.messageForUser())) }
+        try {
+            request()
+            emit(AuthResult.Success(message))
+        } catch (error: Exception) {
+            emit(AuthResult.Failure(error.messageForUser()))
+        }
     }
 
     private fun Exception.messageForUser(): String = when (this) {

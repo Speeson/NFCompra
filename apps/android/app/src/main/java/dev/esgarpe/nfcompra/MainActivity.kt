@@ -26,7 +26,6 @@ import dev.esgarpe.nfcompra.feature.sharing.AcceptInvitationScreen
 import dev.esgarpe.nfcompra.feature.sharing.AuthenticatedRefreshGate
 import dev.esgarpe.nfcompra.feature.sharing.InvitationTokenHandoff
 import dev.esgarpe.nfcompra.feature.sharing.NotificationActionErrorBanner
-import dev.esgarpe.nfcompra.feature.sharing.NotificationBell
 import dev.esgarpe.nfcompra.feature.sharing.SharingAction
 import dev.esgarpe.nfcompra.feature.sharing.SharingApi
 import dev.esgarpe.nfcompra.feature.sharing.SharingNavigation
@@ -79,12 +78,10 @@ class MainActivity : ComponentActivity() {
             val shoppingViewModel = shoppingSession?.viewModel
             val globalNotifications = remember { SharingViewModel(sharingRepository, null, null) }
             notificationViewModel = globalNotifications
-            val notificationState by globalNotifications.notifications.collectAsState()
             val notificationActionError by globalNotifications.notificationActionError.collectAsState()
             val globalNavigation by globalNotifications.navigation.collectAsState()
             var selectedHouseholdId by remember { mutableStateOf<String?>(null) }
             var notificationInvitationId by remember { mutableStateOf<String?>(null) }
-            var globalBellOpen by remember { mutableStateOf(false) }
             var contextualNotificationError by remember { mutableStateOf<String?>(null) }
             LaunchedEffect(session) {
                 if (session != null) lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -147,7 +144,6 @@ class MainActivity : ComponentActivity() {
                         }
                         else -> {
                             membersViewModel = null
-                            NotificationBell(notificationState, globalBellOpen, { globalBellOpen = !globalBellOpen }, globalNotifications::onAction)
                             ShoppingListApp(
                                 authenticatedShoppingViewModel,
                                 {
