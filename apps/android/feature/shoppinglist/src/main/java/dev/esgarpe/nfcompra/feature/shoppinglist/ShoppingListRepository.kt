@@ -77,6 +77,7 @@ interface ShoppingRepository {
     suspend fun updateItem(item: ShoppingListItemUiModel, name: String? = null, checked: Boolean? = null, quantity: Double? = null)
     suspend fun deleteItem(item: ShoppingListItemUiModel)
     suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> = emptyList()
+    suspend fun warmProductCatalog() = Unit
     suspend fun productCategories(): List<ProductCategoryUiModel> = emptyList()
     suspend fun setProductFavorite(productId: String, favorite: Boolean): ProductCatalogUiModel? = null
     suspend fun profileDisplayName(): String? = null
@@ -85,6 +86,8 @@ interface ShoppingRepository {
 
 class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingRepository {
     private var catalogSnapshot: List<ProductCatalogUiModel>? = null
+    private var favoriteProductIds: Set<String> = emptySet()
+    private val catalogMutex = Mutex()
 
     override suspend fun households(): List<HouseholdUiModel> =
         api.households().bodyOrThrow().households.map { HouseholdUiModel(it.id, it.name) }
@@ -129,13 +132,17 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
     override suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> {
         val query = search.normalizedSearch()
         if (query.length < 2) return emptyList()
-        val snapshot = catalogSnapshot ?: runCatching {
-            api.productCatalogSnapshot().bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
-        }.getOrNull()?.also { catalogSnapshot = it }
+        val snapshot = catalogSnapshot ?: loadCatalogSnapshotOrNull()
         if (snapshot != null) return snapshot.searchCatalog(query, limit)
         return runCatching {
-            api.searchProductCatalog(search, limit.coerceIn(1, 25)).bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
+            val products = api.searchProductCatalog(search, limit.coerceIn(1, 25)).bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
+            favoriteProductIds = products.favoriteIds() + favoriteProductIds
+            products.applyFavoriteOverlay(favoriteProductIds)
         }.getOrElse { emptyList() }
+    }
+
+    override suspend fun warmProductCatalog() {
+        if (catalogSnapshot == null) loadCatalogSnapshotOrNull()
     }
 
     override suspend fun productCategories(): List<ProductCategoryUiModel> =
@@ -144,14 +151,26 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
     override suspend fun setProductFavorite(productId: String, favorite: Boolean): ProductCatalogUiModel? {
         if (favorite) api.addProductFavorite(productId).bodyOrThrow()
         else api.removeProductFavorite(productId).bodyOrThrow()
-        catalogSnapshot = catalogSnapshot?.map { if (it.id == productId) it.copy(isFavorite = favorite) else it }
+        favoriteProductIds = if (favorite) favoriteProductIds + productId else favoriteProductIds - productId
+        catalogSnapshot = catalogSnapshot?.applyFavoriteOverlay(favoriteProductIds)
         return catalogSnapshot?.firstOrNull { it.id == productId }
+            ?: ProductCatalogUiModel(productId, "", "", null, "star", null, favorite)
     }
 
     override suspend fun profileDisplayName(): String? =
         api.me().bodyOrThrow().user.name.takeIf { it.isNotBlank() }
 
     private fun ShoppingListDto.toUiModel() = ShoppingListSummaryUiModel(id, householdId, name, version)
+
+    private suspend fun loadCatalogSnapshotOrNull(): List<ProductCatalogUiModel>? = catalogMutex.withLock {
+        catalogSnapshot?.let { return@withLock it }
+        runCatching {
+            api.productCatalogSnapshot().bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
+        }.getOrNull()?.let { products ->
+            favoriteProductIds = products.favoriteIds() + favoriteProductIds
+            products.applyFavoriteOverlay(favoriteProductIds).also { catalogSnapshot = it }
+        }
+    }
 
     private fun toUiModel(item: ShoppingItemDto) = ShoppingListItemUiModel(
         id = item.id,
@@ -194,6 +213,8 @@ class OfflineShoppingRepository(
     private val activeJobs = mutableSetOf<Job>()
     private var closed = false
     private var catalogSnapshot: List<ProductCatalogUiModel>? = null
+    private var favoriteProductIds: Set<String> = emptySet()
+    private val catalogMutex = Mutex()
 
     @Volatile
     override var isOffline: Boolean = false
@@ -421,13 +442,18 @@ class OfflineShoppingRepository(
     override suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> = accountOperation {
         val query = search.normalizedSearch()
         if (query.length < 2) return@accountOperation emptyList()
-        val snapshot = catalogSnapshot ?: runCatching {
-            api.productCatalogSnapshot().bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
-        }.getOrNull()?.also { catalogSnapshot = it }
+        val snapshot = catalogSnapshot ?: loadCatalogSnapshotOrNull()
         if (snapshot != null) return@accountOperation snapshot.searchCatalog(query, limit)
         runCatching {
-            api.searchProductCatalog(search, limit.coerceIn(1, 25)).bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
+            val products = api.searchProductCatalog(search, limit.coerceIn(1, 25)).bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
+            favoriteProductIds = products.favoriteIds() + favoriteProductIds
+            products.applyFavoriteOverlay(favoriteProductIds)
         }.getOrElse { emptyList() }
+    }
+
+    override suspend fun warmProductCatalog() = accountOperation {
+        if (catalogSnapshot == null) loadCatalogSnapshotOrNull()
+        Unit
     }
 
     override suspend fun productCategories(): List<ProductCategoryUiModel> = accountOperation {
@@ -437,18 +463,28 @@ class OfflineShoppingRepository(
     }
 
     override suspend fun setProductFavorite(productId: String, favorite: Boolean): ProductCatalogUiModel? = accountOperation {
-        runCatching {
-            if (favorite) api.addProductFavorite(productId).also { isOffline = false }.bodyOrThrow()
-            else api.removeProductFavorite(productId).also { isOffline = false }.bodyOrThrow()
-            catalogSnapshot = catalogSnapshot?.map { if (it.id == productId) it.copy(isFavorite = favorite) else it }
-            catalogSnapshot?.firstOrNull { it.id == productId }
-        }.getOrNull()
+        if (favorite) api.addProductFavorite(productId).also { isOffline = false }.bodyOrThrow()
+        else api.removeProductFavorite(productId).also { isOffline = false }.bodyOrThrow()
+        favoriteProductIds = if (favorite) favoriteProductIds + productId else favoriteProductIds - productId
+        catalogSnapshot = catalogSnapshot?.applyFavoriteOverlay(favoriteProductIds)
+        catalogSnapshot?.firstOrNull { it.id == productId }
+            ?: ProductCatalogUiModel(productId, "", "", null, "star", null, favorite)
     }
 
     override suspend fun profileDisplayName(): String? = accountOperation {
         runCatching {
             api.me().also { isOffline = false }.bodyOrThrow().user.name.takeIf { it.isNotBlank() }
         }.getOrNull()
+    }
+
+    private suspend fun loadCatalogSnapshotOrNull(): List<ProductCatalogUiModel>? = catalogMutex.withLock {
+        catalogSnapshot?.let { return@withLock it }
+        runCatching {
+            api.productCatalogSnapshot().bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
+        }.getOrNull()?.let { products ->
+            favoriteProductIds = products.favoriteIds() + favoriteProductIds
+            products.applyFavoriteOverlay(favoriteProductIds).also { catalogSnapshot = it }
+        }
     }
 
     override suspend fun deleteItem(item: ShoppingListItemUiModel) = accountOperation {
@@ -730,6 +766,12 @@ private fun List<ProductCatalogUiModel>.searchCatalog(query: String, limit: Int)
         .sortedWith(compareBy<Pair<ProductCatalogUiModel, Int>> { if (it.first.isFavorite) 0 else 1 }.thenBy { it.second }.thenBy { it.first.name })
         .take(limit.coerceIn(1, 25))
         .map { it.first }
+
+private fun List<ProductCatalogUiModel>.favoriteIds(): Set<String> =
+    filterTo(mutableListOf()) { it.isFavorite }.mapTo(mutableSetOf()) { it.id }
+
+private fun List<ProductCatalogUiModel>.applyFavoriteOverlay(favoriteIds: Set<String>): List<ProductCatalogUiModel> =
+    map { product -> product.copy(isFavorite = product.id in favoriteIds) }
 
 private fun ProductCatalogUiModel.catalogRank(query: String): Int? {
     val name = normalizedName.ifBlank { name.normalizedSearch() }

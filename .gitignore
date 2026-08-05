@@ -17,6 +17,7 @@ apps/api/catalog/*.seed.sql
 local.properties
 *.jks
 *.keystore
+NFCompra-debug.apk
 .vercel
 .codex-local/
 .idea/

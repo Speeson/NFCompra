@@ -68,7 +68,17 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         repository.searchProductCatalog(search, limit)
 
     suspend fun setProductFavorite(productId: String, favorite: Boolean): ProductCatalogUiModel? =
-        repository.setProductFavorite(productId, favorite)
+        try {
+            repository.setProductFavorite(productId, favorite)
+        } catch (error: ShoppingListApiException) {
+            publishTransientMessage(error.message.ifBlank { "No se pudo guardar el favorito." })
+            null
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            publishTransientMessage("No se pudo guardar el favorito. Comprueba la conexión.")
+            null
+        }
 
     fun openContext(householdId: String, listId: String? = null) {
         pendingContext = ShoppingContext(householdId, listId)
@@ -264,6 +274,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
             productCategories = categories,
             displayName = displayName,
         )
+        warmCatalogInBackground()
         observeSelectedList(listId)
     }
 
@@ -292,6 +303,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
             productCategories = categories,
             displayName = displayName,
         )
+        warmCatalogInBackground()
     }
 
     private fun observeSelectedList(listId: String) {
@@ -328,6 +340,17 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
 
     private suspend fun loadDisplayName(): String? =
         runCatching { repository.profileDisplayName() }.getOrNull()
+
+    private fun warmCatalogInBackground() {
+        viewModelScope.launch {
+            runCatching { repository.warmProductCatalog() }
+        }
+    }
+
+    private fun publishTransientMessage(message: String) {
+        val current = mutableState.value as? ShoppingListViewState.Data ?: return
+        mutableState.value = current.copy(message = message)
+    }
 
     private fun Map<String, ShoppingListMetricsUiModel>.withListMetrics(
         listId: String,

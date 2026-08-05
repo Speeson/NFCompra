@@ -1463,7 +1463,10 @@ fun ShoppingListScreen(
         searchScope.launch {
             val updated = onSetProductFavorite(product.id, nextFavorite)
             if (updated != null) {
-                suggestions = suggestions.map { if (it.id == updated.id) updated else it }
+                val visibleProduct = if (updated.name.isBlank()) product.copy(isFavorite = updated.isFavorite) else updated
+                suggestions = suggestions.map { if (it.id == visibleProduct.id) visibleProduct else it }
+            } else {
+                suggestions = suggestions.map { if (it.id == product.id) product else it }
             }
         }
     }

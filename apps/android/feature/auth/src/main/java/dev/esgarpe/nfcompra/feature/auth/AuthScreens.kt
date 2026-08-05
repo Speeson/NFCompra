@@ -235,9 +235,11 @@ fun RegisterScreen(
 
     AuthVisualScaffold(
         title = "",
-        bodyTop = 220.dp,
+        bodyTop = 150.dp,
         onBack = onBack,
         compact = true,
+        logoTop = 34.dp,
+        logoSize = 178.dp,
     ) {
         Text("Crear cuenta", color = AuthText, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Text("Rellena tus datos para crear tu cuenta NFCompra.", color = AuthMuted, fontSize = 16.sp)
@@ -349,6 +351,8 @@ private fun AuthVisualScaffold(
     showBack: Boolean = true,
     onBack: () -> Unit = {},
     compact: Boolean = false,
+    logoTop: androidx.compose.ui.unit.Dp = 86.dp,
+    logoSize: androidx.compose.ui.unit.Dp = 230.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     CompositionLocalProvider(LocalContentColor provides AuthText) {
@@ -357,7 +361,7 @@ private fun AuthVisualScaffold(
                 .fillMaxSize()
                 .background(AuthPage),
         ) {
-            HeaderArtwork(title = title, showBack = showBack, onBack = onBack)
+            HeaderArtwork(title = title, showBack = showBack, onBack = onBack, logoTop = logoTop, logoSize = logoSize)
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -381,7 +385,13 @@ private fun AuthVisualScaffold(
 }
 
 @Composable
-private fun HeaderArtwork(title: String, showBack: Boolean, onBack: () -> Unit) {
+private fun HeaderArtwork(
+    title: String,
+    showBack: Boolean,
+    onBack: () -> Unit,
+    logoTop: androidx.compose.ui.unit.Dp,
+    logoSize: androidx.compose.ui.unit.Dp,
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -415,8 +425,8 @@ private fun HeaderArtwork(title: String, showBack: Boolean, onBack: () -> Unit) 
             contentDescription = "NFCompra",
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 86.dp)
-                .size(230.dp)
+                .padding(top = logoTop)
+                .size(logoSize)
                 .clip(RoundedCornerShape(32.dp)),
             contentScale = ContentScale.Fit,
         )
@@ -551,9 +561,10 @@ private fun RoundedTextField(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier
-            .height(if (compact) 48.dp else 60.dp)
+            .height(if (compact) 56.dp else 60.dp)
             .semantics { this.contentDescription = contentDescription },
-        label = { Text(label) },
+        label = if (compact) null else ({ Text(label) }),
+        placeholder = if (compact) ({ Text(label, color = AuthMuted) }) else null,
         leadingIcon = leadingIcon?.let { icon ->
             {
                 Icon(
