@@ -25,6 +25,7 @@ describe('la landing pública', () => {
     expect(screen.getByRole('link', { name: 'NFCompra' })).toHaveAttribute('href', '#inicio');
     expect(screen.getByRole('link', { name: 'Cómo funciona' })).toHaveAttribute('href', '#como-funciona');
     expect(screen.getByRole('link', { name: 'Hogares' })).toHaveAttribute('href', '#hogares');
+    expect(screen.getByRole('link', { name: 'Aplicación web' })).toHaveAttribute('href', '#web');
     expect(screen.getByRole('link', { name: 'Catálogo' })).toHaveAttribute('href', '#catalogo');
     expect(screen.getByRole('link', { name: 'Android' })).toHaveAttribute('href', '#android');
     expect(screen.getByRole('link', { name: 'NFC' })).toHaveAttribute('href', '#nfc');
@@ -52,9 +53,12 @@ describe('la landing pública', () => {
     const onOpenAuth = vi.fn();
     render(<PublicLanding onOpenAuth={onOpenAuth} />);
 
+    expect(screen.getByRole('heading', { name: 'La web también funciona como aplicación.' })).toBeVisible();
+    expect(screen.getByText('Acceso desde iPhone')).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Productos, categorías y favoritos para buscar menos.' })).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Instalable en móvil real para uso personal.' })).toBeVisible();
     expect(screen.getByText('Favoritos sincronizados')).toBeVisible();
+    expect(screen.getByText('Acceder con biometría')).toBeVisible();
   });
 
   it('entrega el modo de autenticación elegido a la aplicación', () => {

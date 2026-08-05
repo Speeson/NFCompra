@@ -18,6 +18,7 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
         <div className="public-landing__links">
           <a href="#como-funciona">Cómo funciona</a>
           <a href="#hogares">Hogares</a>
+          <a href="#web">Aplicación web</a>
           <a href="#catalogo">Catálogo</a>
           <a href="#android">Android</a>
           <a href="#nfc">NFC</a>
@@ -114,6 +115,76 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
         </div>
       </section>
 
+      <section className="public-landing__webapp" id="web" aria-labelledby="webapp-title">
+        <div className="public-landing__webapp-copy">
+          <p className="public-landing__eyebrow">Aplicación web instalable</p>
+          <h2 id="webapp-title">La web también funciona como aplicación.</h2>
+          <p>
+            En iPhone y ordenador puedes usar NFCompra desde el navegador como una aplicación web instalable: iniciar sesión, crear hogares, revisar listas, añadir productos y gestionar invitaciones sin instalar nada desde una tienda.
+          </p>
+          <div className="public-landing__webapp-features">
+            <span>Acceso desde iPhone</span>
+            <span>Panel de hogares</span>
+            <span>Listas por supermercado</span>
+            <span>Notificaciones integradas</span>
+          </div>
+        </div>
+        <div className="landing-web-gallery" aria-label="Vistas de la aplicación web NFCompra">
+          <article className="landing-browser landing-browser--dashboard">
+            <div className="landing-browser__bar">
+              <span />
+              <span />
+              <span />
+              <strong>nfcompra.esgarpe.dev</strong>
+            </div>
+            <div className="landing-browser__header">
+              <img src={logo} alt="" />
+              <nav><b>Inicio</b><span>Hogares</span><span>Listas</span><span>Catálogo</span></nav>
+              <button type="button" aria-label="Notificaciones">🔔</button>
+            </div>
+            <div className="landing-web-dashboard">
+              <div className="landing-web-dashboard__welcome">
+                <span>Hola, Esteban</span>
+                <strong>Resumen de la compra</strong>
+              </div>
+              <div className="landing-web-stats">
+                <span><b>2</b> hogares</span>
+                <span><b>5</b> listas</span>
+                <span><b>Mercadona</b> fijada</span>
+              </div>
+              <div className="landing-web-actions">
+                <button type="button">Crear hogar</button>
+                <button type="button">Crear lista</button>
+              </div>
+            </div>
+          </article>
+
+          <article className="landing-browser landing-browser--lists">
+            <div className="landing-browser__bar">
+              <span />
+              <span />
+              <span />
+              <strong>Listas activas</strong>
+            </div>
+            <div className="landing-web-listcards">
+              <h3>Resumen de tus listas guardadas</h3>
+              <div className="landing-web-listcard">
+                <strong>Mercadona</strong>
+                <span>Costa Marina III</span>
+                <p><b>6</b> pendientes <b>3</b> comprados</p>
+                <button type="button">Abrir lista</button>
+              </div>
+              <div className="landing-web-listcard landing-web-listcard--alt">
+                <strong>Farmacia</strong>
+                <span>Sevilla la Nueva</span>
+                <p><b>2</b> pendientes <b>0</b> comprados</p>
+                <button type="button">Ver lista</button>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <section className="public-landing__showcase" id="catalogo" aria-labelledby="catalog-title">
         <div>
           <p className="public-landing__eyebrow">Catálogo propio</p>
@@ -138,11 +209,30 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
             La app Android ya tiene login, registro, recuperación por OTP, catálogo, favoritos, modo vista supermercado, listas fijadas y caché local del catálogo para acelerar búsquedas tras el primer uso.
           </p>
         </div>
-        <div className="public-landing__android-features">
-          <span>Launcher con logo NFCompra</span>
-          <span>Navbar flotante</span>
-          <span>Cache local por cuenta</span>
-          <span>Favoritos sincronizados</span>
+        <div className="public-landing__android-panel">
+          <div className="public-landing__android-features">
+            <span>Launcher con logo NFCompra</span>
+            <span>Navbar flotante</span>
+            <span>Cache local por cuenta</span>
+            <span>Favoritos sincronizados</span>
+          </div>
+          <div className="landing-android-strip" aria-label="Vistas de la app Android">
+            <article>
+              <img src={logo} alt="" />
+              <strong>Bienvenido</strong>
+              <span className="landing-android-strip__primary">Iniciar sesión</span>
+              <span>Acceder con biometría</span>
+            </article>
+            <article>
+              <strong>Mercadona</strong>
+              <span>Costa Marina III</span>
+              <p>Pendientes</p>
+              <em>☐ Leche 2</em>
+              <em>☐ Tomate frito 3</em>
+              <p>Comprados</p>
+              <em className="is-checked">☑ Pan integral 1</em>
+            </article>
+          </div>
         </div>
       </section>
 
