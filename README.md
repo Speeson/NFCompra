@@ -99,7 +99,7 @@ Desde `apps/android`, con `ANDROID_HOME` apuntando al SDK instalado, para las pr
 .\gradlew.bat :core:database:testDebugUnitTest :core:network:testDebugUnitTest :feature:auth:testDebugUnitTest :feature:shoppinglist:testDebugUnitTest :feature:sharing:testDebugUnitTest :feature:shoppinglist:compileDebugAndroidTestKotlin :feature:sharing:compileDebugAndroidTestKotlin :app:assembleDebug
 ```
 
-El APK debug verificado queda en `apps/android/app/build/intermediates/apk/debug/app-debug.apk`.
+El APK debug verificado queda en `apps/android/app/build/outputs/apk/debug/app-debug.apk`.
 
 ## Funcionalidad actual
 
