@@ -24,7 +24,12 @@ sealed interface AuthResult {
     data class Failure(val message: String) : AuthResult
 }
 
-class AuthRepository(private val api: AuthApi, private val tokenStore: TokenStore) {
+class AuthRepository(
+    private val api: AuthApi,
+    private val tokenStore: TokenStore,
+    private val baseUrl: String? = null,
+    private val onProfileReceived: ((name: String?, username: String?) -> Unit)? = null,
+) {
     fun login(email: String, password: String): Flow<AuthResult> = flow {
         val expectedGeneration = tokenStore.generation()
         try {
@@ -41,6 +46,7 @@ class AuthRepository(private val api: AuthApi, private val tokenStore: TokenStor
                 emit(AuthResult.Failure("La sesión ha cambiado."))
                 return@flow
             }
+            onProfileReceived?.invoke(session.name, session.username ?: email.substringBefore("@"))
             emit(AuthResult.SignedIn)
         } catch (error: Exception) {
             emit(AuthResult.Failure(error.messageForUser()))
@@ -108,7 +114,19 @@ class AuthRepository(private val api: AuthApi, private val tokenStore: TokenStor
 
     private fun Exception.messageForUser(): String = when (this) {
         is HttpException -> apiMessage() ?: "No se pudo completar la solicitud (${code()})."
-        else -> "No se pudo conectar con el servicio."
+        else -> buildString {
+            append("No se pudo conectar con el servicio.")
+            append(" Detalle: ")
+            append(this@messageForUser::class.java.simpleName)
+            localizedMessage?.takeIf { it.isNotBlank() }?.let {
+                append(" - ")
+                append(it)
+            }
+            baseUrl?.takeIf { it.isNotBlank() }?.let {
+                append(" URL: ")
+                append(it)
+            }
+        }
     }
 
     private fun HttpException.apiMessage(): String? = runCatching {

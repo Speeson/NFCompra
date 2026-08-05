@@ -1,8 +1,10 @@
 package dev.esgarpe.nfcompra.feature.shoppinglist
 
+import android.content.Context
+
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,7 +39,10 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.HomeWork
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -62,20 +67,28 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextAlign
@@ -85,6 +98,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.esgarpe.nfcompra.core.designsystem.NFCompraTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private val GroceryPrimaryGradient = listOf(Color(0xFFAEDC81), Color(0xFF6CC51D))
 private val GroceryPrimaryStrong = Color(0xFF6CC51D)
@@ -132,7 +146,7 @@ fun ShoppingListApp(viewModel: ShoppingListViewModel, onLogout: () -> Unit = {},
             )
         }
         is ShoppingListViewState.Error -> Text((state as ShoppingListViewState.Error).message, color = MaterialTheme.colorScheme.error)
-        is ShoppingListViewState.Data -> ShoppingListContent(state as ShoppingListViewState.Data, viewModel::onAction, viewModel::searchProductCatalog, onLogout, onMembers)
+        is ShoppingListViewState.Data -> ShoppingListContent(state as ShoppingListViewState.Data, viewModel::onAction, viewModel::searchProductCatalog, viewModel::setProductFavorite, onLogout, onMembers)
     }
 }
 
@@ -141,6 +155,7 @@ internal fun ShoppingListContent(
     data: ShoppingListViewState.Data,
     onAction: (ShoppingListAction) -> Unit,
     onSearchProducts: suspend (String, Int) -> List<ProductCatalogUiModel>,
+    onSetProductFavorite: suspend (String, Boolean) -> ProductCatalogUiModel?,
     onLogout: () -> Unit,
     onMembers: (String) -> Unit,
 ) {
@@ -151,6 +166,30 @@ internal fun ShoppingListContent(
     var deletingList by remember { mutableStateOf(false) }
     var notificationsOpen by remember { mutableStateOf(false) }
     var openedListId by remember { mutableStateOf<String?>(null) }
+    var openedListMode by remember { mutableStateOf(ListOpenMode.Edit) }
+    val context = LocalContext.current
+    val pinnedPreferences = remember(context) {
+        context.getSharedPreferences("nfcompra.ui", Context.MODE_PRIVATE)
+    }
+    var pinnedListId by remember(pinnedPreferences) {
+        mutableStateOf(pinnedPreferences.getString("pinned_list_id", null))
+    }
+    var displayName by remember(pinnedPreferences) {
+        mutableStateOf(pinnedPreferences.getString("display_name", null) ?: "usuario")
+    }
+    LaunchedEffect(data.displayName) {
+        data.displayName?.takeIf { it.isNotBlank() }?.let { resolvedName ->
+            displayName = resolvedName
+            pinnedPreferences.edit().putString("display_name", resolvedName).apply()
+        }
+    }
+    val togglePinnedList: (String) -> Unit = { listId ->
+        val next = if (pinnedListId == listId) null else listId
+        pinnedListId = next
+        pinnedPreferences.edit().apply {
+            if (next == null) remove("pinned_list_id") else putString("pinned_list_id", next)
+        }.apply()
+    }
     val isListDetailOpen = selectedTab == DashboardTab.Lists && data.selectedListId != null && openedListId == data.selectedListId
     val selectedListHouseholdName = data.lists.firstOrNull { it.id == data.selectedListId }
         ?.let { selectedList -> data.households.firstOrNull { it.id == selectedList.householdId }?.name }
@@ -158,11 +197,11 @@ internal fun ShoppingListContent(
         ?: "hogar"
 
     Box(modifier = Modifier.fillMaxSize().background(WebPage)) {
-        Column(modifier = Modifier.fillMaxSize().background(WebPage).padding(bottom = 88.dp)) {
+        Column(modifier = Modifier.fillMaxSize().background(WebPage).padding(bottom = 96.dp)) {
             ShoppingAppBanner(
                 title = if (isListDetailOpen) data.content.title else selectedTab.label,
                 subtitle = if (isListDetailOpen) selectedListHouseholdName else null,
-                onTitleEdit = if (isListDetailOpen) ({ renamingList = true }) else null,
+                onTitleEdit = if (isListDetailOpen && openedListMode == ListOpenMode.Edit) ({ renamingList = true }) else null,
                 showBack = selectedTab != DashboardTab.Home || isListDetailOpen,
                 onBack = {
                     if (isListDetailOpen) {
@@ -175,38 +214,76 @@ internal fun ShoppingListContent(
                 onExpandedChange = { notificationsOpen = it },
             )
 
-            CompositionLocalProvider(LocalContentColor provides WebText) {
-                data.message?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 20.dp))
-                }
-                data.conflict?.let { current ->
-                    Row(modifier = Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("El producto ha cambiado: ${current.name}", color = WebText)
-                        TextButton(onClick = { onAction(ShoppingListAction.RetryConflict) }, colors = ButtonDefaults.textButtonColors(contentColor = WebPrimary)) { Text("Reintentar") }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .background(WebPage),
+            ) {
+                CompositionLocalProvider(LocalContentColor provides WebText) {
+                    data.message?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 20.dp))
                     }
-                }
+                    data.conflict?.let { current ->
+                        Row(modifier = Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("El producto ha cambiado: ${current.name}", color = WebText)
+                            TextButton(onClick = { onAction(ShoppingListAction.RetryConflict) }, colors = ButtonDefaults.textButtonColors(contentColor = WebPrimary)) { Text("Reintentar") }
+                        }
+                    }
 
-                if (isListDetailOpen) {
-                    ShoppingListScreen(
-                        state = data.content,
-                        onAction = onAction,
-                        onSearchProducts = onSearchProducts,
-                        onRename = { renamingList = true },
-                        onClearChecked = { onAction(ShoppingListAction.DeleteCheckedItems) },
-                        onDelete = { deletingList = true },
-                    )
-                } else {
-                    when (selectedTab) {
-                        DashboardTab.Home -> DashboardHome(data, onAction, { creatingHousehold = true }, { creatingList = true }) { listId ->
-                            openedListId = listId
-                            selectedTab = DashboardTab.Lists
+                    if (isListDetailOpen) {
+                        ShoppingListScreen(
+                            state = data.content,
+                            onAction = onAction,
+                            onSearchProducts = onSearchProducts,
+                            onSetProductFavorite = onSetProductFavorite,
+                            readOnly = openedListMode == ListOpenMode.View,
+                            onRename = { renamingList = true },
+                            onClearChecked = { onAction(ShoppingListAction.ClearSelectedList) },
+                            onDelete = { deletingList = true },
+                        )
+                    } else {
+                        when (selectedTab) {
+                            DashboardTab.Home -> DashboardHome(
+                                data,
+                                onAction,
+                                { creatingHousehold = true },
+                                { creatingList = true },
+                                displayName = data.displayName ?: displayName,
+                                pinnedListId = pinnedListId,
+                                onTogglePinned = togglePinnedList,
+                                onOpenHouseholds = { selectedTab = DashboardTab.Households },
+                                onOpenLists = { selectedTab = DashboardTab.Lists },
+                                onEditList = { listId ->
+                                    openedListMode = ListOpenMode.Edit
+                                    openedListId = listId
+                                    selectedTab = DashboardTab.Lists
+                                },
+                                onViewList = { listId ->
+                                    openedListMode = ListOpenMode.View
+                                    openedListId = listId
+                                    selectedTab = DashboardTab.Lists
+                                },
+                            )
+                            DashboardTab.Households -> HouseholdsPanel(data, onAction, { creatingHousehold = true })
+                            DashboardTab.Lists -> ListsPanel(
+                                data,
+                                onAction,
+                                { creatingList = true },
+                                onEditList = { listId ->
+                                    openedListMode = ListOpenMode.Edit
+                                    openedListId = listId
+                                },
+                                onViewList = { listId ->
+                                    openedListMode = ListOpenMode.View
+                                    openedListId = listId
+                                },
+                                pinnedListId = pinnedListId,
+                                onTogglePinned = togglePinnedList,
+                            )
+                            DashboardTab.Catalog -> CatalogPanel(data.productCategories)
+                            DashboardTab.Profile -> ProfilePanel(onLogout)
                         }
-                        DashboardTab.Households -> HouseholdsPanel(data, onAction, { creatingHousehold = true })
-                        DashboardTab.Lists -> ListsPanel(data, onAction, { creatingList = true }) { listId ->
-                            openedListId = listId
-                        }
-                        DashboardTab.Catalog -> CatalogPanel()
-                        DashboardTab.Profile -> ProfilePanel(onLogout)
                     }
                 }
             }
@@ -250,6 +327,8 @@ private enum class DashboardTab(val label: String, val navLabel: String, val ico
     Catalog("Catálogo", "Catálogo", Icons.Outlined.Category),
     Profile("Perfil", "Perfil", Icons.Outlined.Person),
 }
+
+private enum class ListOpenMode { Edit, View }
 
 @Composable
 private fun ShoppingAppBanner(
@@ -371,8 +450,8 @@ private fun FloatingDashboardNavigation(selected: DashboardTab, onSelect: (Dashb
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .height(88.dp)
-            .padding(horizontal = 16.dp)
+            .height(96.dp)
+            .padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
             .semantics { contentDescription = "Menú inferior principal" },
     ) {
         val itemWidth = maxWidth / navItems.size
@@ -493,32 +572,51 @@ private fun DashboardHome(
     onAction: (ShoppingListAction) -> Unit,
     onCreateHousehold: () -> Unit,
     onCreateList: () -> Unit,
-    onOpenList: (String) -> Unit,
+    displayName: String,
+    pinnedListId: String?,
+    onTogglePinned: (String) -> Unit,
+    onOpenHouseholds: () -> Unit,
+    onOpenLists: () -> Unit,
+    onEditList: (String) -> Unit,
+    onViewList: (String) -> Unit,
 ) {
     val selectedList = data.lists.firstOrNull { it.id == data.selectedListId } ?: data.lists.firstOrNull()
     val selectedHousehold = selectedList?.let { list -> data.households.firstOrNull { it.id == list.householdId } }
+    val pinnedList = pinnedListId?.let { id -> data.lists.firstOrNull { it.id == id } }
+    val pinnedHousehold = pinnedList?.let { list -> data.households.firstOrNull { it.id == list.householdId } }
     val pendingCount = data.content.pending.size
     val checkedCount = data.content.checked.size
     Column(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
+            .background(WebPage)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
             .padding(top = ScreenTopPadding, bottom = ScreenBottomPadding),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Hola", style = MaterialTheme.typography.headlineSmall, color = WebText, fontWeight = FontWeight.Bold)
+            Text("Hola, $displayName", style = MaterialTheme.typography.headlineSmall, color = WebText, fontWeight = FontWeight.Bold)
             SectionTitle("Acciones rápidas")
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(onClick = onCreateHousehold, modifier = Modifier.weight(1f), colors = webPrimaryButtonColors()) { Text("Crear hogar") }
-                Button(onClick = onCreateList, modifier = Modifier.weight(1f), colors = webLimeButtonColors()) { Text("Crear lista") }
+                Button(onClick = onCreateHousehold, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium, colors = webPrimaryButtonColors()) { Text("Crear hogar") }
+                Button(onClick = onCreateList, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium, colors = webLimeButtonColors()) { Text("Crear lista") }
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            CompactMetricCard("Hogares", data.households.size.toString(), Modifier.weight(1f))
-            CompactMetricCard("Listas", data.lists.size.toString(), Modifier.weight(1f))
-            CompactMetricCard("Pendientes", pendingCount.toString(), Modifier.weight(1f))
+            CompactMetricCard("Hogares", data.households.size.toString(), Modifier.weight(1f), onClick = onOpenHouseholds)
+            CompactMetricCard("Listas", data.lists.size.toString(), Modifier.weight(1f), onClick = onOpenLists)
+            PinnedListMetricCard(
+                list = pinnedList,
+                householdName = pinnedHousehold?.name.orEmpty(),
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    pinnedList?.let {
+                        onAction(ShoppingListAction.SelectList(it.id))
+                        onViewList(it.id)
+                    }
+                },
+            )
         }
         SectionTitle("Continuar")
         if (selectedList == null) {
@@ -529,10 +627,17 @@ private fun DashboardHome(
                 householdName = selectedHousehold?.name.orEmpty(),
                 pendingCount = pendingCount,
                 checkedCount = checkedCount,
-            ) {
-                onAction(ShoppingListAction.SelectList(selectedList.id))
-                onOpenList(selectedList.id)
-            }
+                pinned = selectedList.id == pinnedListId,
+                onTogglePinned = { onTogglePinned(selectedList.id) },
+                onEdit = {
+                    onAction(ShoppingListAction.SelectList(selectedList.id))
+                    onEditList(selectedList.id)
+                },
+                onView = {
+                    onAction(ShoppingListAction.SelectList(selectedList.id))
+                    onViewList(selectedList.id)
+                },
+            )
         }
         SectionTitle("Tus hogares")
         data.households.take(3).forEach { household ->
@@ -543,30 +648,42 @@ private fun DashboardHome(
         SectionTitle("Listas recientes")
         if (data.lists.isEmpty()) EmptyListForHousehold(onCreateList)
         data.lists.take(3).forEach { list ->
-            ShoppingListSummaryCard(list, data.households.firstOrNull { it.id == list.householdId }?.name.orEmpty(), list.id == data.selectedListId) {
-                onAction(ShoppingListAction.SelectList(list.id))
-                onOpenList(list.id)
-            }
+            ShoppingListSummaryCard(
+                list,
+                data.households.firstOrNull { it.id == list.householdId }?.name.orEmpty(),
+                list.id == data.selectedListId,
+                pinned = list.id == pinnedListId,
+                onTogglePinned = { onTogglePinned(list.id) },
+                onEdit = {
+                    onAction(ShoppingListAction.SelectList(list.id))
+                    onEditList(list.id)
+                },
+                onView = {
+                    onAction(ShoppingListAction.SelectList(list.id))
+                    onViewList(list.id)
+                },
+            )
         }
     }
 }
 
 @Composable
 private fun HouseholdsPanel(data: ShoppingListViewState.Data, onAction: (ShoppingListAction) -> Unit, onCreateHousehold: () -> Unit) {
+    val totalLists = data.lists.size
     Column(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
+            .background(WebPage)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
             .padding(top = ScreenTopPadding, bottom = ScreenBottomPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Column {
-                Text("Organiza tus listas por casa, familia o supermercado.", color = WebMuted, fontWeight = FontWeight.SemiBold)
-            }
-            Button(onClick = onCreateHousehold, colors = webPrimaryButtonColors()) { Text("Nuevo hogar") }
-        }
+        HouseholdsMiniDashboard(
+            householdCount = data.households.size,
+            listCount = totalLists,
+            onCreateHousehold = onCreateHousehold,
+        )
         data.households.forEach { household ->
             HouseholdCard(household, data.lists.count { it.householdId == household.id }, household.id == data.selectedHouseholdId) {
                 onAction(ShoppingListAction.SelectHousehold(household.id))
@@ -580,11 +697,15 @@ private fun ListsPanel(
     data: ShoppingListViewState.Data,
     onAction: (ShoppingListAction) -> Unit,
     onCreateList: () -> Unit,
-    onOpenList: (String) -> Unit,
+    onEditList: (String) -> Unit,
+    onViewList: (String) -> Unit,
+    pinnedListId: String?,
+    onTogglePinned: (String) -> Unit,
 ) {
     Column(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
+            .background(WebPage)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
             .padding(top = ScreenTopPadding, bottom = ScreenBottomPadding),
@@ -592,14 +713,14 @@ private fun ListsPanel(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
             Text("Resumen de tus listas guardadas", style = MaterialTheme.typography.headlineSmall, color = WebText, fontWeight = FontWeight.Bold)
-            Button(onClick = onCreateList, modifier = Modifier.fillMaxWidth(), colors = webPrimaryButtonColors()) { Text("Crear lista") }
+            Button(onClick = onCreateList, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, colors = webPrimaryButtonColors()) { Text("Crear lista") }
         }
         if (data.lists.isEmpty()) EmptyListForHousehold(onCreateList)
         data.lists.groupBy { it.householdId }.forEach { (householdId, lists) ->
             val householdName = data.households.firstOrNull { it.id == householdId }?.name ?: "Hogar"
-            val loadedLists = lists.count { it.id == data.selectedListId }
-            val pendingCount = if (loadedLists > 0) data.content.pending.size else 0
-            val checkedCount = if (loadedLists > 0) data.content.checked.size else 0
+            val visibleMetrics = lists.mapNotNull { data.listMetrics[it.id] }
+            val pendingCount = visibleMetrics.sumOf { it.pendingCount }
+            val checkedCount = visibleMetrics.sumOf { it.checkedCount }
             SectionTitle(householdName)
             Text(
                 text = "${lists.size} ${if (lists.size == 1) "lista" else "listas"} · $pendingCount pendientes visibles · $checkedCount comprados visibles",
@@ -610,17 +731,24 @@ private fun ListsPanel(
             lists.chunked(2).forEach { rowLists ->
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxWidth()) {
                     rowLists.forEach { list ->
-                        val isLoadedList = list.id == data.selectedListId
+                        val metrics = data.listMetrics[list.id]
                         ShoppingListGridCard(
                             list = list,
                             selected = list.id == data.selectedListId,
-                            pendingCount = data.content.pending.size.takeIf { isLoadedList },
-                            checkedCount = data.content.checked.size.takeIf { isLoadedList },
+                            pendingCount = metrics?.pendingCount,
+                            checkedCount = metrics?.checkedCount,
+                            pinned = list.id == pinnedListId,
                             modifier = Modifier.weight(1f),
-                        ) {
-                            onAction(ShoppingListAction.SelectList(list.id))
-                            onOpenList(list.id)
-                        }
+                            onTogglePinned = { onTogglePinned(list.id) },
+                            onEdit = {
+                                onAction(ShoppingListAction.SelectList(list.id))
+                                onEditList(list.id)
+                            },
+                            onView = {
+                                onAction(ShoppingListAction.SelectList(list.id))
+                                onViewList(list.id)
+                            },
+                        )
                     }
                     if (rowLists.size == 1) Box(modifier = Modifier.weight(1f))
                 }
@@ -630,10 +758,11 @@ private fun ListsPanel(
 }
 
 @Composable
-private fun CatalogPanel() {
+private fun CatalogPanel(categories: List<ProductCategoryUiModel>) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(WebPage)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp)
             .padding(top = ScreenTopPadding, bottom = ScreenBottomPadding),
@@ -641,7 +770,7 @@ private fun CatalogPanel() {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         CatalogSearchBar()
-        CatalogCategoriesGrid()
+        CatalogCategoriesGrid(categories)
     }
 }
 
@@ -671,9 +800,75 @@ private fun CatalogSearchBar() {
 }
 
 @Composable
-private fun CatalogCategoriesGrid() {
+private fun EmptyCatalogCategories() {
+    Card(colors = CardDefaults.cardColors(containerColor = WebSurface)) {
+        Text(
+            text = "No hay categorías cargadas en el catálogo.",
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            color = WebMuted,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun HouseholdsMiniDashboard(
+    householdCount: Int,
+    listCount: Int,
+    onCreateHousehold: () -> Unit,
+) {
+    Card(colors = CardDefaults.cardColors(containerColor = WebSurface)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            MiniDashboardMetric("Hogares", householdCount.toString(), Modifier.weight(1f))
+            MiniDashboardMetric("Listas", listCount.toString(), Modifier.weight(1f))
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(WebPrimary)
+                    .clickable(onClick = onCreateHousehold),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("+", color = Color.White, fontSize = 28.sp, lineHeight = 28.sp, fontWeight = FontWeight.Black)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniDashboardMetric(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .clip(MaterialTheme.shapes.medium)
+            .background(Color(0xFFF2F8F4))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(label, color = WebMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Text(value, color = WebPrimary, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun CatalogCategoriesGrid(categories: List<ProductCategoryUiModel>) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        CatalogCategory.entries.chunked(2).forEach { rowCategories ->
+        val favoriteCategory = categories.firstOrNull { it.isFavorite } ?: ProductCategoryUiModel(
+            id = "favorites",
+            name = "Favoritos",
+            normalizedName = "favoritos",
+            iconKey = "star",
+            isFavorite = true,
+        )
+        val normalCategories = categories.filterNot { it.isFavorite }
+        FavoriteCatalogCategoryCard(favoriteCategory, Modifier.fillMaxWidth())
+        normalCategories.chunked(2).forEach { rowCategories ->
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxWidth()) {
                 rowCategories.forEach { category ->
                     CatalogCategoryCard(category = category, modifier = Modifier.weight(1f))
@@ -687,25 +882,49 @@ private fun CatalogCategoriesGrid() {
 }
 
 @Composable
-private fun CatalogCategoryCard(category: CatalogCategory, modifier: Modifier = Modifier) {
+private fun FavoriteCatalogCategoryCard(category: ProductCategoryUiModel, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .height(96.dp)
+            .clip(MaterialTheme.shapes.large)
+            .background(WebLime.copy(alpha = 0.9f))
+            .border(1.dp, WebPrimary.copy(alpha = 0.25f), MaterialTheme.shapes.large)
+            .clickable { }
+            .padding(horizontal = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(54.dp)
+                .clip(MaterialTheme.shapes.large)
+                .background(WebPrimary),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("\u2605", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Black)
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(category.name, color = WebText, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Tus productos recurrentes", color = WebMuted, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun CatalogCategoryCard(category: ProductCategoryUiModel, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .height(190.dp)
             .clip(MaterialTheme.shapes.large)
-            .background(category.background)
+            .background(categoryBackground(category))
             .clickable { }
             .padding(horizontal = 12.dp, vertical = 18.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
-        Image(
-            painter = painterResource(category.imageRes),
-            contentDescription = null,
-            modifier = Modifier.height(86.dp).fillMaxWidth(),
-            contentScale = ContentScale.Fit,
-        )
+        CategoryIllustration(category)
         Text(
-            text = category.title,
+            text = category.name,
             color = WebText,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
@@ -715,24 +934,78 @@ private fun CatalogCategoryCard(category: CatalogCategory, modifier: Modifier = 
     }
 }
 
-private enum class CatalogCategory(
-    val title: String,
-    val imageRes: Int,
-    val background: Color,
-) {
-    Fruits("Frutas y verduras", R.drawable.catalog_fruits, Color(0xFFEAF6EF)),
-    Oils("Aceite y cocina", R.drawable.catalog_oil, Color(0xFFFFF4EA)),
-    Meat("Carne y pescado", R.drawable.catalog_meat, Color(0xFFFFECE8)),
-    Bakery("Panadería y snacks", R.drawable.catalog_bakery, Color(0xFFF4EAF8)),
-    Dairy("Lácteos y huevos", R.drawable.catalog_dairy, Color(0xFFFFF8DF)),
-    Beverages("Bebidas", R.drawable.catalog_beverages, Color(0xFFEAF7FD)),
+@Composable
+private fun CategoryIllustration(category: ProductCategoryUiModel) {
+    Box(
+        modifier = Modifier
+            .height(88.dp)
+            .fillMaxWidth(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(78.dp)
+                .clip(MaterialTheme.shapes.extraLarge)
+                .background(Color.White.copy(alpha = 0.72f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = categoryEmoji(category),
+                fontSize = 42.sp,
+                lineHeight = 44.sp,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+private fun categoryBackground(category: ProductCategoryUiModel): Color {
+    val palette = listOf(
+        Color(0xFFEAF6EF),
+        Color(0xFFFFF4EA),
+        Color(0xFFFFECE8),
+        Color(0xFFF4EAF8),
+        Color(0xFFFFF8DF),
+        Color(0xFFEAF7FD),
+        Color(0xFFF0F7E6),
+        Color(0xFFFDECEC),
+    )
+    val index = kotlin.math.abs(category.id.hashCode()) % palette.size
+    return palette[index]
+}
+
+private fun categoryEmoji(category: ProductCategoryUiModel): String {
+    val text = "${category.iconKey} ${category.name}".normalizedUiSearch()
+    return when {
+        text.contains("fruta") || text.contains("verdura") -> "🥬"
+        text.contains("aceite") || text.contains("salsa") || text.contains("especia") -> "🫒"
+        text.contains("agua") || text.contains("refresco") || text.contains("zumo") || text.contains("bebida") -> "🥤"
+        text.contains("carne") || text.contains("charcuteria") -> "🥩"
+        text.contains("pescado") || text.contains("marisco") -> "🐟"
+        text.contains("pan") || text.contains("pasteleria") -> "🥖"
+        text.contains("leche") || text.contains("huevo") || text.contains("yogur") || text.contains("postre") -> "🥛"
+        text.contains("congelado") -> "❄️"
+        text.contains("mascota") -> "🐾"
+        text.contains("limpieza") || text.contains("hogar") -> "🧽"
+        text.contains("bebe") -> "🍼"
+        text.contains("cafe") || text.contains("infusion") || text.contains("cacao") -> "☕"
+        text.contains("arroz") || text.contains("pasta") || text.contains("legumbre") -> "🍝"
+        text.contains("galleta") || text.contains("cereal") || text.contains("chocolate") || text.contains("caramelo") -> "🍪"
+        text.contains("bodega") -> "🍷"
+        text.contains("cuidado") || text.contains("maquillaje") || text.contains("parafarmacia") -> "🧴"
+        text.contains("aperitivo") -> "🥨"
+        text.contains("pizza") || text.contains("preparado") -> "🍕"
+        text.contains("conserva") || text.contains("caldo") || text.contains("crema") -> "🥫"
+        else -> "🛒"
+    }
 }
 
 @Composable
 private fun ProfilePanel(onLogout: () -> Unit) {
     Column(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
+            .background(WebPage)
             .padding(horizontal = 20.dp)
             .padding(top = ScreenTopPadding, bottom = ScreenBottomPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -778,9 +1051,9 @@ private fun SectionTitle(title: String) {
 }
 
 @Composable
-private fun CompactMetricCard(title: String, value: String, modifier: Modifier = Modifier) {
+private fun CompactMetricCard(title: String, value: String, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
     Card(
-        modifier = modifier.height(92.dp),
+        modifier = modifier.height(92.dp).clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = WebSurface),
     ) {
         Column(
@@ -794,23 +1067,53 @@ private fun CompactMetricCard(title: String, value: String, modifier: Modifier =
 }
 
 @Composable
+private fun PinnedListMetricCard(
+    list: ShoppingListSummaryUiModel?,
+    householdName: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier = modifier.height(92.dp).clickable(enabled = list != null, onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = if (list == null) WebSurface else WebLime.copy(alpha = 0.85f)),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(10.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Icon(Icons.Outlined.PushPin, contentDescription = null, tint = WebPrimary, modifier = Modifier.size(18.dp))
+            Text(list?.name ?: "Sin fijar", color = WebText, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(if (list == null) "Fija una lista" else householdName.ifBlank { "Hogar" }, color = WebMuted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
 private fun ContinueListCard(
     list: ShoppingListSummaryUiModel,
     householdName: String,
     pendingCount: Int,
     checkedCount: Int,
-    onOpen: () -> Unit,
+    pinned: Boolean,
+    onTogglePinned: () -> Unit,
+    onEdit: () -> Unit,
+    onView: () -> Unit,
 ) {
     Card(colors = CardDefaults.cardColors(containerColor = WebLime)) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(list.name, style = MaterialTheme.typography.titleLarge, color = WebText, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(householdName.ifBlank { "Hogar" }, style = MaterialTheme.typography.bodyMedium, color = WebMuted, fontWeight = FontWeight.SemiBold)
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PinButton(pinned = pinned, onClick = onTogglePinned)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(list.name, style = MaterialTheme.typography.titleLarge, color = WebText, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(householdName.ifBlank { "Hogar" }, style = MaterialTheme.typography.bodyMedium, color = WebMuted, fontWeight = FontWeight.SemiBold)
+                    }
                 }
-                Button(onClick = onOpen, colors = webPrimaryButtonColors()) { Text("Abrir lista") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SquareIconActionButton(Icons.Outlined.Add, "Añadir productos", onEdit)
+                    SquareIconActionButton(Icons.Outlined.Visibility, "Ver lista", onView)
+                }
             }
-            Text("$pendingCount pendientes · $checkedCount comprados", style = MaterialTheme.typography.bodyMedium, color = WebText, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -823,20 +1126,37 @@ private fun HouseholdCard(household: HouseholdUiModel, listCount: Int, selected:
                 Text(household.name, style = MaterialTheme.typography.titleMedium, color = WebText, fontWeight = FontWeight.Bold)
                 Text("$listCount listas activas", style = MaterialTheme.typography.bodySmall, color = WebMuted, fontWeight = FontWeight.SemiBold)
             }
-            Button(onClick = onOpen, colors = webPrimaryButtonColors()) { Text(if (selected) "Abierto" else "Abrir") }
+            Button(onClick = onOpen, shape = MaterialTheme.shapes.medium, colors = webPrimaryButtonColors()) { Text(if (selected) "Abierto" else "Abrir") }
         }
     }
 }
 
 @Composable
-private fun ShoppingListSummaryCard(list: ShoppingListSummaryUiModel, householdName: String, selected: Boolean, onOpen: () -> Unit) {
+private fun ShoppingListSummaryCard(
+    list: ShoppingListSummaryUiModel,
+    householdName: String,
+    selected: Boolean,
+    pinned: Boolean,
+    onTogglePinned: () -> Unit,
+    onEdit: () -> Unit,
+    onView: () -> Unit,
+) {
     Card(colors = CardDefaults.cardColors(containerColor = if (selected) WebLime else WebSurface)) {
-        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            Column {
-                Text(list.name, style = MaterialTheme.typography.titleMedium, color = WebText, fontWeight = FontWeight.Bold)
-                Text(householdName.ifBlank { "Hogar" }, style = MaterialTheme.typography.bodySmall, color = WebMuted, fontWeight = FontWeight.SemiBold)
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PinButton(pinned = pinned, onClick = onTogglePinned)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(list.name, style = MaterialTheme.typography.titleMedium, color = WebText, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(householdName.ifBlank { "Hogar" }, style = MaterialTheme.typography.bodySmall, color = WebMuted, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                Text(if (selected) "Activa" else "", color = WebPrimary, fontWeight = FontWeight.Bold)
             }
-            Button(onClick = onOpen, colors = webPrimaryButtonColors()) { Text(if (selected) "Abierta" else "Abrir") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                WideIconActionButton(Icons.Outlined.Add, "Añadir", Modifier.weight(1f), onEdit)
+                WideIconActionButton(Icons.Outlined.Visibility, "Ver lista", Modifier.weight(1f), onView)
+            }
         }
     }
 }
@@ -847,45 +1167,39 @@ private fun ShoppingListGridCard(
     selected: Boolean,
     pendingCount: Int?,
     checkedCount: Int?,
+    pinned: Boolean,
     modifier: Modifier = Modifier,
-    onOpen: () -> Unit,
+    onTogglePinned: () -> Unit,
+    onEdit: () -> Unit,
+    onView: () -> Unit,
 ) {
-    val totalCount = pendingCount?.let { pending -> checkedCount?.let { checked -> pending + checked } }
-    val statusText = when {
-        pendingCount == null || checkedCount == null -> "Abrir para ver detalle"
-        totalCount == 0 -> "Lista vacía"
-        pendingCount == 0 -> "Todo comprado"
-        else -> "$pendingCount pendientes"
-    }
     Column(
         modifier = modifier
             .height(190.dp)
             .clip(MaterialTheme.shapes.large)
             .background(if (selected) WebLime else WebSurface)
-            .clickable(onClick = onOpen)
             .padding(14.dp),
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                text = list.name,
-                style = MaterialTheme.typography.titleMedium,
-                color = WebText,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PinButton(pinned = pinned, onClick = onTogglePinned)
+                Text(
+                    text = list.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = WebText,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
             ListCardStat("Pendientes", pendingCount?.toString() ?: "—")
             ListCardStat("Comprados", checkedCount?.toString() ?: "—")
-            ListCardStat("Total", totalCount?.toString() ?: "—")
-            Text(statusText, style = MaterialTheme.typography.bodySmall, color = WebMuted, fontWeight = FontWeight.SemiBold)
         }
-        Button(
-            onClick = onOpen,
-            modifier = Modifier.fillMaxWidth(),
-            colors = if (selected) webPrimaryButtonColors() else webLimeButtonColors(),
-        ) {
-            Text(if (selected) "Abierta" else "Abrir")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            WideIconActionButton(Icons.Outlined.Add, "Añadir", Modifier.weight(1f), onEdit)
+            WideIconActionButton(Icons.Outlined.Visibility, "Ver lista", Modifier.weight(1f), onView)
         }
     }
 }
@@ -899,11 +1213,58 @@ private fun ListCardStat(label: String, value: String) {
 }
 
 @Composable
+private fun PinButton(pinned: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(if (pinned) WebPrimary else Color(0xFFEAF6EF))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Outlined.PushPin,
+            contentDescription = if (pinned) "Desfijar lista" else "Fijar lista",
+            tint = if (pinned) Color.White else WebPrimary,
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+@Composable
+private fun SquareIconActionButton(icon: ImageVector, contentDescription: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(46.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(WebPrimary)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = contentDescription, tint = Color.White, modifier = Modifier.size(22.dp))
+    }
+}
+
+@Composable
+private fun WideIconActionButton(icon: ImageVector, contentDescription: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier = modifier
+            .height(44.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(WebPrimary)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = contentDescription, tint = Color.White, modifier = Modifier.size(22.dp))
+    }
+}
+
+@Composable
 private fun EmptyListForHousehold(onCreateList: () -> Unit) {
     Card(colors = CardDefaults.cardColors(containerColor = WebSurface)) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("No hay listas asociadas a este hogar.", color = WebMuted, fontWeight = FontWeight.SemiBold)
-            Button(onClick = onCreateList, colors = webPrimaryButtonColors()) { Text("Crear lista") }
+            Button(onClick = onCreateList, shape = MaterialTheme.shapes.medium, colors = webPrimaryButtonColors()) { Text("Crear lista") }
         }
     }
 }
@@ -923,7 +1284,7 @@ private fun InitialHouseholdLoadRecovery(errorMessage: String, onRetry: () -> Un
         TextButton(onClick = onLogout, colors = ButtonDefaults.textButtonColors(contentColor = WebPrimary)) { Text("Cerrar sesión") }
         Text("El hogar se ha creado", style = MaterialTheme.typography.headlineSmall, color = WebPrimary, fontWeight = FontWeight.Bold)
         Text(errorMessage, color = MaterialTheme.colorScheme.error)
-        Button(onClick = onRetry, colors = webPrimaryButtonColors()) { Text("Reintentar carga") }
+        Button(onClick = onRetry, shape = MaterialTheme.shapes.medium, colors = webPrimaryButtonColors()) { Text("Reintentar carga") }
     }
 }
 
@@ -946,7 +1307,7 @@ internal fun FirstHouseholdSetup(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Nombre del hogar") },
         )
-        Button(onClick = { onCreate(name.trim()) }, enabled = name.isNotBlank(), colors = webPrimaryButtonColors()) {
+        Button(onClick = { onCreate(name.trim()) }, enabled = name.isNotBlank(), shape = MaterialTheme.shapes.medium, colors = webPrimaryButtonColors()) {
             Text(if (errorMessage == null) "Crear hogar" else "Reintentar")
         }
     }
@@ -972,7 +1333,7 @@ private fun CreateEntityDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { if (name.isNotBlank()) onConfirm(name.trim()) }, enabled = name.isNotBlank(), colors = webPrimaryButtonColors()) {
+            Button(onClick = { if (name.isNotBlank()) onConfirm(name.trim()) }, enabled = name.isNotBlank(), shape = MaterialTheme.shapes.medium, colors = webPrimaryButtonColors()) {
                 Text(confirmText)
             }
         },
@@ -987,7 +1348,7 @@ private fun ConfirmDialog(title: String, message: String, onConfirm: () -> Unit,
         containerColor = WebSurface,
         title = { DialogTitle(title) },
         text = { Text(message, color = WebMuted, fontWeight = FontWeight.SemiBold) },
-        confirmButton = { Button(onClick = onConfirm, colors = webPrimaryButtonColors()) { Text("Confirmar") } },
+        confirmButton = { Button(onClick = onConfirm, shape = MaterialTheme.shapes.medium, colors = webPrimaryButtonColors()) { Text("Confirmar") } },
         dismissButton = { TextButton(onClick = onDismiss, colors = ButtonDefaults.textButtonColors(contentColor = WebMuted)) { Text("Cancelar") } },
     )
 }
@@ -1019,7 +1380,7 @@ private fun CreateListDialog(
                         label = "Hogar",
                         readOnly = true,
                         modifier = Modifier.fillMaxWidth(),
-                        trailing = { Text("⌄", color = WebPrimary, fontWeight = FontWeight.Bold) },
+                        trailing = { Text("▼", color = WebPrimary, fontWeight = FontWeight.Bold) },
                     )
                     Box(modifier = Modifier.fillMaxWidth().height(64.dp).clickable { expanded = true })
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -1041,6 +1402,7 @@ private fun CreateListDialog(
             Button(
                 onClick = { if (name.isNotBlank() && householdId.isNotBlank()) onConfirm(householdId, name.trim()) },
                 enabled = name.isNotBlank() && householdId.isNotBlank(),
+                shape = MaterialTheme.shapes.medium,
                 colors = webPrimaryButtonColors(),
             ) {
                 Text("Crear lista")
@@ -1080,6 +1442,8 @@ fun ShoppingListScreen(
     state: ShoppingListUiState,
     onAction: (ShoppingListAction) -> Unit,
     onSearchProducts: suspend (String, Int) -> List<ProductCatalogUiModel> = { _, _ -> emptyList() },
+    onSetProductFavorite: suspend (String, Boolean) -> ProductCatalogUiModel? = { _, _ -> null },
+    readOnly: Boolean = false,
     onRename: () -> Unit = {},
     onClearChecked: () -> Unit = {},
     onDelete: () -> Unit = {},
@@ -1092,6 +1456,17 @@ fun ShoppingListScreen(
     var cardQuantities by remember { mutableStateOf(emptyMap<String, Int>()) }
     var waitlist by remember { mutableStateOf(emptyList<PendingProductUiModel>()) }
     var recentlyAddedId by remember { mutableStateOf<String?>(null) }
+    val searchScope = rememberCoroutineScope()
+    val toggleFavorite: (ProductCatalogUiModel) -> Unit = { product ->
+        val nextFavorite = !product.isFavorite
+        suggestions = suggestions.map { if (it.id == product.id) it.copy(isFavorite = nextFavorite) else it }
+        searchScope.launch {
+            val updated = onSetProductFavorite(product.id, nextFavorite)
+            if (updated != null) {
+                suggestions = suggestions.map { if (it.id == updated.id) updated else it }
+            }
+        }
+    }
 
     LaunchedEffect(addName, cardMode, state.isOffline) {
         val search = addName.trim()
@@ -1118,42 +1493,45 @@ fun ShoppingListScreen(
             .padding(top = 8.dp, bottom = ScreenBottomPadding),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        item {
-            ShoppingListWebHeader(
-                isOffline = state.isOffline,
-                productName = addName,
-                quantity = quantity,
-                cardMode = cardMode,
-                onProductNameChange = {
-                    addName = it
-                    isProductSearchOpen = true
-                },
-                onProductFocus = { isProductSearchOpen = true },
-                onQuantityDecrease = { if (quantity > 1) quantity-- },
-                onQuantityIncrease = { quantity++ },
-                onCardModeChange = {
-                    cardMode = it
-                    suggestions = emptyList()
-                    cardQuantities = emptyMap()
-                    isProductSearchOpen = true
-                },
-                onAdd = {
-                    if (addName.isNotBlank()) {
-                        onAction(ShoppingListAction.AddItem(addName.trim(), quantity.toDouble()))
-                        addName = ""
-                        quantity = 1
+        if (!readOnly) {
+            item {
+                ShoppingListWebHeader(
+                    isOffline = state.isOffline,
+                    productName = addName,
+                    quantity = quantity,
+                    cardMode = cardMode,
+                    onProductNameChange = {
+                        addName = it
+                        isProductSearchOpen = true
+                    },
+                    onProductFocus = { isProductSearchOpen = true },
+                    onQuantityDecrease = { if (quantity > 1) quantity-- },
+                    onQuantityIncrease = { quantity++ },
+                    onCardModeChange = {
+                        cardMode = it
                         suggestions = emptyList()
-                        isProductSearchOpen = false
-                    }
-                },
-                onClearChecked = onClearChecked,
-                onDelete = onDelete,
-            )
+                        cardQuantities = emptyMap()
+                        isProductSearchOpen = true
+                    },
+                    onAdd = {
+                        if (addName.isNotBlank()) {
+                            onAction(ShoppingListAction.AddItem(addName.trim(), quantity.toDouble()))
+                            addName = ""
+                            quantity = 1
+                            suggestions = emptyList()
+                            isProductSearchOpen = false
+                        }
+                    },
+                    onClearChecked = onClearChecked,
+                    onDelete = onDelete,
+                )
+            }
         }
-        if (!cardMode && isProductSearchOpen && suggestions.isNotEmpty()) {
+        if (!readOnly && !cardMode && isProductSearchOpen && suggestions.isNotEmpty()) {
             item {
                 ProductSuggestionDropdown(
                     suggestions = suggestions,
+                    onToggleFavorite = toggleFavorite,
                     onSelect = { suggestion ->
                         addName = suggestion.name
                         suggestions = emptyList()
@@ -1162,12 +1540,13 @@ fun ShoppingListScreen(
                 )
             }
         }
-        if (cardMode && isProductSearchOpen && suggestions.isNotEmpty()) {
+        if (!readOnly && cardMode && isProductSearchOpen && suggestions.isNotEmpty()) {
             item {
                 ProductCardResults(
                     suggestions = suggestions,
                     quantities = cardQuantities,
                     recentlyAddedId = recentlyAddedId,
+                    onToggleFavorite = toggleFavorite,
                     onQuantityChange = { productId, delta ->
                         cardQuantities = cardQuantities + (productId to ((cardQuantities[productId] ?: 0) + delta).coerceAtLeast(0))
                     },
@@ -1184,13 +1563,16 @@ fun ShoppingListScreen(
                             )
                             waitlist = waitlist.upsert(pending)
                             recentlyAddedId = suggestion.id
-                            cardQuantities = cardQuantities + (suggestion.id to 0)
+                            cardQuantities = emptyMap()
+                            suggestions = emptyList()
+                            addName = ""
+                            isProductSearchOpen = false
                         }
                     },
                 )
             }
         }
-        if (cardMode && waitlist.isNotEmpty()) {
+        if (!readOnly && cardMode && waitlist.isNotEmpty()) {
             item {
                 PendingProductWaitlist(
                     products = waitlist,
@@ -1217,7 +1599,7 @@ fun ShoppingListScreen(
                 accentColor = PendingAccent,
             ) {
                 state.pending.forEach { item ->
-                    ShoppingItem(item, onAction, accentColor = PendingAccent)
+                    ShoppingItem(item, onAction, accentColor = PendingAccent, readOnly = readOnly)
                 }
             }
         }
@@ -1230,7 +1612,7 @@ fun ShoppingListScreen(
                 accentColor = CheckedAccent,
             ) {
                 state.checked.forEach { item ->
-                    ShoppingItem(item, onAction, accentColor = CheckedAccent)
+                    ShoppingItem(item, onAction, accentColor = CheckedAccent, readOnly = readOnly)
                 }
             }
         }
@@ -1351,10 +1733,43 @@ private fun ViewModeSwitch(cardMode: Boolean, onCardModeChange: (Boolean) -> Uni
         )
         Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                Text("☰", color = if (!cardMode) Color.White else WebPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                ListModeGlyph(color = if (!cardMode) Color.White else WebPrimary)
             }
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                Text("▦", color = if (cardMode) Color.White else WebPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                GridModeGlyph(color = if (cardMode) Color.White else WebPrimary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ListModeGlyph(color: Color) {
+    Canvas(modifier = Modifier.size(22.dp)) {
+        val startX = size.width * 0.24f
+        val endX = size.width * 0.76f
+        for (fraction in listOf(0.28f, 0.5f, 0.72f)) {
+            val y = size.height * fraction
+            drawLine(color = color, start = Offset(startX, y), end = Offset(endX, y), strokeWidth = 2.8f)
+        }
+    }
+}
+
+@Composable
+private fun GridModeGlyph(color: Color) {
+    Canvas(modifier = Modifier.size(22.dp)) {
+        val cell = size.width * 0.28f
+        val gap = size.width * 0.12f
+        val left = size.width * 0.16f
+        val top = size.height * 0.16f
+        repeat(2) { row ->
+            repeat(2) { col ->
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(left + col * (cell + gap), top + row * (cell + gap)),
+                    size = Size(cell, cell),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.6f, 2.6f),
+                    style = Stroke(width = 2.4f),
+                )
             }
         }
     }
@@ -1394,9 +1809,25 @@ private fun QuantityStepper(
             .background(accentColor.copy(alpha = 0.08f)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextButton(onClick = onDecrease, modifier = Modifier.weight(1f)) { Text("−", color = accentColor, fontWeight = FontWeight.Bold) }
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxSize()
+                .clickable(onClick = onDecrease),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("−", color = accentColor, fontWeight = FontWeight.Black, fontSize = 24.sp, lineHeight = 24.sp)
+        }
         Text(quantity.toString(), color = WebText, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.weight(0.9f))
-        TextButton(onClick = onIncrease, modifier = Modifier.weight(1f)) { Text("+", color = accentColor, fontWeight = FontWeight.Bold) }
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxSize()
+                .clickable(onClick = onIncrease),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("+", color = accentColor, fontWeight = FontWeight.Black, fontSize = 24.sp, lineHeight = 24.sp)
+        }
     }
 }
 
@@ -1420,12 +1851,15 @@ private fun List<PendingProductUiModel>.upsert(product: PendingProductUiModel): 
 @Composable
 private fun ProductSuggestionDropdown(
     suggestions: List<ProductCatalogUiModel>,
+    onToggleFavorite: (ProductCatalogUiModel) -> Unit,
     onSelect: (ProductCatalogUiModel) -> Unit,
 ) {
+    val keyboardDismissScroll = keyboardDismissNestedScroll()
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(max = 330.dp)
+            .nestedScroll(keyboardDismissScroll)
             .clip(MaterialTheme.shapes.large)
             .background(WebSurface)
             .border(1.dp, Color(0xFFCFE4D7), MaterialTheme.shapes.large)
@@ -1447,6 +1881,10 @@ private fun ProductSuggestionDropdown(
                     Text(suggestion.name, color = WebText, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(suggestion.metaLabel(), color = WebMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+                FavoriteButton(
+                    favorite = suggestion.isFavorite,
+                    onClick = { onToggleFavorite(suggestion) },
+                )
             }
         }
     }
@@ -1457,13 +1895,16 @@ private fun ProductCardResults(
     suggestions: List<ProductCatalogUiModel>,
     quantities: Map<String, Int>,
     recentlyAddedId: String?,
+    onToggleFavorite: (ProductCatalogUiModel) -> Unit,
     onQuantityChange: (String, Int) -> Unit,
     onSelect: (ProductCatalogUiModel) -> Unit,
 ) {
+    val keyboardDismissScroll = keyboardDismissNestedScroll()
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(max = 390.dp),
+            .heightIn(max = 390.dp)
+            .nestedScroll(keyboardDismissScroll),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         items(suggestions.chunked(2)) { rowProducts ->
@@ -1473,6 +1914,7 @@ private fun ProductCardResults(
                         suggestion = suggestion,
                         quantity = quantities[suggestion.id] ?: 0,
                         recentlyAdded = recentlyAddedId == suggestion.id,
+                        onToggleFavorite = { onToggleFavorite(suggestion) },
                         onQuantityChange = { delta -> onQuantityChange(suggestion.id, delta) },
                         onSelect = { onSelect(suggestion) },
                         modifier = Modifier.weight(1f),
@@ -1485,10 +1927,53 @@ private fun ProductCardResults(
 }
 
 @Composable
+private fun keyboardDismissNestedScroll(): NestedScrollConnection {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    return remember(keyboardController, focusManager) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y != 0f) {
+                    keyboardController?.hide()
+                    focusManager.clearFocus()
+                }
+                return Offset.Zero
+            }
+        }
+    }
+}
+
+@Composable
+private fun FavoriteButton(favorite: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(if (favorite) WebLime else Color(0xFFF2F8F4))
+            .border(
+                width = 1.dp,
+                color = if (favorite) PendingAccent else Color(0xFFCFE4D7),
+                shape = MaterialTheme.shapes.medium,
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = if (favorite) "\u2605" else "\u2606",
+            color = if (favorite) Color(0xFFC58400) else WebPrimary,
+            fontWeight = FontWeight.Black,
+            fontSize = 21.sp,
+            lineHeight = 21.sp,
+        )
+    }
+}
+
+@Composable
 private fun ProductResultCard(
     suggestion: ProductCatalogUiModel,
     quantity: Int,
     recentlyAdded: Boolean,
+    onToggleFavorite: () -> Unit,
     onQuantityChange: (Int) -> Unit,
     onSelect: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1505,6 +1990,7 @@ private fun ProductResultCard(
                     Text(suggestion.name, color = WebText, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(suggestion.metaLabel(), color = WebMuted, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
+                FavoriteButton(favorite = suggestion.isFavorite, onClick = onToggleFavorite)
             }
             Text(
                 text = if (quantity > 0) "x$quantity" else "Elige cantidad",
@@ -1525,7 +2011,7 @@ private fun ProductResultCard(
                 colors = webPrimaryButtonColors(),
                 modifier = Modifier.fillMaxWidth().height(42.dp),
             ) {
-                Text("Seleccionar")
+                Text("Añadir a cola")
             }
         }
     }
@@ -1682,7 +2168,12 @@ private fun SquareHeaderButton(
 }
 
 @Composable
-private fun ShoppingItem(item: ShoppingListItemUiModel, onAction: (ShoppingListAction) -> Unit, accentColor: Color) {
+private fun ShoppingItem(
+    item: ShoppingListItemUiModel,
+    onAction: (ShoppingListAction) -> Unit,
+    accentColor: Color,
+    readOnly: Boolean = false,
+) {
     var editing by remember { mutableStateOf(false) }
     var editedName by remember(item.id) { mutableStateOf(item.name) }
     var editedQuantity by remember(item.id) { mutableStateOf(item.quantity.quantityAsInt()) }
@@ -1729,7 +2220,7 @@ private fun ShoppingItem(item: ShoppingListItemUiModel, onAction: (ShoppingListA
                     )
                 }
             }
-            if (item.pendingOperationType != "delete") {
+            if (!readOnly && item.pendingOperationType != "delete") {
                 SquareHeaderButton(
                     contentDescription = "Editar ${item.name}",
                     background = WebLime,
@@ -1773,7 +2264,7 @@ private fun ShoppingItem(item: ShoppingListItemUiModel, onAction: (ShoppingListA
             }
         }
     }
-    if (editing) ItemNameDialog(
+    if (!readOnly && editing) ItemNameDialog(
         title = "Editar producto",
         value = editedName,
         quantity = editedQuantity,
@@ -1865,3 +2356,4 @@ private val EmptyListState = ShoppingListUiState("Compra semanal", emptyList(), 
 @Preview
 @Composable
 private fun ShoppingListPreview() = NFCompraTheme { ShoppingListScreen(EmptyListState, {}) }
+

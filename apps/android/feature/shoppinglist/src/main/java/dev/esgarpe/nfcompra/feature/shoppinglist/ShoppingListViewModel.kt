@@ -40,6 +40,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
                     is ShoppingListAction.RenameList -> renameList(data, action.name)
                     ShoppingListAction.DeleteSelectedList -> deleteSelectedList(data)
                     ShoppingListAction.DeleteCheckedItems -> deleteCheckedItems(data)
+                    ShoppingListAction.ClearSelectedList -> clearSelectedList(data)
                     is ShoppingListAction.RetryInitialHouseholdLoad -> Unit
                     is ShoppingListAction.AddItem -> data.selectedListId?.let { mutateAfter(data) { repository.createItem(it, action.name, action.quantity) } }
                     is ShoppingListAction.EditItem -> mutateAfter(data) { repository.updateItem(data.item(action.id), name = action.name, quantity = action.quantity) }
@@ -65,6 +66,9 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
 
     suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> =
         repository.searchProductCatalog(search, limit)
+
+    suspend fun setProductFavorite(productId: String, favorite: Boolean): ProductCatalogUiModel? =
+        repository.setProductFavorite(productId, favorite)
 
     fun openContext(householdId: String, listId: String? = null) {
         pendingContext = ShoppingContext(householdId, listId)
@@ -202,6 +206,14 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         publishSelection(data.households, data.lists, data.selectedHouseholdId, listId)
     }
 
+    private suspend fun clearSelectedList(data: ShoppingListViewState.Data) {
+        val listId = data.selectedListId ?: return
+        val items = data.content.pending + data.content.checked
+        if (items.isEmpty()) return
+        items.forEach { repository.deleteItem(it) }
+        publishSelection(data.households, data.lists, data.selectedHouseholdId, listId, refreshFromServer = false)
+    }
+
     private suspend fun mutateAfter(data: ShoppingListViewState.Data, action: suspend () -> Unit) {
         val listId = data.selectedListId ?: return
         action()
@@ -234,6 +246,9 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         val items = repository.observeItems(listId).first()
         if (expectedGeneration != null && expectedGeneration != loadGeneration) return
         val selected = lists.first { it.id == listId }
+        val metrics = currentMetrics().withListMetrics(listId, items)
+        val categories = currentCategories().ifEmpty { loadCategories() }
+        val displayName = currentDisplayName() ?: loadDisplayName()
         mutableState.value = ShoppingListViewState.Data(
             content = ShoppingListUiState(
                 title = selected.name,
@@ -245,11 +260,14 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
             lists = lists,
             selectedHouseholdId = householdId,
             selectedListId = listId,
+            listMetrics = metrics,
+            productCategories = categories,
+            displayName = displayName,
         )
         observeSelectedList(listId)
     }
 
-    private fun publishNoList(
+    private suspend fun publishNoList(
         households: List<HouseholdUiModel>,
         lists: List<ShoppingListSummaryUiModel>,
         householdId: String,
@@ -257,6 +275,8 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
     ) {
         if (expectedGeneration != null && expectedGeneration != loadGeneration) return
         itemObservation?.cancel()
+        val categories = currentCategories().ifEmpty { loadCategories() }
+        val displayName = currentDisplayName() ?: loadDisplayName()
         mutableState.value = ShoppingListViewState.Data(
             content = ShoppingListUiState(
                 title = "Sin listas",
@@ -268,6 +288,9 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
             lists = lists,
             selectedHouseholdId = householdId,
             selectedListId = null,
+            listMetrics = currentMetrics(),
+            productCategories = categories,
+            displayName = displayName,
         )
     }
 
@@ -283,10 +306,37 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
                     checked = items.filter { it.checked },
                     isOffline = repository.isOffline,
                 )
-                if (content != current.content) mutableState.value = current.copy(content = content)
+                val metrics = current.listMetrics.withListMetrics(listId, items)
+                if (content != current.content || metrics != current.listMetrics) {
+                    mutableState.value = current.copy(content = content, listMetrics = metrics)
+                }
             }
         }
     }
+
+    private fun currentMetrics(): Map<String, ShoppingListMetricsUiModel> =
+        (mutableState.value as? ShoppingListViewState.Data)?.listMetrics.orEmpty()
+
+    private fun currentCategories(): List<ProductCategoryUiModel> =
+        (mutableState.value as? ShoppingListViewState.Data)?.productCategories.orEmpty()
+
+    private fun currentDisplayName(): String? =
+        (mutableState.value as? ShoppingListViewState.Data)?.displayName
+
+    private suspend fun loadCategories(): List<ProductCategoryUiModel> =
+        runCatching { repository.productCategories() }.getOrElse { emptyList() }
+
+    private suspend fun loadDisplayName(): String? =
+        runCatching { repository.profileDisplayName() }.getOrNull()
+
+    private fun Map<String, ShoppingListMetricsUiModel>.withListMetrics(
+        listId: String,
+        items: List<ShoppingListItemUiModel>,
+    ): Map<String, ShoppingListMetricsUiModel> =
+        this + (listId to ShoppingListMetricsUiModel(
+            pendingCount = items.count { !it.checked },
+            checkedCount = items.count { it.checked },
+        ))
 
     private fun ShoppingListViewState.Data.selectedList(): ShoppingListSummaryUiModel? =
         selectedListId?.let { id -> lists.firstOrNull { it.id == id } }

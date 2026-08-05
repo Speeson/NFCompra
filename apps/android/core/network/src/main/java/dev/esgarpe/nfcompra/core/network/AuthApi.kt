@@ -20,7 +20,12 @@ data class VerifyPasswordResetOtpRequest(val email: String, val otp: String)
 data class ResetPasswordOtpRequest(val email: String, val otp: String, val password: String)
 data class RefreshRequest(val clientType: String = "android", val refreshToken: String)
 data class LogoutRequest(val clientType: String = "android", val refreshToken: String)
-data class SessionResponse(val accessToken: String, val refreshToken: String)
+data class SessionResponse(
+    val accessToken: String,
+    val refreshToken: String,
+    val name: String? = null,
+    val username: String? = null,
+)
 
 interface AuthApi {
     @POST("v1/auth/register") suspend fun register(@Body request: RegisterRequest)

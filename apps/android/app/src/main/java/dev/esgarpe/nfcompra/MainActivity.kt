@@ -50,7 +50,17 @@ class MainActivity : ComponentActivity() {
         receiveInvitationIntent(intent)
         val tokenStore = KeystoreTokenStore(applicationContext)
         foregroundRefreshGate = AuthenticatedRefreshGate { tokenStore.current() != null }
-        val authRepository = AuthRepository(NetworkClient.authApi(BuildConfig.AUTH_BASE_URL), tokenStore)
+        val profilePreferences = getSharedPreferences("nfcompra.ui", MODE_PRIVATE)
+        val authRepository = AuthRepository(
+            NetworkClient.authApi(BuildConfig.AUTH_BASE_URL),
+            tokenStore,
+            BuildConfig.AUTH_BASE_URL,
+        ) { name, username ->
+            val displayName = name?.takeIf { it.isNotBlank() } ?: username?.takeIf { it.isNotBlank() }
+            profilePreferences.edit().apply {
+                if (displayName == null) remove("display_name") else putString("display_name", displayName)
+            }.apply()
+        }
         val sharingRepository = SharingRepository(NetworkClient.authenticatedApi(BuildConfig.AUTH_BASE_URL, tokenStore, SharingApi::class.java))
         setContent {
             val session by tokenStore.session.collectAsState()

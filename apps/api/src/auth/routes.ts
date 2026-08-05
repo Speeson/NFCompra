@@ -84,10 +84,14 @@ function invalidInput(): Response {
   return errorResponse('VALIDATION_ERROR', 'La solicitud no es válida.', 422);
 }
 
-async function issueSession(env: Env, userId: string, client: ClientType, deviceName: string | null, sessionVersion: number): Promise<Response | null> {
+async function issueSession(env: Env, userId: string, client: ClientType, deviceName: string | null, sessionVersion: number, profile?: { name: string; username: string | null }): Promise<Response | null> {
   const refreshToken = createRandomToken();
   if (!(await createRefreshToken(env, userId, await hashToken(refreshToken), deviceName, sessionVersion))) return null;
   const body: Record<string, unknown> = { accessToken: await createAccessToken(userId, sessionVersion, env) };
+  if (profile) {
+    body.name = profile.name;
+    body.username = profile.username;
+  }
   const headers = new Headers({ 'content-type': 'application/json' });
   if (client === 'web') headers.set('set-cookie', refreshCookie(refreshToken));
   else body.refreshToken = refreshToken;
@@ -178,7 +182,7 @@ export async function handleAuthRoute(request: Request, env: Env, emailSender: E
     const user = await findUserByEmail(env, email);
     if (!user || !(await verifyPassword(password, user.passwordHash))) return errorResponse('INVALID_CREDENTIALS', 'Las credenciales no son válidas.', 401);
     if (!user.emailVerifiedAt) return errorResponse('EMAIL_NOT_VERIFIED', 'Debes verificar tu correo antes de iniciar sesión.', 403);
-    return (await issueSession(env, user.id, client, sessionDeviceName, user.sessionVersion)) ?? errorResponse('UNAUTHORIZED', 'La sesión no es válida.', 401);
+    return (await issueSession(env, user.id, client, sessionDeviceName, user.sessionVersion, { name: user.name, username: user.username })) ?? errorResponse('UNAUTHORIZED', 'La sesión no es válida.', 401);
   }
 
   if (action === 'refresh') {

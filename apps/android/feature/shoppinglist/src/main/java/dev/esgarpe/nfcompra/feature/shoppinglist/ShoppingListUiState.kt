@@ -24,6 +24,13 @@ data class ShoppingListUiState(
     val isOffline: Boolean,
 )
 
+data class ShoppingListMetricsUiModel(
+    val pendingCount: Int,
+    val checkedCount: Int,
+) {
+    val totalCount: Int = pendingCount + checkedCount
+}
+
 sealed interface ShoppingListAction {
     data class ToggleItem(val id: String) : ShoppingListAction
     data class AddItem(val name: String, val quantity: Double = 1.0) : ShoppingListAction
@@ -36,6 +43,7 @@ sealed interface ShoppingListAction {
     data class RenameList(val name: String) : ShoppingListAction
     data object DeleteSelectedList : ShoppingListAction
     data object DeleteCheckedItems : ShoppingListAction
+    data object ClearSelectedList : ShoppingListAction
     data class RetryInitialHouseholdLoad(
         val household: HouseholdUiModel,
     ) : ShoppingListAction
@@ -60,6 +68,9 @@ sealed interface ShoppingListViewState {
         val lists: List<ShoppingListSummaryUiModel>,
         val selectedHouseholdId: String,
         val selectedListId: String?,
+        val listMetrics: Map<String, ShoppingListMetricsUiModel> = emptyMap(),
+        val productCategories: List<ProductCategoryUiModel> = emptyList(),
+        val displayName: String? = null,
         val message: String? = null,
         val conflict: ShoppingListItemUiModel? = null,
         val retryAction: ShoppingListAction? = null,

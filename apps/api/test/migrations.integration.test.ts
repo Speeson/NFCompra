@@ -31,6 +31,7 @@ it('applies every migration to an empty database through the remote Wrangler exe
   const productCategories = await env.DB.prepare('PRAGMA table_info(product_categories)').all<{ name: string }>();
   const productCatalog = await env.DB.prepare('PRAGMA table_info(product_catalog)').all<{ name: string }>();
   const productAliases = await env.DB.prepare('PRAGMA table_info(product_aliases)').all<{ name: string }>();
+  const productFavorites = await env.DB.prepare('PRAGMA table_info(user_product_favorites)').all<{ name: string }>();
   const shoppingItems = await env.DB.prepare('PRAGMA table_info(shopping_items)').all<{ name: string }>();
   const notificationTriggers = await env.DB
     .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'notifications_%' ORDER BY name")
@@ -47,6 +48,7 @@ it('applies every migration to an empty database through the remote Wrangler exe
   expect(productCategories.results.map(({ name }) => name)).toEqual(expect.arrayContaining(['id', 'name', 'normalized_name', 'icon_key']));
   expect(productCatalog.results.map(({ name }) => name)).toEqual(expect.arrayContaining(['id', 'name', 'normalized_name', 'category_id', 'icon_key', 'source_product_id']));
   expect(productAliases.results.map(({ name }) => name)).toEqual(expect.arrayContaining(['id', 'product_id', 'alias', 'normalized_alias']));
+  expect(productFavorites.results.map(({ name }) => name)).toEqual(expect.arrayContaining(['user_id', 'product_id', 'created_at']));
   expect(shoppingItems.results.map(({ name }) => name)).toContain('catalog_product_id');
   expect(notificationTriggers.results.map(({ name }) => name)).toEqual([
     'notifications_invitation_accepted',

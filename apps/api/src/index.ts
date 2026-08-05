@@ -18,7 +18,7 @@ export function createWorker(emailSender?: EmailSender): ExportedHandler<Env> {
       if (new URL(request.url).pathname === '/health' && request.method === 'GET') {
         response = Response.json({ status: 'ok' });
       } else {
-        const catalogResponse = await handleCatalogRoute(request, env);
+        const catalogResponse = await handleCatalogRequest(request, env);
         const authResponse = catalogResponse ? null : await handleAuthRoute(request, env, emailSender ?? new ResendEmailSender(env));
         if (catalogResponse) response = catalogResponse;
         else if (authResponse) response = authResponse;
@@ -64,6 +64,29 @@ function isShoppingRoute(path: string): boolean {
     || /^\/v1\/lists\/[^/]+$/.test(path)
     || /^\/v1\/lists\/[^/]+\/items(?:\/checked)?$/.test(path)
     || /^\/v1\/items\/[^/]+$/.test(path);
+}
+
+async function handleCatalogRequest(request: Request, env: Env): Promise<Response | null> {
+  const path = new URL(request.url).pathname;
+  if (!isCatalogRoute(path)) return null;
+  const requiresUser = /^\/v1\/product-catalog\/[^/]+\/favorite$/.test(path);
+  const hasBearer = request.headers.get('authorization')?.startsWith('Bearer ') === true;
+  if (!requiresUser && !hasBearer) return handleCatalogRoute(request, env);
+  try {
+    const user = await requireUser(request, env);
+    return handleCatalogRoute(request, env, user);
+  } catch {
+    if (requiresUser || hasBearer) return errorResponse('UNAUTHORIZED', 'Debes iniciar sesión.', 401);
+    return handleCatalogRoute(request, env);
+  }
+}
+
+function isCatalogRoute(path: string): boolean {
+  return path === '/v1/product-categories'
+    || path === '/v1/product-catalog'
+    || path === '/v1/product-catalog/version'
+    || path === '/v1/product-catalog/snapshot'
+    || /^\/v1\/product-catalog\/[^/]+\/favorite$/.test(path);
 }
 
 function withCors(request: Request, env: Env, response: Response): Response {

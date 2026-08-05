@@ -42,6 +42,14 @@ data class ProductCatalogUiModel(
     val categoryName: String?,
     val iconKey: String,
     val packageSize: String?,
+    val isFavorite: Boolean = false,
+)
+data class ProductCategoryUiModel(
+    val id: String,
+    val name: String,
+    val normalizedName: String,
+    val iconKey: String,
+    val isFavorite: Boolean = false,
 )
 
 class ShoppingListApiException(
@@ -69,6 +77,9 @@ interface ShoppingRepository {
     suspend fun updateItem(item: ShoppingListItemUiModel, name: String? = null, checked: Boolean? = null, quantity: Double? = null)
     suspend fun deleteItem(item: ShoppingListItemUiModel)
     suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> = emptyList()
+    suspend fun productCategories(): List<ProductCategoryUiModel> = emptyList()
+    suspend fun setProductFavorite(productId: String, favorite: Boolean): ProductCatalogUiModel? = null
+    suspend fun profileDisplayName(): String? = null
     suspend fun resolveConflict(resolution: ResolveConflict) = Unit
 }
 
@@ -127,6 +138,19 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
         }.getOrElse { emptyList() }
     }
 
+    override suspend fun productCategories(): List<ProductCategoryUiModel> =
+        api.productCategories().bodyOrThrow().categories.map(ProductCategoryDto::toUiModel)
+
+    override suspend fun setProductFavorite(productId: String, favorite: Boolean): ProductCatalogUiModel? {
+        if (favorite) api.addProductFavorite(productId).bodyOrThrow()
+        else api.removeProductFavorite(productId).bodyOrThrow()
+        catalogSnapshot = catalogSnapshot?.map { if (it.id == productId) it.copy(isFavorite = favorite) else it }
+        return catalogSnapshot?.firstOrNull { it.id == productId }
+    }
+
+    override suspend fun profileDisplayName(): String? =
+        api.me().bodyOrThrow().user.name.takeIf { it.isNotBlank() }
+
     private fun ShoppingListDto.toUiModel() = ShoppingListSummaryUiModel(id, householdId, name, version)
 
     private fun toUiModel(item: ShoppingItemDto) = ShoppingListItemUiModel(
@@ -144,7 +168,7 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
         throw ShoppingListApiException(
             status = code(),
             code = error?.error?.code,
-            message = error?.error?.message ?: "No se pudo completar la operaciÃ³n.",
+            message = error?.error?.message ?: "No se pudo completar la operación.",
             current = details,
         )
     }
@@ -406,6 +430,27 @@ class OfflineShoppingRepository(
         }.getOrElse { emptyList() }
     }
 
+    override suspend fun productCategories(): List<ProductCategoryUiModel> = accountOperation {
+        runCatching {
+            api.productCategories().also { isOffline = false }.bodyOrThrow().categories.map(ProductCategoryDto::toUiModel)
+        }.getOrElse { emptyList() }
+    }
+
+    override suspend fun setProductFavorite(productId: String, favorite: Boolean): ProductCatalogUiModel? = accountOperation {
+        runCatching {
+            if (favorite) api.addProductFavorite(productId).also { isOffline = false }.bodyOrThrow()
+            else api.removeProductFavorite(productId).also { isOffline = false }.bodyOrThrow()
+            catalogSnapshot = catalogSnapshot?.map { if (it.id == productId) it.copy(isFavorite = favorite) else it }
+            catalogSnapshot?.firstOrNull { it.id == productId }
+        }.getOrNull()
+    }
+
+    override suspend fun profileDisplayName(): String? = accountOperation {
+        runCatching {
+            api.me().also { isOffline = false }.bodyOrThrow().user.name.takeIf { it.isNotBlank() }
+        }.getOrNull()
+    }
+
     override suspend fun deleteItem(item: ShoppingListItemUiModel) = accountOperation {
         databaseMutex.withLock {
             val resolvedItemId = itemAliases.resolve(item.id)
@@ -646,7 +691,7 @@ private fun <T> Response<T>.bodyOrThrow(): T {
     throw ShoppingListApiException(
         status = code(),
         code = error?.error?.code,
-        message = error?.error?.message ?: "No se pudo completar la operaciÃ³n.",
+        message = error?.error?.message ?: "No se pudo completar la operación.",
         current = details,
     )
 }
@@ -669,11 +714,20 @@ private fun ProductCatalogItemDto.toUiModel() = ProductCatalogUiModel(
     categoryName = categoryName,
     iconKey = iconKey,
     packageSize = packageSize,
+    isFavorite = isFavorite,
+)
+
+private fun ProductCategoryDto.toUiModel() = ProductCategoryUiModel(
+    id = id,
+    name = name,
+    normalizedName = normalizedName,
+    iconKey = iconKey,
+    isFavorite = isFavorite,
 )
 
 private fun List<ProductCatalogUiModel>.searchCatalog(query: String, limit: Int): List<ProductCatalogUiModel> =
     mapNotNull { product -> product.catalogRank(query)?.let { rank -> product to rank } }
-        .sortedWith(compareBy<Pair<ProductCatalogUiModel, Int>> { it.second }.thenBy { it.first.name })
+        .sortedWith(compareBy<Pair<ProductCatalogUiModel, Int>> { if (it.first.isFavorite) 0 else 1 }.thenBy { it.second }.thenBy { it.first.name })
         .take(limit.coerceIn(1, 25))
         .map { it.first }
 
