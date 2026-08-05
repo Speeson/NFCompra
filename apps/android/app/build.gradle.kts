@@ -6,7 +6,7 @@ plugins {
 
 val debugApiBaseUrl = providers.gradleProperty("NFCompraApiBaseUrl")
     .orElse(providers.environmentVariable("NFCOMPRA_API_BASE_URL"))
-    .orElse("http://10.0.2.2:8787/")
+    .orElse("https://api.nfcompra.esgarpe.dev/")
     .map { if (it.endsWith("/")) it else "$it/" }
 
 android {
@@ -28,7 +28,7 @@ android {
             buildConfigField("String", "AUTH_BASE_URL", "\"${debugApiBaseUrl.get()}\"")
         }
         release {
-            buildConfigField("String", "AUTH_BASE_URL", "\"https://example.invalid/\"")
+            buildConfigField("String", "AUTH_BASE_URL", "\"https://api.nfcompra.esgarpe.dev/\"")
         }
     }
 

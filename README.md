@@ -75,7 +75,7 @@ npm run catalog:build-mercadona -- catalog/mercadona.seed.json --dataset-dir ../
 
 El importador acepta campos genericos como `name`, `category`, `brand`, `packageSize`, `sourceProductId` y `aliases`. Tambien reconoce exportaciones JSON con `results[]`, `display_name`, `category_name` y `price_instructions.unit_size`. No descarga imagenes ni precios. Antes de generar SQL, repara mojibake comun y guarda texto visible sin acentos.
 
-La variante `debug` de Android usa `http://10.0.2.2:8787/` como base de API para el emulador y permite trafico HTTP local para ese entorno. Se puede sustituir mediante la propiedad de Gradle `NFCompraApiBaseUrl` o la variable de entorno `NFCOMPRA_API_BASE_URL`.
+Android usa `https://api.nfcompra.esgarpe.dev/` como base de API por defecto en `debug` y `release`, por lo que la APK debug instalada en un movil real conecta con produccion. Para pruebas locales en emulador se puede sustituir mediante la propiedad de Gradle `NFCompraApiBaseUrl=http://10.0.2.2:8787/` o la variable de entorno `NFCOMPRA_API_BASE_URL`.
 
 ## Verificacion
 
