@@ -201,7 +201,7 @@ class ShoppingListViewModelTest {
             assertEquals(ShoppingListViewState.Loading, awaitItem())
             val noLists = awaitItem() as ShoppingListViewState.Data
             assertEquals(null, noLists.selectedListId)
-            viewModel.onAction(ShoppingListAction.CreateList("Compra"))
+            viewModel.onAction(ShoppingListAction.CreateList("home-1", "Compra"))
             val data = awaitItem() as ShoppingListViewState.Data
             assertEquals("list-1", data.selectedListId)
             assertEquals("Compra", data.content.title)
@@ -254,7 +254,7 @@ class ShoppingListViewModelTest {
         viewModel.state.test {
             awaitItem()
             awaitItem()
-            viewModel.onAction(ShoppingListAction.CreateList("Ferretería"))
+            viewModel.onAction(ShoppingListAction.CreateList("home-1", "Ferretería"))
             val data = awaitItem() as ShoppingListViewState.Data
             assertEquals("list-2", data.selectedListId)
             assertEquals(listOf("Compra", "Ferretería"), data.lists.map { it.name })
@@ -423,9 +423,9 @@ private class FlowShoppingRepository(
         error("No se usa en esta prueba.")
     override suspend fun createList(householdId: String, name: String) =
         error("No se usa en esta prueba.")
-    override suspend fun createItem(listId: String, name: String) =
+    override suspend fun createItem(listId: String, name: String, quantity: Double) =
         error("No se usa en esta prueba.")
-    override suspend fun updateItem(item: ShoppingListItemUiModel, name: String?, checked: Boolean?) =
+    override suspend fun updateItem(item: ShoppingListItemUiModel, name: String?, checked: Boolean?, quantity: Double?) =
         error("No se usa en esta prueba.")
     override suspend fun deleteItem(item: ShoppingListItemUiModel) =
         error("No se usa en esta prueba.")
@@ -453,8 +453,8 @@ private class ConflictShoppingRepository : ShoppingRepository {
     )
     override suspend fun createHousehold(name: String) = error("No se usa en esta prueba.")
     override suspend fun createList(householdId: String, name: String) = error("No se usa en esta prueba.")
-    override suspend fun createItem(listId: String, name: String) = error("No se usa en esta prueba.")
-    override suspend fun updateItem(item: ShoppingListItemUiModel, name: String?, checked: Boolean?) =
+    override suspend fun createItem(listId: String, name: String, quantity: Double) = error("No se usa en esta prueba.")
+    override suspend fun updateItem(item: ShoppingListItemUiModel, name: String?, checked: Boolean?, quantity: Double?) =
         error("No se usa en esta prueba.")
     override suspend fun deleteItem(item: ShoppingListItemUiModel) = error("No se usa en esta prueba.")
     override suspend fun resolveConflict(resolution: ResolveConflict) {
@@ -492,8 +492,8 @@ private class DelayedCachedContextRepository : ShoppingRepository {
     override fun observeItems(listId: String) = MutableStateFlow(emptyList<ShoppingListItemUiModel>())
     override suspend fun createHousehold(name: String) = error("No se usa en esta prueba.")
     override suspend fun createList(householdId: String, name: String) = error("No se usa en esta prueba.")
-    override suspend fun createItem(listId: String, name: String) = error("No se usa en esta prueba.")
-    override suspend fun updateItem(item: ShoppingListItemUiModel, name: String?, checked: Boolean?) =
+    override suspend fun createItem(listId: String, name: String, quantity: Double) = error("No se usa en esta prueba.")
+    override suspend fun updateItem(item: ShoppingListItemUiModel, name: String?, checked: Boolean?, quantity: Double?) =
         error("No se usa en esta prueba.")
     override suspend fun deleteItem(item: ShoppingListItemUiModel) = error("No se usa en esta prueba.")
 }

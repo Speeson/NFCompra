@@ -43,12 +43,14 @@ it('adds a branded HTML password reset email when a route only provides text', a
   await sender.send({
     to: 'persona@example.com',
     subject: 'Restablece tu contraseña de NFCompra',
-    text: 'Restablece tu contraseña: https://nfcompra.esgarpe.dev/auth/reset-password?token=reset123',
+    text: 'Restablece tu contraseña: https://nfcompra.esgarpe.dev/auth/reset-password?token=reset123\n\nCódigo de recuperación: 123456',
   });
 
   const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
   expect(body.html).toContain('Restablece tu contraseña de NFCompra');
   expect(body.html).toContain('Restablecer contraseña');
+  expect(body.html).toContain('123456');
+  expect(body.html).toContain('Código de recuperación');
   expect(body.html).not.toContain('Copiar token manualmente');
 });
 

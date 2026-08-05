@@ -146,18 +146,23 @@ export function VerifyEmailPage({ token, onNavigate }: AuthPageProps): JSX.Eleme
 }
 
 export function ResetPasswordPage({ token, onNavigate }: AuthPageProps): JSX.Element {
-  const { resetPassword } = useSession();
+  const { resetPassword, resetPasswordWithOtp } = useSession();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (!token) {
-      setError('Falta el token para restablecer la contraseña.');
+    const form = new FormData(event.currentTarget);
+    const password = String(form.get('password'));
+    const confirmPassword = String(form.get('confirmPassword'));
+    if (password !== confirmPassword) {
+      setMessage(null);
+      setError('Las contraseñas no coinciden.');
       return;
     }
     try {
-      await resetPassword(token, String(new FormData(event.currentTarget).get('password')));
+      if (token) await resetPassword(token, password);
+      else await resetPasswordWithOtp(String(form.get('email')), String(form.get('otp')), password);
       setMessage('La contraseña se ha restablecido. Ya puedes iniciar sesión.');
     } catch (cause) {
       setError(errorMessage(cause));
@@ -166,7 +171,12 @@ export function ResetPasswordPage({ token, onNavigate }: AuthPageProps): JSX.Ele
 
   return <AuthLayout title="Elige una nueva contraseña">
     <form onSubmit={submit}>
+      {!token && <>
+        <label>Email<input name="email" type="email" autoComplete="email" required /></label>
+        <label>Código de recuperación<input name="otp" inputMode="numeric" pattern="[0-9]{6}" autoComplete="one-time-code" required /></label>
+      </>}
       <label>Nueva contraseña<input name="password" type="password" autoComplete="new-password" minLength={8} required /></label>
+      <label>Confirmar nueva contraseña<input name="confirmPassword" type="password" autoComplete="new-password" minLength={8} required /></label>
       {message && <p role="status">{message}</p>}
       {error && <p role="alert">{error}</p>}
       <button type="submit">Restablecer contraseña</button>

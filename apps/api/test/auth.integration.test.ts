@@ -29,7 +29,7 @@ const testEnv: WorkerEnv = { ...env, JWT_SECRET: 'test-jwt-secret', APP_BASE_URL
 beforeEach(async () => {
   await env.DB.exec(`
     CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, first_name TEXT NULL, last_name TEXT NULL, birth_date TEXT NULL, username TEXT UNIQUE COLLATE NOCASE NULL, email TEXT NOT NULL UNIQUE COLLATE NOCASE, password_hash TEXT NOT NULL, email_verified_at TEXT NULL, session_version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS auth_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, type TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL, used_at TEXT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS auth_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, type TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, otp_hash TEXT NULL UNIQUE, otp_attempts INTEGER NOT NULL DEFAULT 0, expires_at TEXT NOT NULL, used_at TEXT NULL, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS refresh_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, device_name TEXT NULL, session_version INTEGER NOT NULL DEFAULT 0, expires_at TEXT NOT NULL, revoked_at TEXT NULL, created_at TEXT NOT NULL);
     DELETE FROM refresh_tokens;
     DELETE FROM auth_tokens;
@@ -276,6 +276,61 @@ it('rejects malformed or oversized registration details', async () => {
   expect(malformedUsername.status).toBe(422);
 });
 
+it('sends a reset OTP and accepts it with the account email', async () => {
+  const email = `otp-${crypto.randomUUID()}@example.test`;
+  await registerAndVerify(email);
+
+  const forgottenResponse = await dispatch('/v1/auth/forgot-password', { email });
+
+  expect(forgottenResponse.status).toBe(202);
+  expect(fakeEmailSender.messages.at(-1)).toMatchObject({ to: email, subject: 'Restablece tu contraseña de NFCompra' });
+  const message = fakeEmailSender.messages.at(-1)!;
+  expect(message.text).toContain('http://app.test/auth/reset-password?token=');
+  expect(message.text).toMatch(/Código de recuperación: \d{6}/);
+
+  const response = await dispatch('/v1/auth/reset-password', { email, otp: otpFrom(message), password: 'a replacement password' });
+
+  expect(response.status).toBe(200);
+  const reusedResponse = await dispatch('/v1/auth/reset-password', { email, otp: otpFrom(message), password: 'another replacement password' });
+  expect(reusedResponse.status).toBe(400);
+  const loginResponse = await dispatch('/v1/auth/login', { email, password: 'a replacement password', clientType: 'android' });
+  expect(loginResponse.status).toBe(200);
+});
+
+it('limits password reset OTP attempts before accepting the correct code', async () => {
+  const email = `otp-limit-${crypto.randomUUID()}@example.test`;
+  await registerAndVerify(email);
+  await dispatch('/v1/auth/forgot-password', { email });
+  const message = fakeEmailSender.messages.at(-1)!;
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const response = await dispatch('/v1/auth/reset-password', { email, otp: '000000', password: 'a replacement password' });
+    expect(response.status).toBe(400);
+  }
+
+  const blocked = await dispatch('/v1/auth/reset-password', { email, otp: otpFrom(message), password: 'a replacement password' });
+  expect(blocked.status).toBe(400);
+  expect(await blocked.json()).toMatchObject({ error: { code: 'INVALID_OR_EXPIRED_OTP' } });
+});
+
+it('verifies a password reset OTP before accepting the replacement password', async () => {
+  const email = `otp-verify-${crypto.randomUUID()}@example.test`;
+  await registerAndVerify(email);
+  await dispatch('/v1/auth/forgot-password', { email });
+  const message = fakeEmailSender.messages.at(-1)!;
+
+  const wrong = await dispatch('/v1/auth/verify-password-reset-otp', { email, otp: '000000' });
+  expect(wrong.status).toBe(400);
+  expect(await wrong.json()).toMatchObject({ error: { code: 'INVALID_OR_EXPIRED_OTP' } });
+
+  const verified = await dispatch('/v1/auth/verify-password-reset-otp', { email, otp: otpFrom(message) });
+  expect(verified.status).toBe(200);
+  expect(await verified.json()).toEqual({ status: 'otp_verified' });
+
+  const resetResponse = await dispatch('/v1/auth/reset-password', { email, otp: otpFrom(message), password: 'a replacement password' });
+  expect(resetResponse.status).toBe(200);
+});
+
 it('rejects an oversized device name when issuing an Android session', async () => {
   const email = `device-${crypto.randomUUID()}@example.test`;
   await registerAndVerify(email);
@@ -294,6 +349,12 @@ function tokenFrom(message: EmailMessage): string {
   const match = message.text.match(/token=([^\s]+)/);
   if (!match) throw new Error('El correo no contiene un token.');
   return decodeURIComponent(match[1]);
+}
+
+function otpFrom(message: EmailMessage): string {
+  const match = message.text.match(/Código de recuperación: (\d{6})/);
+  if (!match) throw new Error('El correo no contiene un OTP.');
+  return match[1];
 }
 
 async function dispatch(path: string, body?: unknown, headers: Record<string, string> = {}, method = 'POST'): Promise<Response> {

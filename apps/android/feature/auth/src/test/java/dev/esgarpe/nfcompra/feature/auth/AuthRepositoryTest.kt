@@ -554,6 +554,54 @@ class AuthRepositoryTest {
         }
     }
 
+    @Test
+    fun `reset password with OTP sends email code and replacement password`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"status":"password_reset"}"""))
+        server.start()
+        try {
+            val repository = AuthRepository(NetworkClient.authApi(server.url("/").toString()), FakeTokenStore())
+
+            repository.resetPasswordWithOtp("ana@example.test", "123456", "a replacement password").test {
+                assertEquals(AuthResult.Success("Contraseña restablecida. Ya puedes iniciar sesión."), awaitItem())
+                awaitComplete()
+            }
+
+            val request = server.takeRequest()
+            assertEquals("/v1/auth/reset-password", request.path)
+            assertEquals(
+                """{"email":"ana@example.test","otp":"123456","password":"a replacement password"}""",
+                request.body.readUtf8(),
+            )
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `verify password reset OTP sends email and code before navigation`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"status":"otp_verified"}"""))
+        server.start()
+        try {
+            val repository = AuthRepository(NetworkClient.authApi(server.url("/").toString()), FakeTokenStore())
+
+            repository.verifyPasswordResetOtp("ana@example.test", "123456").test {
+                assertEquals(AuthResult.Success("Código verificado."), awaitItem())
+                awaitComplete()
+            }
+
+            val request = server.takeRequest()
+            assertEquals("/v1/auth/verify-password-reset-otp", request.path)
+            assertEquals(
+                """{"email":"ana@example.test","otp":"123456"}""",
+                request.body.readUtf8(),
+            )
+        } finally {
+            server.shutdown()
+        }
+    }
+
     private class FakeTokenStore : TokenStore {
         private val lock = Any()
         private val mutableSession = MutableStateFlow<SessionTokens?>(null)

@@ -26,13 +26,13 @@ data class ShoppingListUiState(
 
 sealed interface ShoppingListAction {
     data class ToggleItem(val id: String) : ShoppingListAction
-    data class AddItem(val name: String) : ShoppingListAction
-    data class EditItem(val id: String, val name: String) : ShoppingListAction
+    data class AddItem(val name: String, val quantity: Double = 1.0) : ShoppingListAction
+    data class EditItem(val id: String, val name: String, val quantity: Double? = null) : ShoppingListAction
     data class DeleteItem(val id: String) : ShoppingListAction
     data class SelectHousehold(val id: String) : ShoppingListAction
     data class SelectList(val id: String) : ShoppingListAction
     data class CreateHousehold(val name: String) : ShoppingListAction
-    data class CreateList(val name: String) : ShoppingListAction
+    data class CreateList(val householdId: String, val name: String) : ShoppingListAction
     data class RenameList(val name: String) : ShoppingListAction
     data object DeleteSelectedList : ShoppingListAction
     data object DeleteCheckedItems : ShoppingListAction

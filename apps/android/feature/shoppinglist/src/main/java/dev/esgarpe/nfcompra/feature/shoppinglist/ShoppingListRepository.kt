@@ -30,10 +30,19 @@ import kotlinx.coroutines.sync.withLock
 import retrofit2.Response
 import java.io.Closeable
 import java.io.IOException
+import java.text.Normalizer
 import java.util.UUID
 
 data class HouseholdUiModel(val id: String, val name: String)
 data class ShoppingListSummaryUiModel(val id: String, val householdId: String, val name: String, val version: Int = 1)
+data class ProductCatalogUiModel(
+    val id: String,
+    val name: String,
+    val normalizedName: String,
+    val categoryName: String?,
+    val iconKey: String,
+    val packageSize: String?,
+)
 
 class ShoppingListApiException(
     val status: Int,
@@ -56,13 +65,16 @@ interface ShoppingRepository {
     suspend fun updateList(list: ShoppingListSummaryUiModel, name: String): ShoppingListSummaryUiModel = error("No se usa en este repositorio.")
     suspend fun deleteList(list: ShoppingListSummaryUiModel): Unit = error("No se usa en este repositorio.")
     suspend fun deleteCheckedItems(listId: String): Int = error("No se usa en este repositorio.")
-    suspend fun createItem(listId: String, name: String)
-    suspend fun updateItem(item: ShoppingListItemUiModel, name: String? = null, checked: Boolean? = null)
+    suspend fun createItem(listId: String, name: String, quantity: Double = 1.0)
+    suspend fun updateItem(item: ShoppingListItemUiModel, name: String? = null, checked: Boolean? = null, quantity: Double? = null)
     suspend fun deleteItem(item: ShoppingListItemUiModel)
+    suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> = emptyList()
     suspend fun resolveConflict(resolution: ResolveConflict) = Unit
 }
 
 class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingRepository {
+    private var catalogSnapshot: List<ProductCatalogUiModel>? = null
+
     override suspend fun households(): List<HouseholdUiModel> =
         api.households().bodyOrThrow().households.map { HouseholdUiModel(it.id, it.name) }
 
@@ -91,16 +103,28 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
     override suspend fun deleteCheckedItems(listId: String): Int =
         api.deleteCheckedItems(listId, DeleteCheckedItemsRequest(operationId = UUID.randomUUID().toString())).bodyOrThrow().removed
 
-    override suspend fun createItem(listId: String, name: String) {
-        api.createItem(listId, CreateItemRequest(name = name, operationId = UUID.randomUUID().toString())).bodyOrThrow()
+    override suspend fun createItem(listId: String, name: String, quantity: Double) {
+        api.createItem(listId, CreateItemRequest(name = name, quantity = quantity, operationId = UUID.randomUUID().toString())).bodyOrThrow()
     }
 
-    override suspend fun updateItem(item: ShoppingListItemUiModel, name: String?, checked: Boolean?) {
-        api.updateItem(item.id, UpdateItemRequest(name = name, isChecked = checked, expectedVersion = item.version, operationId = UUID.randomUUID().toString())).bodyOrThrow()
+    override suspend fun updateItem(item: ShoppingListItemUiModel, name: String?, checked: Boolean?, quantity: Double?) {
+        api.updateItem(item.id, UpdateItemRequest(name = name, quantity = quantity, isChecked = checked, expectedVersion = item.version, operationId = UUID.randomUUID().toString())).bodyOrThrow()
     }
 
     override suspend fun deleteItem(item: ShoppingListItemUiModel) {
         api.deleteItem(item.id, DeleteItemRequest(item.version, UUID.randomUUID().toString())).bodyOrThrow()
+    }
+
+    override suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> {
+        val query = search.normalizedSearch()
+        if (query.length < 2) return emptyList()
+        val snapshot = catalogSnapshot ?: runCatching {
+            api.productCatalogSnapshot().bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
+        }.getOrNull()?.also { catalogSnapshot = it }
+        if (snapshot != null) return snapshot.searchCatalog(query, limit)
+        return runCatching {
+            api.searchProductCatalog(search, limit.coerceIn(1, 25)).bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
+        }.getOrElse { emptyList() }
     }
 
     private fun ShoppingListDto.toUiModel() = ShoppingListSummaryUiModel(id, householdId, name, version)
@@ -145,6 +169,7 @@ class OfflineShoppingRepository(
     private val lifecycleLock = Any()
     private val activeJobs = mutableSetOf<Job>()
     private var closed = false
+    private var catalogSnapshot: List<ProductCatalogUiModel>? = null
 
     @Volatile
     override var isOffline: Boolean = false
@@ -290,7 +315,7 @@ class OfflineShoppingRepository(
         removed
     }
 
-    override suspend fun createItem(listId: String, name: String) = accountOperation {
+    override suspend fun createItem(listId: String, name: String, quantity: Double) = accountOperation {
         databaseMutex.withLock {
             val operationId = operationId()
             val now = clock()
@@ -299,7 +324,7 @@ class OfflineShoppingRepository(
                 listId = listId,
                 name = name,
                 normalizedName = name.trim().lowercase(),
-                quantity = 1.0,
+                quantity = quantity,
                 unit = null,
                 category = null,
                 note = null,
@@ -311,7 +336,7 @@ class OfflineShoppingRepository(
                 createdAt = now.toString(),
                 updatedAt = now.toString(),
             )
-            val request = CreateItemRequest(name = name, operationId = operationId)
+            val request = CreateItemRequest(name = name, quantity = quantity, operationId = operationId)
             dao.upsertItemAndEnqueue(
                 item,
                 PendingOperation(
@@ -332,6 +357,7 @@ class OfflineShoppingRepository(
         item: ShoppingListItemUiModel,
         name: String?,
         checked: Boolean?,
+        quantity: Double?,
     ) = accountOperation {
         databaseMutex.withLock {
             val resolvedItemId = itemAliases.resolve(item.id)
@@ -341,11 +367,13 @@ class OfflineShoppingRepository(
             val updated = local.copy(
                 name = name ?: local.name,
                 normalizedName = name?.trim()?.lowercase() ?: local.normalizedName,
+                quantity = quantity ?: local.quantity,
                 isChecked = checked ?: local.isChecked,
                 updatedAt = now.toString(),
             )
             val request = UpdateItemRequest(
                 name = name,
+                quantity = quantity,
                 isChecked = checked,
                 expectedVersion = if (resolvedItemId == item.id) item.version else local.version,
                 operationId = operationId,
@@ -364,6 +392,18 @@ class OfflineShoppingRepository(
         }
         scheduleSync()
         Unit
+    }
+
+    override suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> = accountOperation {
+        val query = search.normalizedSearch()
+        if (query.length < 2) return@accountOperation emptyList()
+        val snapshot = catalogSnapshot ?: runCatching {
+            api.productCatalogSnapshot().bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
+        }.getOrNull()?.also { catalogSnapshot = it }
+        if (snapshot != null) return@accountOperation snapshot.searchCatalog(query, limit)
+        runCatching {
+            api.searchProductCatalog(search, limit.coerceIn(1, 25)).bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
+        }.getOrElse { emptyList() }
     }
 
     override suspend fun deleteItem(item: ShoppingListItemUiModel) = accountOperation {
@@ -621,3 +661,34 @@ private val updateItemJsonAdapter =
     Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build().adapter(UpdateItemRequest::class.java)
 private val deleteItemJsonAdapter =
     Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build().adapter(DeleteItemRequest::class.java)
+
+private fun ProductCatalogItemDto.toUiModel() = ProductCatalogUiModel(
+    id = id,
+    name = name,
+    normalizedName = normalizedName,
+    categoryName = categoryName,
+    iconKey = iconKey,
+    packageSize = packageSize,
+)
+
+private fun List<ProductCatalogUiModel>.searchCatalog(query: String, limit: Int): List<ProductCatalogUiModel> =
+    mapNotNull { product -> product.catalogRank(query)?.let { rank -> product to rank } }
+        .sortedWith(compareBy<Pair<ProductCatalogUiModel, Int>> { it.second }.thenBy { it.first.name })
+        .take(limit.coerceIn(1, 25))
+        .map { it.first }
+
+private fun ProductCatalogUiModel.catalogRank(query: String): Int? {
+    val name = normalizedName.ifBlank { name.normalizedSearch() }
+    if (name.startsWith(query)) return 0
+    if (name.split(' ').any { it.startsWith(query) }) return 1
+    if (name.contains(query)) return 2
+    if ((categoryName ?: "").normalizedSearch().contains(query)) return 3
+    return null
+}
+
+private fun String.normalizedSearch(): String =
+    Normalizer.normalize(this, Normalizer.Form.NFD)
+        .replace("\\p{Mn}+".toRegex(), "")
+        .lowercase()
+        .replace("\\s+".toRegex(), " ")
+        .trim()

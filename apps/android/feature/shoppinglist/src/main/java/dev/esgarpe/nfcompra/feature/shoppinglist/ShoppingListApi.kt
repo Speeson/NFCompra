@@ -7,6 +7,7 @@ import retrofit2.http.HTTP
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 data class HouseholdDto(val id: String, val name: String, val ownerId: String, val createdAt: String, val updatedAt: String)
 data class ShoppingListDto(val id: String, val householdId: String, val name: String, val isDefault: Boolean, val version: Int, val createdAt: String, val updatedAt: String)
@@ -35,6 +36,20 @@ data class DeleteCheckedItemsRequest(val operationId: String)
 data class CreateItemRequest(val name: String, val quantity: Double = 1.0, val unit: String? = null, val operationId: String)
 data class UpdateItemRequest(val name: String? = null, val quantity: Double? = null, val unit: String? = null, val isChecked: Boolean? = null, val expectedVersion: Int, val operationId: String)
 data class DeleteItemRequest(val expectedVersion: Int, val operationId: String)
+data class ProductCatalogItemDto(
+    val id: String,
+    val name: String,
+    val normalizedName: String,
+    val categoryId: String?,
+    val categoryName: String?,
+    val iconKey: String,
+    val brand: String?,
+    val packageSize: String?,
+    val source: String?,
+    val sourceProductId: String?,
+)
+data class ProductCatalogSearchResponse(val products: List<ProductCatalogItemDto>)
+data class ProductCatalogSnapshotResponse(val version: String, val productCount: Int, val products: List<ProductCatalogItemDto>)
 
 interface ShoppingListApi {
     @GET("v1/households") suspend fun households(): Response<HouseholdsResponse>
@@ -51,4 +66,6 @@ interface ShoppingListApi {
     @PATCH("v1/items/{itemId}") suspend fun updateItem(@Path("itemId") itemId: String, @Body request: UpdateItemRequest): Response<ItemResponse>
     @HTTP(method = "DELETE", path = "v1/items/{itemId}", hasBody = true)
     suspend fun deleteItem(@Path("itemId") itemId: String, @Body request: DeleteItemRequest): Response<Unit>
+    @GET("v1/product-catalog") suspend fun searchProductCatalog(@Query("search") search: String, @Query("limit") limit: Int): Response<ProductCatalogSearchResponse>
+    @GET("v1/product-catalog/snapshot") suspend fun productCatalogSnapshot(): Response<ProductCatalogSnapshotResponse>
 }

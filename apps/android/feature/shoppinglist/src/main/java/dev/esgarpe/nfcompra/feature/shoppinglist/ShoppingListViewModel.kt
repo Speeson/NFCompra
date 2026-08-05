@@ -36,13 +36,13 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
                     is ShoppingListAction.SelectHousehold -> selectHousehold(data, action.id)
                     is ShoppingListAction.SelectList -> refresh(data, action.id)
                     is ShoppingListAction.CreateHousehold -> createHousehold(data, action.name)
-                    is ShoppingListAction.CreateList -> createList(data, action.name)
+                    is ShoppingListAction.CreateList -> createList(data, action.householdId, action.name)
                     is ShoppingListAction.RenameList -> renameList(data, action.name)
                     ShoppingListAction.DeleteSelectedList -> deleteSelectedList(data)
                     ShoppingListAction.DeleteCheckedItems -> deleteCheckedItems(data)
                     is ShoppingListAction.RetryInitialHouseholdLoad -> Unit
-                    is ShoppingListAction.AddItem -> data.selectedListId?.let { mutateAfter(data) { repository.createItem(it, action.name) } }
-                    is ShoppingListAction.EditItem -> mutateAfter(data) { repository.updateItem(data.item(action.id), name = action.name) }
+                    is ShoppingListAction.AddItem -> data.selectedListId?.let { mutateAfter(data) { repository.createItem(it, action.name, action.quantity) } }
+                    is ShoppingListAction.EditItem -> mutateAfter(data) { repository.updateItem(data.item(action.id), name = action.name, quantity = action.quantity) }
                     is ShoppingListAction.ToggleItem -> mutateItem(data, action.id) { repository.updateItem(it, checked = !it.checked) }
                     is ShoppingListAction.DeleteItem -> mutateAfter(data) { repository.deleteItem(data.item(action.id)) }
                     is ResolveConflict.UseServer -> repository.resolveConflict(action)
@@ -62,6 +62,9 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
     }
 
     fun load() = loadForCurrentIntent()
+
+    suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> =
+        repository.searchProductCatalog(search, limit)
 
     fun openContext(householdId: String, listId: String? = null) {
         pendingContext = ShoppingContext(householdId, listId)
@@ -165,9 +168,14 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         publishNoList(listOf(household), emptyList(), household.id)
     }
 
-    private suspend fun createList(data: ShoppingListViewState.Data, name: String) {
-        val list = repository.createList(data.selectedHouseholdId, name)
-        publishSelection(data.households, data.lists + list, data.selectedHouseholdId, list.id)
+    private suspend fun createList(data: ShoppingListViewState.Data, householdId: String, name: String) {
+        val list = repository.createList(householdId, name)
+        val lists = if (householdId == data.selectedHouseholdId) {
+            data.lists + list
+        } else {
+            repository.lists(householdId)
+        }
+        publishSelection(data.households, lists, householdId, list.id)
     }
 
     private suspend fun renameList(data: ShoppingListViewState.Data, name: String) {

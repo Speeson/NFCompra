@@ -24,7 +24,9 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     fun resendVerification(email: String) = submit { repository.resendVerification(email) }
     fun verify(token: String) = submit { repository.verifyEmail(token) }
     fun forgotPassword(email: String) = submit { repository.requestPasswordReset(email) }
+    fun verifyPasswordResetOtp(email: String, otp: String) = submit { repository.verifyPasswordResetOtp(email, otp) }
     fun resetPassword(token: String, password: String) = submit { repository.resetPassword(token, password) }
+    fun resetPasswordWithOtp(email: String, otp: String, password: String) = submit { repository.resetPasswordWithOtp(email, otp, password) }
     fun logout() {
         viewModelScope.launch { runCatching { repository.logout() } }
     }

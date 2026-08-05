@@ -8,11 +8,14 @@ import dev.esgarpe.nfcompra.core.network.RefreshRequest
 import dev.esgarpe.nfcompra.core.network.RegisterRequest
 import dev.esgarpe.nfcompra.core.network.ResendVerificationRequest
 import dev.esgarpe.nfcompra.core.network.ResetPasswordRequest
+import dev.esgarpe.nfcompra.core.network.ResetPasswordOtpRequest
 import dev.esgarpe.nfcompra.core.network.SessionTokens
 import dev.esgarpe.nfcompra.core.network.TokenRequest
 import dev.esgarpe.nfcompra.core.network.TokenStore
+import dev.esgarpe.nfcompra.core.network.VerifyPasswordResetOtpRequest
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import org.json.JSONObject
 import retrofit2.HttpException
 
 sealed interface AuthResult {
@@ -58,8 +61,14 @@ class AuthRepository(private val api: AuthApi, private val tokenStore: TokenStor
     fun requestPasswordReset(email: String): Flow<AuthResult> =
         complete("Si existe una cuenta, te hemos enviado un enlace.") { api.forgotPassword(ForgotPasswordRequest(email)) }
 
+    fun verifyPasswordResetOtp(email: String, otp: String): Flow<AuthResult> =
+        complete("Código verificado.") { api.verifyPasswordResetOtp(VerifyPasswordResetOtpRequest(email, otp)) }
+
     fun resetPassword(token: String, password: String): Flow<AuthResult> =
         complete("Contraseña restablecida. Ya puedes iniciar sesión.") { api.resetPassword(ResetPasswordRequest(token, password)) }
+
+    fun resetPasswordWithOtp(email: String, otp: String, password: String): Flow<AuthResult> =
+        complete("Contraseña restablecida. Ya puedes iniciar sesión.") { api.resetPasswordWithOtp(ResetPasswordOtpRequest(email, otp, password)) }
 
     suspend fun refresh(): AuthResult {
         val snapshot = tokenStore.snapshot() ?: return AuthResult.Failure("No hay sesión.")
@@ -98,7 +107,14 @@ class AuthRepository(private val api: AuthApi, private val tokenStore: TokenStor
     }
 
     private fun Exception.messageForUser(): String = when (this) {
-        is HttpException -> "No se pudo completar la solicitud (${code()})."
+        is HttpException -> apiMessage() ?: "No se pudo completar la solicitud (${code()})."
         else -> "No se pudo conectar con el servicio."
     }
+
+    private fun HttpException.apiMessage(): String? = runCatching {
+        response()?.errorBody()?.string()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { JSONObject(it).optJSONObject("error")?.optString("message") }
+            ?.takeIf { it.isNotBlank() }
+    }.getOrNull()
 }

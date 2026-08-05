@@ -1,4 +1,4 @@
-import { createAuthToken, createRefreshToken, createUser, consumeAuthToken, consumeRefreshToken, findUserByEmail, findUserByUsername, invalidateSessions, revokeRefreshToken, updatePassword, updateUserName, verifyEmail, type AuthUser } from './auth-repository';
+import { createAuthToken, createRefreshToken, createUser, consumeAuthToken, consumePasswordResetOtp, consumeRefreshToken, findUserByEmail, findUserByUsername, invalidateSessions, revokeRefreshToken, updatePassword, updateUserName, verifyEmail, verifyPasswordResetOtp, type AuthUser } from './auth-repository';
 import { hashPassword, verifyPassword } from './password-hasher';
 import { createAccessToken, createRandomToken, hashToken } from './token-service';
 import type { EmailSender } from '../email/email-sender';
@@ -13,6 +13,7 @@ const DEVICE_NAME_MAX_LENGTH = 100;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const USERNAME_PATTERN = /^[a-zA-Z0-9._-]{3,30}$/;
 const BIRTH_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const OTP_PATTERN = /^\d{6}$/;
 
 function readCookie(request: Request, name: string): string | null {
   return request.headers.get('cookie')?.split(';').map((part) => part.trim()).find((part) => part.startsWith(`${name}=`))?.slice(name.length + 1) ?? null;
@@ -62,6 +63,21 @@ function deviceName(value: unknown): string | null | undefined {
 
 function clientType(value: unknown): ClientType | null {
   return value === 'web' || value === 'android' ? value : null;
+}
+
+function createOtp(): string {
+  const values = new Uint32Array(1);
+  crypto.getRandomValues(values);
+  return String(values[0] % 1_000_000).padStart(6, '0');
+}
+
+function parseOtp(value: unknown): string | null {
+  const normalized = text(value);
+  return normalized && OTP_PATTERN.test(normalized) ? normalized : null;
+}
+
+function isLocalAppBaseUrl(env: Env): boolean {
+  return env.APP_BASE_URL.startsWith('http://localhost') || env.APP_BASE_URL.startsWith('http://127.0.0.1');
 }
 
 function invalidInput(): Response {
@@ -191,23 +207,51 @@ export async function handleAuthRoute(request: Request, env: Env, emailSender: E
     const user = await findUserByEmail(env, email);
     if (user) {
       const token = createRandomToken();
-      await createAuthToken(env, user.id, 'password_reset', await hashToken(token));
+      const otp = createOtp();
+      await createAuthToken(env, user.id, 'password_reset', await hashToken(token), await hashToken(otp));
       const url = `${env.APP_BASE_URL}/auth/reset-password?token=${encodeURIComponent(token)}`;
-      try {
-        await emailSender.send({ to: user.email, subject: 'Restablece tu contraseña de NFCompra', text: `Restablece tu contraseña: ${url}` });
-      } catch {
-        return emailDeliveryFailed('password_reset');
+      const message = {
+        to: user.email,
+        subject: 'Restablece tu contraseña de NFCompra',
+        text: `Restablece tu contraseña: ${url}\n\nCódigo de recuperación: ${otp}\n\nEste código caduca en 30 minutos.`,
+      };
+      if (isLocalAppBaseUrl(env)) {
+        console.warn('Local password reset email skipped; using console OTP fallback.', { email: user.email, otp });
+      } else {
+        try {
+          await emailSender.send(message);
+        } catch {
+          return emailDeliveryFailed('password_reset');
+        }
       }
     }
     return Response.json({ status: 'accepted' }, { status: 202 });
   }
 
+  if (action === 'verify-password-reset-otp') {
+    const email = parseEmail(body.email);
+    const otp = parseOtp(body.otp);
+    if (!email || !otp) return invalidInput();
+    if (!await verifyPasswordResetOtp(env, email, await hashToken(otp))) {
+      return errorResponse('INVALID_OR_EXPIRED_OTP', 'El código no es válido o ha caducado.', 400);
+    }
+    return Response.json({ status: 'otp_verified' });
+  }
+
   if (action === 'reset-password') {
     const token = text(body.token);
+    const email = parseEmail(body.email);
+    const otp = parseOtp(body.otp);
     const password = text(body.password) ?? text(body.newPassword);
-    if (!token || !password || password.length < 8) return invalidInput();
-    const userId = await consumeAuthToken(env, 'password_reset', await hashToken(token));
-    if (!userId) return errorResponse('INVALID_OR_EXPIRED_TOKEN', 'El enlace no es válido o ha caducado.', 400);
+    if (!password || password.length < 8 || (!token && (!email || !otp))) return invalidInput();
+    const userId = token
+      ? await consumeAuthToken(env, 'password_reset', await hashToken(token))
+      : await consumePasswordResetOtp(env, email!, await hashToken(otp!));
+    if (!userId) {
+      return token
+        ? errorResponse('INVALID_OR_EXPIRED_TOKEN', 'El enlace no es válido o ha caducado.', 400)
+        : errorResponse('INVALID_OR_EXPIRED_OTP', 'El código no es válido o ha caducado.', 400);
+    }
     await updatePassword(env, userId, await hashPassword(password));
     await invalidateSessions(env, userId);
     return Response.json({ status: 'password_reset' });

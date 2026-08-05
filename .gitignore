@@ -5,7 +5,11 @@ build/
 node_modules/
 dist/
 .wrangler/
+.wrangler-appdata/
+.wrangler-config/
 .tmp/
+logs/
+apps/api/wrangler-dev*.log
 apps/api/catalog/*.seed.sql
 .dev.vars
 .env*

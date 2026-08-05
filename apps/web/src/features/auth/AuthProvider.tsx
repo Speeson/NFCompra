@@ -27,6 +27,7 @@ interface AuthContextValue {
   verifyEmail(token: string): Promise<void>;
   forgotPassword(email: string): Promise<void>;
   resetPassword(token: string, password: string): Promise<void>;
+  resetPasswordWithOtp(email: string, otp: string, password: string): Promise<void>;
   logout(): Promise<boolean>;
 }
 
@@ -86,6 +87,9 @@ export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
     },
     async resetPassword(token, password) {
       await apiClient.request('/auth/reset-password', { method: 'POST', body: { token, password }, retryOnUnauthorized: false });
+    },
+    async resetPasswordWithOtp(email, otp, password) {
+      await apiClient.request('/auth/reset-password', { method: 'POST', body: { email, otp, password }, retryOnUnauthorized: false });
     },
     async logout() {
       const userId = user?.id;

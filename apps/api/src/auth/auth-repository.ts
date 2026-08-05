@@ -87,17 +87,63 @@ export async function updatePassword(env: Env, id: string, passwordHash: string)
   await env.DB.prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?').bind(passwordHash, now, id).run();
 }
 
-export async function createAuthToken(env: Env, userId: string, type: 'email_verification' | 'password_reset', tokenHash: string): Promise<void> {
+export async function createAuthToken(env: Env, userId: string, type: 'email_verification' | 'password_reset', tokenHash: string, otpHash: string | null = null): Promise<void> {
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
-  await env.DB.prepare('INSERT INTO auth_tokens (id, user_id, type, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(crypto.randomUUID(), userId, type, tokenHash, expiresAt, now.toISOString()).run();
+  await env.DB.prepare('INSERT INTO auth_tokens (id, user_id, type, token_hash, otp_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(crypto.randomUUID(), userId, type, tokenHash, otpHash, expiresAt, now.toISOString()).run();
 }
 
 export async function consumeAuthToken(env: Env, type: 'email_verification' | 'password_reset', tokenHash: string): Promise<string | null> {
   const row = await env.DB.prepare('UPDATE auth_tokens SET used_at = ? WHERE type = ? AND token_hash = ? AND used_at IS NULL AND expires_at > ? RETURNING user_id')
     .bind(new Date().toISOString(), type, tokenHash, new Date().toISOString()).first<{ user_id: string }>();
   return row?.user_id ?? null;
+}
+
+export async function consumePasswordResetOtp(env: Env, email: string, otpHash: string): Promise<string | null> {
+  const now = new Date().toISOString();
+  const row = await env.DB.prepare(`
+    SELECT auth_tokens.id, auth_tokens.user_id, auth_tokens.otp_hash, auth_tokens.otp_attempts
+    FROM auth_tokens
+    JOIN users ON users.id = auth_tokens.user_id
+    WHERE users.email = ?
+      AND auth_tokens.type = 'password_reset'
+      AND auth_tokens.used_at IS NULL
+      AND auth_tokens.expires_at > ?
+      AND auth_tokens.otp_hash IS NOT NULL
+    ORDER BY auth_tokens.created_at DESC
+    LIMIT 1
+  `).bind(email, now).first<{ id: string; user_id: string; otp_hash: string; otp_attempts: number }>();
+  if (!row || row.otp_attempts >= 5) return null;
+  if (row.otp_hash !== otpHash) {
+    await env.DB.prepare('UPDATE auth_tokens SET otp_attempts = otp_attempts + 1 WHERE id = ? AND used_at IS NULL AND otp_attempts < 5').bind(row.id).run();
+    return null;
+  }
+  const consumed = await env.DB.prepare('UPDATE auth_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL AND otp_attempts < 5 RETURNING user_id')
+    .bind(now, row.id).first<{ user_id: string }>();
+  return consumed?.user_id ?? null;
+}
+
+export async function verifyPasswordResetOtp(env: Env, email: string, otpHash: string): Promise<boolean> {
+  const now = new Date().toISOString();
+  const row = await env.DB.prepare(`
+    SELECT auth_tokens.id, auth_tokens.otp_hash, auth_tokens.otp_attempts
+    FROM auth_tokens
+    JOIN users ON users.id = auth_tokens.user_id
+    WHERE users.email = ?
+      AND auth_tokens.type = 'password_reset'
+      AND auth_tokens.used_at IS NULL
+      AND auth_tokens.expires_at > ?
+      AND auth_tokens.otp_hash IS NOT NULL
+    ORDER BY auth_tokens.created_at DESC
+    LIMIT 1
+  `).bind(email, now).first<{ id: string; otp_hash: string; otp_attempts: number }>();
+  if (!row || row.otp_attempts >= 5) return false;
+  if (row.otp_hash !== otpHash) {
+    await env.DB.prepare('UPDATE auth_tokens SET otp_attempts = otp_attempts + 1 WHERE id = ? AND used_at IS NULL AND otp_attempts < 5').bind(row.id).run();
+    return false;
+  }
+  return true;
 }
 
 export async function createRefreshToken(env: Env, userId: string, tokenHash: string, deviceName: string | null, sessionVersion: number): Promise<boolean> {
