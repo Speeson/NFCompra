@@ -70,6 +70,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 
 private enum class AuthRoute { WELCOME, LOGIN, REGISTER, VERIFY, FORGOT, OTP, RESET }
 
@@ -88,7 +89,14 @@ fun AuthApp(viewModel: AuthViewModel, onSignedIn: () -> Unit = {}) {
     var resetEmail by remember { mutableStateOf("") }
     var resetOtp by remember { mutableStateOf("") }
     val state by viewModel.state.collectAsState()
+    LaunchedEffect(Unit) { viewModel.resetTransientState() }
     LaunchedEffect(state.isSignedIn) { if (state.isSignedIn) onSignedIn() }
+    LaunchedEffect(state.message) {
+        if (state.message != null) {
+            delay(4_000)
+            viewModel.clearMessage()
+        }
+    }
     LaunchedEffect(route, state.message) {
         if (route == AuthRoute.OTP && state.message == "Código verificado.") {
             route = AuthRoute.RESET
@@ -147,8 +155,10 @@ fun WelcomeScreen(
 ) {
     AuthVisualScaffold(
         title = "",
-        bodyTop = 538.dp,
+        bodyTop = 270.dp,
         showBack = false,
+        logoTop = 34.dp,
+        logoSize = 190.dp,
     ) {
         Text("Bienvenido", color = AuthText, fontSize = 32.sp, fontWeight = FontWeight.Bold)
         Text("Organiza la compra de casa con listas compartidas y acceso rápido por NFC.", color = AuthMuted, lineHeight = 22.sp)
@@ -176,8 +186,10 @@ fun LoginScreen(
     var rememberMe by remember { mutableStateOf(true) }
     AuthVisualScaffold(
         title = "",
-        bodyTop = 446.dp,
+        bodyTop = 238.dp,
         onBack = onBack,
+        logoTop = 34.dp,
+        logoSize = 180.dp,
     ) {
         Text("Bienvenido de nuevo", color = AuthText, fontSize = 32.sp, fontWeight = FontWeight.Bold)
         Text("Inicia sesión en tu cuenta", color = AuthMuted, fontSize = 16.sp)

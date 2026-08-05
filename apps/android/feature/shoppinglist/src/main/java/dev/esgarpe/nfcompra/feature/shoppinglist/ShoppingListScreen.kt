@@ -2,8 +2,14 @@ package dev.esgarpe.nfcompra.feature.shoppinglist
 
 import android.content.Context
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -74,6 +80,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -84,11 +91,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextAlign
@@ -117,11 +126,76 @@ private val ScreenTopPadding = 16.dp
 private val ScreenBottomPadding = 24.dp
 
 @Composable
+private fun LoadingLogoScreen() {
+    val transition = rememberInfiniteTransition(label = "loading-logo")
+    val rotation by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1_600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "loading-ring-rotation",
+    )
+    val scale by transition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.05f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "loading-logo-pulse",
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(WebPage),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier.size(190.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer(rotationZ = rotation),
+            ) {
+                drawCircle(
+                    color = WebPrimary.copy(alpha = 0.16f),
+                    radius = size.minDimension / 2.2f,
+                    center = center,
+                    style = Stroke(width = 10f),
+                )
+                drawArc(
+                    color = GroceryPrimaryStrong,
+                    startAngle = -90f,
+                    sweepAngle = 92f,
+                    useCenter = false,
+                    topLeft = Offset(size.width * 0.08f, size.height * 0.08f),
+                    size = Size(size.width * 0.84f, size.height * 0.84f),
+                    style = Stroke(width = 12f),
+                )
+            }
+            Image(
+                painter = painterResource(R.drawable.nfcompra_logo),
+                contentDescription = "Cargando NFCompra",
+                modifier = Modifier
+                    .size(126.dp)
+                    .graphicsLayer(scaleX = scale, scaleY = scale)
+                    .clip(MaterialTheme.shapes.extraLarge),
+                contentScale = ContentScale.Fit,
+            )
+        }
+    }
+}
+
+@Composable
 fun ShoppingListApp(viewModel: ShoppingListViewModel, onLogout: () -> Unit = {}, onMembers: (String) -> Unit = {}) {
     val state by viewModel.state.collectAsState()
     LaunchedEffect(viewModel) { viewModel.load() }
     when (state) {
-        ShoppingListViewState.Loading -> Text("Cargando lista...")
+        ShoppingListViewState.Loading -> LoadingLogoScreen()
         ShoppingListViewState.NoHouseholds -> FirstHouseholdSetup(
             initialName = "",
             errorMessage = null,

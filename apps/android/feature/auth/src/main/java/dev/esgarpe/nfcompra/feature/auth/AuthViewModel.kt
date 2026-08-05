@@ -31,6 +31,14 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
         viewModelScope.launch { runCatching { repository.logout() } }
     }
 
+    fun resetTransientState() {
+        mutableState.value = AuthUiState()
+    }
+
+    fun clearMessage() {
+        mutableState.value = mutableState.value.copy(message = null)
+    }
+
     private fun submit(action: () -> kotlinx.coroutines.flow.Flow<AuthResult>) {
         viewModelScope.launch {
             mutableState.value = AuthUiState(isSubmitting = true)
