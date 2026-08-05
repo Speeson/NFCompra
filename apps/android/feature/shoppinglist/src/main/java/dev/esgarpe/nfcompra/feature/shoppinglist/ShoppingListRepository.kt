@@ -29,6 +29,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import retrofit2.Response
 import java.io.Closeable
+import java.io.File
 import java.io.IOException
 import java.text.Normalizer
 import java.util.UUID
@@ -132,7 +133,7 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
     override suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> {
         val query = search.normalizedSearch()
         if (query.length < 2) return emptyList()
-        val snapshot = catalogSnapshot ?: loadCatalogSnapshotOrNull()
+        val snapshot = catalogSnapshot
         if (snapshot != null) return snapshot.searchCatalog(query, limit)
         return runCatching {
             val products = api.searchProductCatalog(search, limit.coerceIn(1, 25)).bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
@@ -200,6 +201,7 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
 class OfflineShoppingRepository(
     private val api: ShoppingListApi,
     private val dao: ShoppingDao,
+    private val catalogCache: ProductCatalogCache? = null,
     private val clock: () -> Long = System::currentTimeMillis,
     private val operationId: () -> String = { UUID.randomUUID().toString() },
     private val scheduleSync: () -> Unit = {},
@@ -442,7 +444,7 @@ class OfflineShoppingRepository(
     override suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> = accountOperation {
         val query = search.normalizedSearch()
         if (query.length < 2) return@accountOperation emptyList()
-        val snapshot = catalogSnapshot ?: loadCatalogSnapshotOrNull()
+        val snapshot = catalogSnapshot ?: loadCachedCatalogSnapshotOrNull()
         if (snapshot != null) return@accountOperation snapshot.searchCatalog(query, limit)
         runCatching {
             val products = api.searchProductCatalog(search, limit.coerceIn(1, 25)).bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
@@ -467,6 +469,7 @@ class OfflineShoppingRepository(
         else api.removeProductFavorite(productId).also { isOffline = false }.bodyOrThrow()
         favoriteProductIds = if (favorite) favoriteProductIds + productId else favoriteProductIds - productId
         catalogSnapshot = catalogSnapshot?.applyFavoriteOverlay(favoriteProductIds)
+        catalogSnapshot?.let { catalogCache?.write(it) }
         catalogSnapshot?.firstOrNull { it.id == productId }
             ?: ProductCatalogUiModel(productId, "", "", null, "star", null, favorite)
     }
@@ -479,13 +482,23 @@ class OfflineShoppingRepository(
 
     private suspend fun loadCatalogSnapshotOrNull(): List<ProductCatalogUiModel>? = catalogMutex.withLock {
         catalogSnapshot?.let { return@withLock it }
+        loadCachedCatalogSnapshotOrNull()?.let { return@withLock it }
         runCatching {
             api.productCatalogSnapshot().bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
         }.getOrNull()?.let { products ->
             favoriteProductIds = products.favoriteIds() + favoriteProductIds
-            products.applyFavoriteOverlay(favoriteProductIds).also { catalogSnapshot = it }
+            products.applyFavoriteOverlay(favoriteProductIds).also {
+                catalogSnapshot = it
+                catalogCache?.write(it)
+            }
         }
     }
+
+    private fun loadCachedCatalogSnapshotOrNull(): List<ProductCatalogUiModel>? =
+        catalogCache?.read()?.let { cached ->
+            favoriteProductIds = cached.favoriteIds() + favoriteProductIds
+            cached.applyFavoriteOverlay(favoriteProductIds).also { catalogSnapshot = it }
+        }
 
     override suspend fun deleteItem(item: ShoppingListItemUiModel) = accountOperation {
         databaseMutex.withLock {
@@ -585,6 +598,7 @@ class OfflineShoppingRepository(
                 OfflineShoppingRepository(
                     api = api,
                     dao = database.shoppingDao(),
+                    catalogCache = ProductCatalogCache(context, accountId, moshi),
                     scheduleSync = scheduleSync,
                     syncMutex = syncState.syncMutex,
                     databaseMutex = syncState.databaseMutex,
@@ -742,6 +756,32 @@ private val updateItemJsonAdapter =
     Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build().adapter(UpdateItemRequest::class.java)
 private val deleteItemJsonAdapter =
     Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build().adapter(DeleteItemRequest::class.java)
+
+class ProductCatalogCache(
+    context: Context,
+    accountId: String,
+    moshi: Moshi,
+) {
+    private val cacheFile = File(context.filesDir, "nfcompra-catalog-$accountId.json")
+    private val adapter = moshi.adapter(ProductCatalogCachePayload::class.java)
+
+    fun read(): List<ProductCatalogUiModel>? = runCatching {
+        if (!cacheFile.isFile) return null
+        val payload = adapter.fromJson(cacheFile.readText()) ?: return null
+        if (payload.products.isEmpty()) return null
+        payload.products
+    }.getOrNull()
+
+    fun write(products: List<ProductCatalogUiModel>) {
+        runCatching {
+            cacheFile.writeText(adapter.toJson(ProductCatalogCachePayload(products = products)))
+        }
+    }
+}
+
+private data class ProductCatalogCachePayload(
+    val products: List<ProductCatalogUiModel>,
+)
 
 private fun ProductCatalogItemDto.toUiModel() = ProductCatalogUiModel(
     id = id,
