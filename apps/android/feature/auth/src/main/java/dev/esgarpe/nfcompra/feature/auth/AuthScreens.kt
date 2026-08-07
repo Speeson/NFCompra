@@ -435,14 +435,18 @@ private fun HeaderArtwork(
             .background(Brush.verticalGradient(listOf(AuthPrimary, Color(0xFF6CC51D), AuthPage))),
     ) {
         if (showBack) {
-            TextButton(
+            IconButton(
                 onClick = onBack,
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 24.dp, top = 58.dp),
-                colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
+                    .padding(start = 24.dp, top = 58.dp)
+                    .size(40.dp)
+                    .background(
+                        brush = Brush.linearGradient(AuthGradient),
+                        shape = RoundedCornerShape(4.dp)
+                    )
             ) {
-                Text("←", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Icon(Icons.Outlined.ArrowBack, contentDescription = "Back", tint = Color.White)
             }
         }
         if (title.isNotBlank()) {
