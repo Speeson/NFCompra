@@ -70,6 +70,8 @@ interface ShoppingRepository {
     suspend fun refreshItems(listId: String) = Unit
     fun observeItems(listId: String): Flow<List<ShoppingListItemUiModel>>
     suspend fun createHousehold(name: String): HouseholdUiModel
+    suspend fun updateHousehold(household: HouseholdUiModel, name: String): HouseholdUiModel = error("No se usa en este repositorio.")
+    suspend fun deleteHousehold(household: HouseholdUiModel): Unit = error("No se usa en este repositorio.")
     suspend fun createList(householdId: String, name: String): ShoppingListSummaryUiModel
     suspend fun updateList(list: ShoppingListSummaryUiModel, name: String): ShoppingListSummaryUiModel = error("No se usa en este repositorio.")
     suspend fun deleteList(list: ShoppingListSummaryUiModel): Unit = error("No se usa en este repositorio.")
@@ -103,6 +105,15 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
     override suspend fun createHousehold(name: String): HouseholdUiModel {
         val response = api.createHousehold(CreateHouseholdRequest(name)).bodyOrThrow()
         return HouseholdUiModel(response.household.id, response.household.name)
+    }
+
+    override suspend fun updateHousehold(household: HouseholdUiModel, name: String): HouseholdUiModel {
+        val response = api.updateHousehold(household.id, UpdateHouseholdRequest(name)).bodyOrThrow()
+        return HouseholdUiModel(response.household.id, response.household.name)
+    }
+
+    override suspend fun deleteHousehold(household: HouseholdUiModel) {
+        api.deleteHousehold(household.id).bodyOrThrow()
     }
 
     override suspend fun createList(householdId: String, name: String): ShoppingListSummaryUiModel =
@@ -321,6 +332,21 @@ class OfflineShoppingRepository(
         val response = api.createHousehold(CreateHouseholdRequest(name)).also { isOffline = false }.bodyOrThrow()
         dao.upsertHousehold(response.household.toLocal())
         HouseholdUiModel(response.household.id, response.household.name)
+    }
+
+    override suspend fun updateHousehold(
+        household: HouseholdUiModel,
+        name: String,
+    ): HouseholdUiModel = accountOperation {
+        val response = api.updateHousehold(household.id, UpdateHouseholdRequest(name)).also { isOffline = false }.bodyOrThrow()
+        dao.upsertHousehold(response.household.toLocal())
+        HouseholdUiModel(response.household.id, response.household.name)
+    }
+
+    override suspend fun deleteHousehold(household: HouseholdUiModel) = accountOperation {
+        api.deleteHousehold(household.id).also { isOffline = false }.bodyOrThrow()
+        dao.deleteHouseholdById(household.id)
+        Unit
     }
 
     override suspend fun createList(

@@ -202,6 +202,9 @@ abstract class ShoppingDao {
     @Query("DELETE FROM shopping_lists WHERE id = :listId")
     abstract suspend fun deleteListById(listId: String)
 
+    @Query("DELETE FROM households WHERE id = :householdId")
+    abstract suspend fun deleteHouseholdById(householdId: String)
+
     @Query("DELETE FROM shopping_items WHERE listId = :listId AND isChecked = 1")
     abstract suspend fun deleteCheckedItems(listId: String): Int
 

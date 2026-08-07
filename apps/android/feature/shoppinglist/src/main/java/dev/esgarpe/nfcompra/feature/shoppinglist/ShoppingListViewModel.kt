@@ -36,6 +36,8 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
                     is ShoppingListAction.SelectHousehold -> selectHousehold(data, action.id)
                     is ShoppingListAction.SelectList -> refresh(data, action.id)
                     is ShoppingListAction.CreateHousehold -> createHousehold(data, action.name)
+                    is ShoppingListAction.RenameHousehold -> renameHousehold(data, action.householdId, action.name)
+                    is ShoppingListAction.DeleteHousehold -> deleteHousehold(data, action.householdId)
                     is ShoppingListAction.CreateList -> createList(data, action.householdId, action.name)
                     is ShoppingListAction.RenameList -> renameList(data, action.name)
                     ShoppingListAction.DeleteSelectedList -> deleteSelectedList(data)
@@ -159,6 +161,36 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
     private suspend fun createHousehold(data: ShoppingListViewState.Data, name: String) {
         val household = repository.createHousehold(name)
         publishNoList(data.households + household, emptyList(), household.id)
+    }
+
+    private suspend fun renameHousehold(data: ShoppingListViewState.Data, householdId: String, name: String) {
+        val current = data.households.firstOrNull { it.id == householdId } ?: return
+        val updated = repository.updateHousehold(current, name)
+        publishSelection(
+            data.households.map { if (it.id == updated.id) updated else it },
+            data.lists,
+            data.selectedHouseholdId,
+            data.selectedListId,
+            refreshFromServer = false,
+        )
+    }
+
+    private suspend fun deleteHousehold(data: ShoppingListViewState.Data, householdId: String) {
+        val current = data.households.firstOrNull { it.id == householdId } ?: return
+        repository.deleteHousehold(current)
+        val remainingHouseholds = data.households.filterNot { it.id == householdId }
+        if (remainingHouseholds.isEmpty()) {
+            mutableState.value = ShoppingListViewState.NoHouseholds
+            return
+        }
+        val nextHouseholdId = remainingHouseholds.firstOrNull { it.id == data.selectedHouseholdId }?.id
+            ?: remainingHouseholds.first().id
+        val nextLists = if (nextHouseholdId == data.selectedHouseholdId) {
+            data.lists.filterNot { it.householdId == householdId }
+        } else {
+            repository.lists(nextHouseholdId)
+        }
+        publishSelection(remainingHouseholds, nextLists, nextHouseholdId, nextLists.firstOrNull()?.id)
     }
 
     private suspend fun createInitialHousehold(name: String) {

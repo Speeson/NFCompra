@@ -43,6 +43,8 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.HomeWork
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Add
@@ -339,7 +341,7 @@ internal fun ShoppingListContent(
                                     selectedTab = DashboardTab.Lists
                                 },
                             )
-                            DashboardTab.Households -> HouseholdsPanel(data, onAction, { creatingHousehold = true })
+                            DashboardTab.Households -> HouseholdsPanel(data, onAction, { creatingHousehold = true }, onMembers)
                             DashboardTab.Lists -> ListsPanel(
                                 data,
                                 onAction,
@@ -715,9 +717,12 @@ private fun DashboardHome(
         }
         SectionTitle("Tus hogares")
         data.households.take(3).forEach { household ->
-            HouseholdCard(household, data.lists.count { it.householdId == household.id }, household.id == data.selectedHouseholdId) {
-                onAction(ShoppingListAction.SelectHousehold(household.id))
-            }
+            HouseholdCard(
+                household = household,
+                listCount = data.lists.count { it.householdId == household.id },
+                selected = household.id == data.selectedHouseholdId,
+                onOpen = { onAction(ShoppingListAction.SelectHousehold(household.id)) },
+            )
         }
         SectionTitle("Listas recientes")
         if (data.lists.isEmpty()) EmptyListForHousehold(onCreateList)
@@ -742,8 +747,16 @@ private fun DashboardHome(
 }
 
 @Composable
-private fun HouseholdsPanel(data: ShoppingListViewState.Data, onAction: (ShoppingListAction) -> Unit, onCreateHousehold: () -> Unit) {
-    val totalLists = data.lists.size
+private fun HouseholdsPanel(
+    data: ShoppingListViewState.Data,
+    onAction: (ShoppingListAction) -> Unit,
+    onCreateHousehold: () -> Unit,
+    onMembers: (String) -> Unit,
+) {
+    var expandedHouseholdId by remember(data.households) { mutableStateOf<String?>(null) }
+    var renamingHousehold by remember { mutableStateOf<HouseholdUiModel?>(null) }
+    var deletingHousehold by remember { mutableStateOf<HouseholdUiModel?>(null) }
+    val visibleHouseholds = expandedHouseholdId?.let { id -> data.households.filter { it.id == id } } ?: data.households
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -753,16 +766,56 @@ private fun HouseholdsPanel(data: ShoppingListViewState.Data, onAction: (Shoppin
             .padding(top = ScreenTopPadding, bottom = ScreenBottomPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        HouseholdsMiniDashboard(
-            householdCount = data.households.size,
-            listCount = totalLists,
-            onCreateHousehold = onCreateHousehold,
-        )
-        data.households.forEach { household ->
-            HouseholdCard(household, data.lists.count { it.householdId == household.id }, household.id == data.selectedHouseholdId) {
-                onAction(ShoppingListAction.SelectHousehold(household.id))
-            }
+        Button(
+            onClick = onCreateHousehold,
+            modifier = Modifier.fillMaxWidth().height(50.dp),
+            shape = MaterialTheme.shapes.medium,
+            colors = webPrimaryButtonColors(),
+        ) {
+            Text("+  Crear hogar", fontWeight = FontWeight.Bold)
         }
+        SeparatorTitle("Gestiona tus hogares")
+        visibleHouseholds.forEach { household ->
+            val listCount = data.lists.count { it.householdId == household.id }
+            val expanded = household.id == expandedHouseholdId
+            HouseholdCard(
+                household = household,
+                listCount = listCount,
+                selected = household.id == data.selectedHouseholdId,
+                expanded = expanded,
+                onToggleExpanded = {
+                    expandedHouseholdId = if (expanded) null else household.id
+                },
+                onOpen = { onAction(ShoppingListAction.SelectHousehold(household.id)) },
+                onRename = { renamingHousehold = household },
+                onDelete = { deletingHousehold = household },
+                onMembers = { onMembers(household.id) },
+            )
+        }
+    }
+    renamingHousehold?.let { household ->
+        CreateEntityDialog(
+            title = "Renombrar hogar",
+            label = "Nuevo nombre del hogar",
+            confirmText = "Guardar",
+            onConfirm = { name ->
+                onAction(ShoppingListAction.RenameHousehold(household.id, name))
+                renamingHousehold = null
+            },
+            onDismiss = { renamingHousehold = null },
+        )
+    }
+    deletingHousehold?.let { household ->
+        ConfirmDialog(
+            title = "Eliminar hogar",
+            message = "Se eliminará ${household.name}, sus listas y sus productos.",
+            onConfirm = {
+                onAction(ShoppingListAction.DeleteHousehold(household.id))
+                deletingHousehold = null
+                if (expandedHouseholdId == household.id) expandedHouseholdId = null
+            },
+            onDismiss = { deletingHousehold = null },
+        )
     }
 }
 
@@ -1125,6 +1178,19 @@ private fun SectionTitle(title: String) {
 }
 
 @Composable
+private fun SeparatorTitle(title: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(modifier = Modifier.weight(1f).height(1.dp).background(WebPrimary.copy(alpha = 0.18f)))
+        Text(title, color = WebPrimary, fontWeight = FontWeight.Black, fontSize = 13.sp)
+        Box(modifier = Modifier.weight(1f).height(1.dp).background(WebPrimary.copy(alpha = 0.18f)))
+    }
+}
+
+@Composable
 private fun CompactMetricCard(title: String, value: String, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
     Card(
         modifier = modifier.height(92.dp).clickable(onClick = onClick),
@@ -1193,15 +1259,100 @@ private fun ContinueListCard(
 }
 
 @Composable
-private fun HouseholdCard(household: HouseholdUiModel, listCount: Int, selected: Boolean, onOpen: () -> Unit) {
-    Card(colors = CardDefaults.cardColors(containerColor = if (selected) WebLime else WebSurface)) {
-        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            Column {
-                Text(household.name, style = MaterialTheme.typography.titleMedium, color = WebText, fontWeight = FontWeight.Bold)
-                Text("$listCount listas activas", style = MaterialTheme.typography.bodySmall, color = WebMuted, fontWeight = FontWeight.SemiBold)
+private fun HouseholdCard(
+    household: HouseholdUiModel,
+    listCount: Int,
+    selected: Boolean,
+    onOpen: () -> Unit,
+    expanded: Boolean = false,
+    onToggleExpanded: () -> Unit = {},
+    onRename: () -> Unit = {},
+    onDelete: () -> Unit = {},
+    onMembers: () -> Unit = {},
+) {
+    Card(colors = CardDefaults.cardColors(containerColor = if (selected) WebLime.copy(alpha = 0.85f) else WebSurface)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onToggleExpanded)
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(household.name, style = MaterialTheme.typography.titleMedium, color = WebText, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("$listCount ${if (listCount == 1) "lista activa" else "listas activas"}", style = MaterialTheme.typography.bodySmall, color = WebMuted, fontWeight = FontWeight.SemiBold)
+                }
+                Button(onClick = onOpen, shape = MaterialTheme.shapes.medium, colors = webPrimaryButtonColors()) { Text(if (selected) "Abierto" else "Abrir") }
+                IconButton(onClick = onToggleExpanded) {
+                    Icon(
+                        imageVector = if (expanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                        contentDescription = if (expanded) "Compactar hogar" else "Desplegar hogar",
+                        tint = WebPrimary,
+                    )
+                }
             }
-            Button(onClick = onOpen, shape = MaterialTheme.shapes.medium, colors = webPrimaryButtonColors()) { Text(if (selected) "Abierto" else "Abrir") }
+            if (expanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(household.name, color = WebText, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(if (selected) "Hogar abierto" else "Hogar disponible", color = WebMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        SquareSmallActionButton(Icons.Outlined.Edit, "Editar hogar", WebPrimary, onRename)
+                        SquareSmallActionButton(Icons.Outlined.Delete, "Eliminar hogar", Color(0xFFB91C1C), onDelete)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = onMembers,
+                            modifier = Modifier.weight(1f).height(48.dp),
+                            shape = MaterialTheme.shapes.medium,
+                            colors = webPrimaryButtonColors(),
+                        ) {
+                            Icon(Icons.Outlined.Person, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text("  Miembros")
+                        }
+                        Button(
+                            onClick = onOpen,
+                            modifier = Modifier.weight(1f).height(48.dp),
+                            shape = MaterialTheme.shapes.medium,
+                            colors = webLimeButtonColors(),
+                        ) {
+                            Text(if (selected) "Abierto" else "Abrir hogar", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Text(
+                        text = "Desde Miembros puedes invitar, revisar miembros activos e invitaciones pendientes, y eliminar miembros si eres propietario.",
+                        color = WebMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun SquareSmallActionButton(icon: ImageVector, contentDescription: String, color: Color, onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(42.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .border(1.dp, color.copy(alpha = 0.45f), MaterialTheme.shapes.medium)
+            .background(color.copy(alpha = 0.08f)),
+    ) {
+        Icon(icon, contentDescription = contentDescription, tint = color, modifier = Modifier.size(20.dp))
     }
 }
 

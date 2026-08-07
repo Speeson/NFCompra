@@ -21,6 +21,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Group
@@ -128,6 +130,7 @@ fun AuthApp(viewModel: AuthViewModel, onSignedIn: () -> Unit = {}) {
                 resetEmail = email
                 route = AuthRoute.OTP
             },
+            onBack = { route = AuthRoute.WELCOME },
         )
         AuthRoute.OTP -> OtpScreen(
             state = state,
@@ -300,17 +303,38 @@ fun VerificationScreen(state: AuthUiState, onVerify: (String) -> Unit, onBack: (
 }
 
 @Composable
-fun ForgotPasswordScreen(state: AuthUiState, onRequest: (String) -> Unit, onOtp: (String) -> Unit) {
+fun ForgotPasswordScreen(state: AuthUiState, onRequest: (String) -> Unit, onOtp: (String) -> Unit, onBack: () -> Unit) {
     var email by remember { mutableStateOf("") }
-    AuthSimpleForm("Recuperar contraseña", state) {
-        EmailField(email) { email = it }
-        PrimaryAuthButton("Enviar código", enabled = !state.isSubmitting) { onRequest(email) }
-        TextButton(
-            onClick = { onOtp(email) },
-            enabled = email.isNotBlank(),
-            colors = ButtonDefaults.textButtonColors(contentColor = AuthPrimary),
+    Box(modifier = Modifier.fillMaxSize()) {
+        AuthSimpleForm("Recuperar contraseña", state) {
+            EmailField(email) { email = it }
+            PrimaryAuthButton("Enviar código", enabled = !state.isSubmitting) { onRequest(email) }
+            TextButton(
+                onClick = { onOtp(email) },
+                enabled = email.isNotBlank(),
+                colors = ButtonDefaults.textButtonColors(contentColor = AuthPrimary),
+            ) {
+                Text("Ya tengo un código")
+            }
+        }
+        
+        // Back button overlay - positioned absolutely to ensure it's always on top
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 40.dp, start = 16.dp)
         ) {
-            Text("Ya tengo un código")
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(
+                        brush = Brush.linearGradient(AuthGradient),
+                        shape = RoundedCornerShape(4.dp)
+                    )
+            ) {
+                Icon(Icons.Outlined.ArrowBack, contentDescription = "Back", tint = Color.White)
+            }
         }
     }
 }

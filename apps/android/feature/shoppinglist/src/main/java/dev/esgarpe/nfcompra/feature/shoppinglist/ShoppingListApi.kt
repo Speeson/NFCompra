@@ -29,6 +29,7 @@ data class ErrorResponse(val error: ApiError)
 data class ApiError(val code: String, val message: String, val details: ApiErrorDetails = ApiErrorDetails())
 data class ApiErrorDetails(val current: ShoppingItemDto? = null)
 data class CreateHouseholdRequest(val name: String)
+data class UpdateHouseholdRequest(val name: String)
 data class CreateListRequest(val name: String)
 data class UpdateListRequest(val name: String, val expectedVersion: Int, val operationId: String)
 data class DeleteListRequest(val expectedVersion: Int, val operationId: String)
@@ -67,6 +68,9 @@ data class MeResponse(val user: MeUserDto)
 interface ShoppingListApi {
     @GET("v1/households") suspend fun households(): Response<HouseholdsResponse>
     @POST("v1/households") suspend fun createHousehold(@Body request: CreateHouseholdRequest): Response<HouseholdResponse>
+    @PATCH("v1/households/{householdId}") suspend fun updateHousehold(@Path("householdId") householdId: String, @Body request: UpdateHouseholdRequest): Response<HouseholdResponse>
+    @HTTP(method = "DELETE", path = "v1/households/{householdId}")
+    suspend fun deleteHousehold(@Path("householdId") householdId: String): Response<Unit>
     @GET("v1/households/{householdId}/lists") suspend fun lists(@Path("householdId") householdId: String): Response<ListsResponse>
     @POST("v1/households/{householdId}/lists") suspend fun createList(@Path("householdId") householdId: String, @Body request: CreateListRequest): Response<ListResponse>
     @PATCH("v1/lists/{listId}") suspend fun updateList(@Path("listId") listId: String, @Body request: UpdateListRequest): Response<ListResponse>
