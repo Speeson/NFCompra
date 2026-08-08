@@ -42,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -325,7 +326,7 @@ fun NotificationPopup(
     onDismiss: () -> Unit,
 ) {
     var confirmDeleteAll by remember { mutableStateOf(false) }
-    val ready = state as? NotificationUiState.Ready
+    var expandedId by remember { mutableStateOf<String?>(null) }
 
     Box(
         modifier = Modifier
@@ -360,7 +361,8 @@ fun NotificationPopup(
                     NotificationUiState.Loading -> Text("Cargando notificaciones...", modifier = Modifier.padding(vertical = 24.dp))
                     is NotificationUiState.Error -> Text(state.message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 24.dp))
                     is NotificationUiState.Ready -> {
-                        if (ready!!.notifications.isEmpty()) {
+                        val ready = state
+                        if (ready.notifications.isEmpty()) {
                             Text("No hay notificaciones", modifier = Modifier.padding(vertical = 24.dp), color = Color(0xFF527062))
                         } else {
                             Column(
@@ -372,10 +374,88 @@ fun NotificationPopup(
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 ready.notifications.forEach { notification ->
-                                    NotificationCard(
-                                        notification = notification,
-                                        onClick = { onAction(SharingAction.OpenNotification(notification.id)) },
-                                    )
+                                    val isExpanded = expandedId == notification.id
+                                    val bgColor = if (notification.isRead) Color(0xFFF8FCF9) else Color(0xFFF0FFF4)
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { expandedId = if (isExpanded) null else notification.id },
+                                        colors = CardDefaults.cardColors(containerColor = bgColor),
+                                        shape = RoundedCornerShape(10.dp),
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        notification.title,
+                                                        fontWeight = if (notification.isRead) FontWeight.Medium else FontWeight.Bold,
+                                                        color = Color(0xFF10271E),
+                                                        fontSize = 14.sp,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                    )
+                                                    Row(
+                                                        modifier = Modifier.padding(top = 2.dp),
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                    ) {
+                                                        notification.createdAt?.let { iso ->
+                                                            val parsed = runCatching { java.time.Instant.parse(iso).atZone(java.time.ZoneId.systemDefault()).toLocalDateTime() }.getOrNull()
+                                                            if (parsed != null) {
+                                                                val formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+                                                                Text(parsed.format(formatter), color = Color(0xFF9CA3AF), fontSize = 10.sp)
+                                                            }
+                                                        }
+                                                        if (!notification.isRead) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(6.dp)
+                                                                    .clip(CircleShape)
+                                                                    .background(Color(0xFF1C7144)),
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                                IconButton(
+                                                    onClick = { onAction(SharingAction.DeleteNotification(notification.id)); expandedId = null },
+                                                    modifier = Modifier
+                                                        .size(30.dp)
+                                                        .border(1.dp, Color(0xFFE57373).copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                                                        .background(Color(0xFFE57373).copy(alpha = 0.08f), RoundedCornerShape(6.dp)),
+                                                ) {
+                                                    Icon(Icons.Outlined.Close, contentDescription = "Eliminar", tint = Color(0xFFE57373), modifier = Modifier.size(14.dp))
+                                                }
+                                            }
+                                            if (isExpanded) {
+                                                Text(notification.body, color = Color(0xFF527062), fontSize = 12.sp)
+                                                if (notification.invitationId != null) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    ) {
+                                                        Button(
+                                                            onClick = { onAction(SharingAction.OpenNotification(notification.id)) },
+                                                            modifier = Modifier.weight(1f).height(36.dp),
+                                                            shape = RoundedCornerShape(8.dp),
+                                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C7144), contentColor = Color.White),
+                                                        ) { Text("Aceptar", fontSize = 12.sp) }
+                                                        Button(
+                                                            onClick = { onAction(SharingAction.DeleteNotification(notification.id)); expandedId = null },
+                                                            modifier = Modifier.weight(1f).height(36.dp),
+                                                            shape = RoundedCornerShape(8.dp),
+                                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFEF2F2), contentColor = Color(0xFFDC2626)),
+                                                        ) { Text("Rechazar", fontSize = 12.sp) }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
 
@@ -423,32 +503,5 @@ fun NotificationPopup(
                 ) { Text("Cancelar") }
             },
         )
-    }
-}
-
-@Composable
-private fun NotificationCard(notification: NotificationUiModel, onClick: () -> Unit) {
-    val bgColor = if (notification.isRead) Color(0xFFF8FCF9) else Color(0xFFF0FFF4)
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = bgColor),
-        shape = RoundedCornerShape(10.dp),
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(notification.title, fontWeight = if (notification.isRead) FontWeight.Medium else FontWeight.Bold, color = Color(0xFF10271E), fontSize = 14.sp)
-            Text(notification.body, color = Color(0xFF527062), fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            notification.createdAt?.let { iso ->
-                val parsed = runCatching { java.time.Instant.parse(iso).atZone(java.time.ZoneId.systemDefault()).toLocalDateTime() }.getOrNull()
-                if (parsed != null) {
-                    val formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
-                    Text(parsed.format(formatter), color = Color(0xFF9CA3AF), fontSize = 10.sp)
-                }
-            }
-        }
     }
 }

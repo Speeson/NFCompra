@@ -42,6 +42,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
                     is ShoppingListAction.CreateHousehold -> createHousehold(data, action.name)
                     is ShoppingListAction.RenameHousehold -> renameHousehold(data, action.householdId, action.name)
                     is ShoppingListAction.DeleteHousehold -> deleteHousehold(data, action.householdId)
+                    is ShoppingListAction.LeaveHousehold -> leaveHousehold(data, action.householdId)
                     is ShoppingListAction.CreateList -> createList(data, action.householdId, action.name)
                     is ShoppingListAction.RenameList -> renameList(data, action.name)
                     ShoppingListAction.DeleteSelectedList -> deleteSelectedList(data)
@@ -182,6 +183,23 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
     private suspend fun deleteHousehold(data: ShoppingListViewState.Data, householdId: String) {
         val current = data.households.firstOrNull { it.id == householdId } ?: return
         repository.deleteHousehold(current)
+        val remainingHouseholds = data.households.filterNot { it.id == householdId }
+        if (remainingHouseholds.isEmpty()) {
+            mutableState.value = ShoppingListViewState.NoHouseholds
+            return
+        }
+        val nextHouseholdId = remainingHouseholds.firstOrNull { it.id == data.selectedHouseholdId }?.id
+            ?: remainingHouseholds.first().id
+        val nextLists = if (nextHouseholdId == data.selectedHouseholdId) {
+            data.lists.filterNot { it.householdId == householdId }
+        } else {
+            repository.lists(nextHouseholdId)
+        }
+        publishSelection(remainingHouseholds, nextLists, nextHouseholdId, nextLists.firstOrNull()?.id)
+    }
+
+    private suspend fun leaveHousehold(data: ShoppingListViewState.Data, householdId: String) {
+        repository.leaveHousehold(householdId)
         val remainingHouseholds = data.households.filterNot { it.id == householdId }
         if (remainingHouseholds.isEmpty()) {
             mutableState.value = ShoppingListViewState.NoHouseholds

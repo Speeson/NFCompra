@@ -19,8 +19,9 @@ NFCompra MVP: shopping list app with Cloudflare Worker/D1 API, React PWA, and An
 - Android: Dashboard shell polishing, compact household cards, lists grouped by household, gradient shell styling.
 - Android: BackHandler in auth flow for proper system Back navigation; email validation on password recovery; resend-code action on OTP screen; responsive WelcomeScreen and dashboard shell.
 - Android: Double-back-to-exit via BackHandler + Toast on both auth welcome and dashboard home root screens.
-- Android: HouseholdCard now shows owner/member status instead of duplicate name. Owner gets delete+edit actions; member gets leave+disabled edit. HouseholdUiModel includes ownerId. CurrentUserId threaded from MainActivity through ShoppingListApp.
-- API: DELETE /v1/notifications added. Invitation email uses dedicated HTML template with household name and inviter info. Access tokens at 1h.
+- Android: HouseholdCard shows owner/member status. Owner: delete+edit. Member: leave (calls DELETE /v1/households/{id}/leave) + disabled edit.
+- Android: NotificationPopup with compact/expandable items (title+date+time+X collapsed; body+actions expanded). Single-notification delete via X button calls DELETE /v1/notifications/{id}.
+- API: DELETE /v1/households/{id}/leave for self-removal. DELETE /v1/notifications/{id} for single notification delete. Access tokens at 1h.
 
 ## Build / test commands
 

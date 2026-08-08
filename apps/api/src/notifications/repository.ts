@@ -105,3 +105,7 @@ export async function markAllNotificationsRead(env: Env, userId: string): Promis
 export async function deleteAllNotifications(env: Env, userId: string): Promise<void> {
   await env.DB.prepare('DELETE FROM notifications WHERE user_id = ?').bind(userId).run();
 }
+
+export async function deleteNotification(env: Env, notificationId: string, userId: string): Promise<void> {
+  await env.DB.prepare('DELETE FROM notifications WHERE id = ? AND user_id = ?').bind(notificationId, userId).run();
+}

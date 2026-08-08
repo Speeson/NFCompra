@@ -72,6 +72,7 @@ interface ShoppingRepository {
     suspend fun createHousehold(name: String): HouseholdUiModel
     suspend fun updateHousehold(household: HouseholdUiModel, name: String): HouseholdUiModel = error("No se usa en este repositorio.")
     suspend fun deleteHousehold(household: HouseholdUiModel): Unit = error("No se usa en este repositorio.")
+    suspend fun leaveHousehold(householdId: String): Unit = error("No se usa en este repositorio.")
     suspend fun createList(householdId: String, name: String): ShoppingListSummaryUiModel
     suspend fun updateList(list: ShoppingListSummaryUiModel, name: String): ShoppingListSummaryUiModel = error("No se usa en este repositorio.")
     suspend fun deleteList(list: ShoppingListSummaryUiModel): Unit = error("No se usa en este repositorio.")
@@ -114,6 +115,10 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
 
     override suspend fun deleteHousehold(household: HouseholdUiModel) {
         api.deleteHousehold(household.id).bodyOrThrow()
+    }
+
+    override suspend fun leaveHousehold(householdId: String) {
+        api.leaveHousehold(householdId).bodyOrThrow()
     }
 
     override suspend fun createList(householdId: String, name: String): ShoppingListSummaryUiModel =
@@ -346,6 +351,12 @@ class OfflineShoppingRepository(
     override suspend fun deleteHousehold(household: HouseholdUiModel) = accountOperation {
         api.deleteHousehold(household.id).also { isOffline = false }.bodyOrThrow()
         dao.deleteHouseholdById(household.id)
+        Unit
+    }
+
+    override suspend fun leaveHousehold(householdId: String) = accountOperation {
+        api.leaveHousehold(householdId).also { isOffline = false }.bodyOrThrow()
+        dao.deleteHouseholdById(householdId)
         Unit
     }
 

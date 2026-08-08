@@ -23,6 +23,7 @@ sealed interface SharingAction {
     data class OpenNotification(val notificationId: String) : SharingAction
     data object MarkAllRead : SharingAction
     data object DeleteAll : SharingAction
+    data class DeleteNotification(val notificationId: String) : SharingAction
     data object Retry : SharingAction
 }
 sealed interface SharingNavigation {
@@ -83,9 +84,10 @@ class SharingViewModel(
                 is SharingAction.OpenNotification -> openNotification(ready, action.notificationId)
                 SharingAction.MarkAllRead -> { repository.markAllRead(); householdId?.let { load(it) } ?: loadNotifications() }
                 SharingAction.DeleteAll -> { repository.deleteAllNotifications(); householdId?.let { load(it) } ?: loadNotifications() }
+                is SharingAction.DeleteNotification -> { repository.deleteNotification(action.notificationId); householdId?.let { load(it) } ?: loadNotifications() }
                 SharingAction.Retry -> Unit
             }
-            if (action !is SharingAction.AcceptInvitation && action !is SharingAction.OpenNotification && action !== SharingAction.MarkAllRead && action !== SharingAction.DeleteAll) householdId?.let { load(it) } ?: loadNotifications()
+            if (action !is SharingAction.AcceptInvitation && action !is SharingAction.OpenNotification && action !== SharingAction.MarkAllRead && action !== SharingAction.DeleteAll && action !is SharingAction.DeleteNotification) householdId?.let { load(it) } ?: loadNotifications()
         } catch (error: SharingApiException) { mutableState.value = SharingUiState.Error(error.message) }
         catch (_: Exception) { mutableState.value = SharingUiState.Error("No se pudo conectar con el servidor.") }
     }

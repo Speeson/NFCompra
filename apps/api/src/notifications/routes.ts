@@ -1,7 +1,7 @@
 import type { Env } from '../env';
 import type { AuthUser } from '../middleware/auth';
 import { errorResponse, notFound } from '../shared/http';
-import { listNotifications, markAllNotificationsRead, markNotificationRead, unreadNotificationCount, deleteAllNotifications } from './repository';
+import { listNotifications, markAllNotificationsRead, markNotificationRead, unreadNotificationCount, deleteAllNotifications, deleteNotification } from './repository';
 
 const notificationPattern = /^\/v1\/notifications\/([^/]+)\/read$/;
 
@@ -25,7 +25,14 @@ export async function handleNotificationRoute(request: Request, env: Env, user: 
     return Response.json({ status: 'deleted' });
   }
   const match = url.pathname.match(notificationPattern);
-  if (!match || request.method !== 'PATCH') return null;
-  if (!(await markNotificationRead(env, match[1], user.id))) return notFound();
-  return Response.json({ status: 'read' });
+  if (match && request.method === 'PATCH') {
+    if (!(await markNotificationRead(env, match[1], user.id))) return notFound();
+    return Response.json({ status: 'read' });
+  }
+  const deleteMatch = url.pathname.match(/^\/v1\/notifications\/([^/]+)$/);
+  if (deleteMatch && request.method === 'DELETE') {
+    await deleteNotification(env, deleteMatch[1], user.id);
+    return Response.json({ status: 'deleted' });
+  }
+  return null;
 }

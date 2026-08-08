@@ -828,7 +828,7 @@ private fun HouseholdsPanel(
                 onRename = { renamingHousehold = household },
                 onDelete = { deletingHousehold = household },
                 onMembers = { onMembers(household.id) },
-                onLeave = { onAction(ShoppingListAction.DeleteHousehold(household.id)) },
+                onLeave = { onAction(ShoppingListAction.LeaveHousehold(household.id)) },
             )
         }
     }

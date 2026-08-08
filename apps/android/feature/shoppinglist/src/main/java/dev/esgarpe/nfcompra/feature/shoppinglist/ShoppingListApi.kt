@@ -90,6 +90,8 @@ interface ShoppingListApi {
     @HTTP(method = "DELETE", path = "v1/product-catalog/{productId}/favorite")
     suspend fun removeProductFavorite(@Path("productId") productId: String): Response<ProductFavoriteResponse>
     @GET("v1/me") suspend fun me(): Response<MeResponse>
+    @HTTP(method = "DELETE", path = "v1/households/{householdId}/leave")
+    suspend fun leaveHousehold(@Path("householdId") householdId: String): Response<Unit>
 }
 
 data class ProductFavoriteResponse(val productId: String, val isFavorite: Boolean)

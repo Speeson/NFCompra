@@ -34,4 +34,5 @@ interface SharingApi {
     @PATCH("v1/notifications/{notificationId}/read") suspend fun markRead(@Path("notificationId") notificationId: String): Response<Unit>
     @POST("v1/notifications/read-all") suspend fun markAllRead(): Response<Unit>
     @DELETE("v1/notifications") suspend fun deleteAll(): Response<Unit>
+    @DELETE("v1/notifications/{notificationId}") suspend fun deleteNotification(@Path("notificationId") notificationId: String): Response<Unit>
 }

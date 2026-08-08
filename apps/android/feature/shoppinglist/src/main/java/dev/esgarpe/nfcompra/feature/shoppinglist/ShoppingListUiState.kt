@@ -41,6 +41,7 @@ sealed interface ShoppingListAction {
     data class CreateHousehold(val name: String) : ShoppingListAction
     data class RenameHousehold(val householdId: String, val name: String) : ShoppingListAction
     data class DeleteHousehold(val householdId: String) : ShoppingListAction
+    data class LeaveHousehold(val householdId: String) : ShoppingListAction
     data class CreateList(val householdId: String, val name: String) : ShoppingListAction
     data class RenameList(val name: String) : ShoppingListAction
     data object DeleteSelectedList : ShoppingListAction

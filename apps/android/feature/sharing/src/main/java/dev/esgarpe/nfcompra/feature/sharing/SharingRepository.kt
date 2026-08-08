@@ -25,6 +25,7 @@ interface SharingDataSource {
     suspend fun markRead(notificationId: String)
     suspend fun markAllRead()
     suspend fun deleteAllNotifications()
+    suspend fun deleteNotification(notificationId: String)
 }
 
 class SharingRepository(private val api: SharingApi) : SharingDataSource {
@@ -40,6 +41,7 @@ class SharingRepository(private val api: SharingApi) : SharingDataSource {
     override suspend fun markRead(notificationId: String) { api.markRead(notificationId).bodyOrThrow() }
     override suspend fun markAllRead() { api.markAllRead().bodyOrThrow() }
     override suspend fun deleteAllNotifications() { api.deleteAll().bodyOrThrow() }
+    override suspend fun deleteNotification(notificationId: String) { api.deleteNotification(notificationId).bodyOrThrow() }
 
     private fun <T> Response<T>.bodyOrThrow(): T {
         body()?.let { return it }

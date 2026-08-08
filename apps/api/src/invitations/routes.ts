@@ -95,7 +95,20 @@ export async function handleInvitationRoute(request: Request, env: Env, user: Au
   }
 
   const memberMatch = path.match(/^\/v1\/households\/([^/]+)\/members(?:\/([^/]+))?$/);
-  if (!memberMatch) return null;
+  if (!memberMatch) {
+    const leaveMatch = path.match(/^\/v1\/households\/([^/]+)\/leave$/);
+    if (leaveMatch && request.method === 'DELETE') {
+      const [, leaveHouseholdId] = leaveMatch;
+      const result = await removeHouseholdMember(env, { householdId: leaveHouseholdId, requesterId: user.id, memberUserId: user.id });
+      if (result === 'self') {
+        await env.DB.prepare("DELETE FROM household_members WHERE household_id = ? AND user_id = ?").bind(leaveHouseholdId, user.id).run();
+        return Response.json({ status: 'left' });
+      }
+      if (result === 'not_found') return notFound();
+      return Response.json({ status: 'left' });
+    }
+    return null;
+  }
   const [, householdId, memberUserId] = memberMatch;
   if (!memberUserId && request.method === 'GET') {
     if (!(await isHouseholdMember(env, householdId, user.id))) return errorResponse('FORBIDDEN', 'No tienes permisos para consultar este hogar.', 403);
