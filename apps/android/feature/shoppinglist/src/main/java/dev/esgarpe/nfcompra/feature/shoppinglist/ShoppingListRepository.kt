@@ -34,7 +34,7 @@ import java.io.IOException
 import java.text.Normalizer
 import java.util.UUID
 
-data class HouseholdUiModel(val id: String, val name: String)
+data class HouseholdUiModel(val id: String, val name: String, val ownerId: String = "")
 data class ShoppingListSummaryUiModel(val id: String, val householdId: String, val name: String, val version: Int = 1)
 data class ProductCatalogUiModel(
     val id: String,
@@ -93,7 +93,7 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
     private val catalogMutex = Mutex()
 
     override suspend fun households(): List<HouseholdUiModel> =
-        api.households().bodyOrThrow().households.map { HouseholdUiModel(it.id, it.name) }
+        api.households().bodyOrThrow().households.map { HouseholdUiModel(it.id, it.name, it.ownerId) }
 
     override suspend fun lists(householdId: String): List<ShoppingListSummaryUiModel> =
         api.lists(householdId).bodyOrThrow().lists.map { ShoppingListSummaryUiModel(it.id, it.householdId, it.name) }
@@ -242,15 +242,15 @@ class OfflineShoppingRepository(
         } catch (error: IOException) {
             isOffline = true
             if (dao.snapshot(SnapshotCollection.HOUSEHOLDS) == null) throw error
-            return@accountOperation dao.households().map { HouseholdUiModel(it.id, it.name) }
+            return@accountOperation dao.households().map { HouseholdUiModel(it.id, it.name, it.ownerId) }
         }
         dao.replaceHouseholds(remote, clock())
-        dao.households().map { HouseholdUiModel(it.id, it.name) }
+        dao.households().map { HouseholdUiModel(it.id, it.name, it.ownerId) }
     }
 
     override suspend fun cachedHouseholds(): List<HouseholdUiModel>? = accountOperation {
         if (dao.snapshot(SnapshotCollection.HOUSEHOLDS) == null) return@accountOperation null
-        dao.households().map { HouseholdUiModel(it.id, it.name) }
+        dao.households().map { HouseholdUiModel(it.id, it.name, it.ownerId) }
     }
 
     override suspend fun lists(householdId: String): List<ShoppingListSummaryUiModel> = accountOperation {

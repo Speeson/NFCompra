@@ -7,7 +7,7 @@ import java.io.IOException
 
 data class MemberUiModel(val userId: String, val name: String, val email: String, val role: String)
 data class InvitationUiModel(val id: String, val email: String, val status: String, val expiresAt: String)
-data class NotificationUiModel(val id: String, val title: String, val body: String, val isRead: Boolean, val householdId: String?, val listId: String?, val invitationId: String?)
+data class NotificationUiModel(val id: String, val title: String, val body: String, val isRead: Boolean, val householdId: String?, val listId: String?, val invitationId: String?, val createdAt: String?)
 data class InvitationAcceptance(val householdId: String)
 
 class SharingApiException(val status: Int, val code: String?, override val message: String) : IOException(message)
@@ -24,6 +24,7 @@ interface SharingDataSource {
     suspend fun unreadCount(): Int
     suspend fun markRead(notificationId: String)
     suspend fun markAllRead()
+    suspend fun deleteAllNotifications()
 }
 
 class SharingRepository(private val api: SharingApi) : SharingDataSource {
@@ -34,10 +35,11 @@ class SharingRepository(private val api: SharingApi) : SharingDataSource {
     override suspend fun removeMember(householdId: String, userId: String) { api.removeMember(householdId, userId).bodyOrThrow() }
     override suspend fun accept(token: String): InvitationAcceptance = api.accept(mapOf("token" to token)).bodyOrThrow().let { InvitationAcceptance(it.householdId) }
     override suspend fun acceptById(invitationId: String): InvitationAcceptance = api.acceptById(invitationId).bodyOrThrow().let { InvitationAcceptance(it.householdId) }
-    override suspend fun notifications() = api.notifications().bodyOrThrow().notifications.map { NotificationUiModel(it.id, it.title, it.body, it.readAt != null, it.householdId, it.listId, it.invitationId) }
+    override suspend fun notifications() = api.notifications().bodyOrThrow().notifications.map { NotificationUiModel(it.id, it.title, it.body, it.readAt != null, it.householdId, it.listId, it.invitationId, it.createdAt) }
     override suspend fun unreadCount() = api.unreadCount().bodyOrThrow().count
     override suspend fun markRead(notificationId: String) { api.markRead(notificationId).bodyOrThrow() }
     override suspend fun markAllRead() { api.markAllRead().bodyOrThrow() }
+    override suspend fun deleteAllNotifications() { api.deleteAll().bodyOrThrow() }
 
     private fun <T> Response<T>.bodyOrThrow(): T {
         body()?.let { return it }

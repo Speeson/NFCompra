@@ -7,7 +7,8 @@ export interface EmailMessage {
 
 export interface InvitationEmailMessage {
   to: string;
-  subject: string;
+  householdName: string;
+  inviterName?: string;
   url: string;
 }
 

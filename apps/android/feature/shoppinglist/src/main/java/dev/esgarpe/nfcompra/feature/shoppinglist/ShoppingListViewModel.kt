@@ -4,7 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -320,6 +324,8 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         itemObservation?.cancel()
         val categories = currentCategories().ifEmpty { loadCategories() }
         val displayName = currentDisplayName() ?: loadDisplayName()
+        val householdLists = lists.filter { it.householdId == householdId }
+        val metrics = currentMetrics().takeIf { it.isNotEmpty() } ?: loadHouseholdMetrics(householdLists)
         mutableState.value = ShoppingListViewState.Data(
             content = ShoppingListUiState(
                 title = "Sin listas",
@@ -331,11 +337,27 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
             lists = lists,
             selectedHouseholdId = householdId,
             selectedListId = null,
-            listMetrics = currentMetrics(),
+            listMetrics = metrics,
             productCategories = categories,
             displayName = displayName,
         )
         warmCatalogInBackground()
+    }
+
+    private suspend fun loadHouseholdMetrics(lists: List<ShoppingListSummaryUiModel>): Map<String, ShoppingListMetricsUiModel> {
+        if (lists.isEmpty()) return emptyMap()
+        return coroutineScope {
+            lists.map { list ->
+                async {
+                    repository.refreshItems(list.id)
+                    val items = repository.observeItems(list.id).first()
+                    list.id to ShoppingListMetricsUiModel(
+                        pendingCount = items.count { !it.checked },
+                        checkedCount = items.count { it.checked },
+                    )
+                }
+            }.awaitAll().toMap()
+        }
     }
 
     private fun observeSelectedList(listId: String) {

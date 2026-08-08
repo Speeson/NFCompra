@@ -36,7 +36,7 @@ export async function hashToken(token: string): Promise<string> {
 export async function createAccessToken(userId: string, sessionVersion: number, env: Env): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const header = base64Url(encoder.encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
-  const payload = base64Url(encoder.encode(JSON.stringify({ sub: userId, session_version: sessionVersion, iat: now, exp: now + 15 * 60 })));
+  const payload = base64Url(encoder.encode(JSON.stringify({ sub: userId, session_version: sessionVersion, iat: now, exp: now + 60 * 60 })));
   const signingInput = `${header}.${payload}`;
   return `${signingInput}.${base64Url(await hmac(env.JWT_SECRET, signingInput))}`;
 }

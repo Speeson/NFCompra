@@ -18,7 +18,7 @@ class FakeEmailSender implements EmailSender {
     this.messages.push(message);
   }
   async sendInvitation(message: InvitationEmailMessage): Promise<void> {
-    await this.send({ to: message.to, subject: message.subject, text: `Acepta la invitacion: ${message.url}` });
+    await this.send({ to: message.to, subject: `Invitación a ${message.householdName}`, text: `Te han invitado a ${message.householdName}. Acepta: ${message.url}` });
   }
 }
 

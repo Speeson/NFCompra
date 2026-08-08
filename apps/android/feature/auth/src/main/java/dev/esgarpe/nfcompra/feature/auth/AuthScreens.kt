@@ -1,5 +1,8 @@
 package dev.esgarpe.nfcompra.feature.auth
 
+import android.util.Patterns
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -9,9 +12,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -40,6 +45,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -63,6 +69,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -70,6 +77,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -86,17 +94,47 @@ private val AuthField = Color(0xFFF2F3F2)
 private val AuthDanger = Color(0xFFB42318)
 
 @Composable
-fun AuthApp(viewModel: AuthViewModel, onSignedIn: () -> Unit = {}) {
+fun AuthApp(viewModel: AuthViewModel, onSignedIn: () -> Unit = {}, rememberedEmail: String = "", onRememberEmail: (String) -> Unit = {}) {
     var route by remember { mutableStateOf(AuthRoute.WELCOME) }
     var resetEmail by remember { mutableStateOf("") }
     var resetOtp by remember { mutableStateOf("") }
     val state by viewModel.state.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var lastBackPressMs by remember { mutableStateOf(0L) }
+    LaunchedEffect(lastBackPressMs) {
+        if (lastBackPressMs > 0) {
+            delay(2_000)
+            lastBackPressMs = 0L
+        }
+    }
+    val shouldInterceptBack = route != AuthRoute.WELCOME || lastBackPressMs == 0L || System.currentTimeMillis() - lastBackPressMs >= 2_000
+    BackHandler(enabled = shouldInterceptBack) {
+        if (route != AuthRoute.WELCOME) {
+            route = when (route) {
+                AuthRoute.LOGIN -> AuthRoute.WELCOME
+                AuthRoute.REGISTER, AuthRoute.VERIFY -> AuthRoute.LOGIN
+                AuthRoute.FORGOT -> AuthRoute.WELCOME
+                AuthRoute.OTP -> AuthRoute.FORGOT
+                AuthRoute.RESET -> AuthRoute.LOGIN
+                AuthRoute.WELCOME -> return@BackHandler
+            }
+        } else {
+            lastBackPressMs = System.currentTimeMillis()
+            Toast.makeText(context, "Pulsa de nuevo atrás para salir", Toast.LENGTH_SHORT).show()
+        }
+    }
     LaunchedEffect(Unit) { viewModel.resetTransientState() }
     LaunchedEffect(state.isSignedIn) { if (state.isSignedIn) onSignedIn() }
     LaunchedEffect(state.message) {
         if (state.message != null) {
             delay(4_000)
             viewModel.clearMessage()
+        }
+    }
+    LaunchedEffect(state.message) {
+        if (state.message == "no_session" && route == AuthRoute.WELCOME) {
+            viewModel.clearMessage()
+            route = AuthRoute.LOGIN
         }
     }
     LaunchedEffect(route, state.message) {
@@ -107,15 +145,19 @@ fun AuthApp(viewModel: AuthViewModel, onSignedIn: () -> Unit = {}) {
     when (route) {
         AuthRoute.WELCOME -> WelcomeScreen(
             state = state,
-            onLogin = { route = AuthRoute.LOGIN },
+            onLogin = {
+                viewModel.tryAutoSignIn()
+            },
             onRegister = { route = AuthRoute.REGISTER },
         )
         AuthRoute.LOGIN -> LoginScreen(
             state = state,
+            rememberedEmail = rememberedEmail,
             onLogin = viewModel::login,
             onRegister = { route = AuthRoute.REGISTER },
             onForgotPassword = { route = AuthRoute.FORGOT },
             onBack = { route = AuthRoute.WELCOME },
+            onRememberEmail = onRememberEmail,
         )
         AuthRoute.REGISTER -> RegisterScreen(state, viewModel::register, viewModel::resendVerification, { route = AuthRoute.LOGIN }, { route = AuthRoute.VERIFY })
         AuthRoute.VERIFY -> VerificationScreen(state, viewModel::verify, { route = AuthRoute.LOGIN })
@@ -140,6 +182,7 @@ fun AuthApp(viewModel: AuthViewModel, onSignedIn: () -> Unit = {}) {
                 resetOtp = otp
                 viewModel.verifyPasswordResetOtp(email, otp)
             },
+            onResend = { viewModel.forgotPassword(resetEmail) },
             onBack = { route = AuthRoute.FORGOT },
         )
         AuthRoute.RESET -> ResetPasswordScreen(
@@ -156,12 +199,18 @@ fun WelcomeScreen(
     onLogin: () -> Unit,
     onRegister: () -> Unit,
 ) {
+    val screenH = LocalConfiguration.current.screenHeightDp
+    val bodyTop = (screenH * 0.32f).dp
+    val logoTop = (screenH * 0.04f).dp
+    val logoSize = (screenH * 0.23f).dp
+    val headerH = (screenH * 0.43f).dp
     AuthVisualScaffold(
         title = "",
-        bodyTop = 270.dp,
+        bodyTop = bodyTop,
         showBack = false,
-        logoTop = 34.dp,
-        logoSize = 190.dp,
+        logoTop = logoTop,
+        logoSize = logoSize,
+        headerHeight = headerH,
     ) {
         Text("Bienvenido", color = AuthText, fontSize = 32.sp, fontWeight = FontWeight.Bold)
         Text("Organiza la compra de casa con listas compartidas y acceso rápido por NFC.", color = AuthMuted, lineHeight = 22.sp)
@@ -179,14 +228,16 @@ fun WelcomeScreen(
 @Composable
 fun LoginScreen(
     state: AuthUiState,
+    rememberedEmail: String = "",
     onLogin: (String, String) -> Unit,
     onRegister: () -> Unit,
     onForgotPassword: () -> Unit,
     onBack: () -> Unit,
+    onRememberEmail: (String) -> Unit = {},
 ) {
-    var email by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf(rememberedEmail) }
     var password by remember { mutableStateOf("") }
-    var rememberMe by remember { mutableStateOf(true) }
+    var rememberMe by remember { mutableStateOf(rememberedEmail.isNotBlank()) }
     AuthVisualScaffold(
         title = "",
         bodyTop = 238.dp,
@@ -212,7 +263,10 @@ fun LoginScreen(
                 Text("¿Olvidaste tu contraseña?", fontWeight = FontWeight.Bold)
             }
         }
-        PrimaryAuthButton("Iniciar sesión", enabled = !state.isSubmitting) { onLogin(email, password) }
+        PrimaryAuthButton("Iniciar sesión", enabled = !state.isSubmitting) {
+            if (rememberMe) onRememberEmail(email)
+            onLogin(email, password)
+        }
         CenterLink(
             normal = "¿No tienes una cuenta? ",
             action = "Crear cuenta",
@@ -305,16 +359,20 @@ fun VerificationScreen(state: AuthUiState, onVerify: (String) -> Unit, onBack: (
 @Composable
 fun ForgotPasswordScreen(state: AuthUiState, onRequest: (String) -> Unit, onOtp: (String) -> Unit, onBack: () -> Unit) {
     var email by remember { mutableStateOf("") }
+    val trimmed = email.trim()
+    val emailInvalid = trimmed.isNotBlank() && !Patterns.EMAIL_ADDRESS.matcher(trimmed).matches()
     Box(modifier = Modifier.fillMaxSize()) {
         AuthSimpleForm("Recuperar contraseña", state) {
             EmailField(email) { email = it }
-            PrimaryAuthButton("Enviar código", enabled = !state.isSubmitting) { onRequest(email) }
+            if (emailInvalid) {
+                Text("El formato del correo no es válido.", color = AuthDanger, fontWeight = FontWeight.SemiBold)
+            }
+            PrimaryAuthButton("Enviar código de recuperación", enabled = trimmed.isNotBlank() && !emailInvalid && !state.isSubmitting) { onRequest(trimmed) }
             TextButton(
-                onClick = { onOtp(email) },
-                enabled = email.isNotBlank(),
+                onClick = { onOtp(trimmed) },
                 colors = ButtonDefaults.textButtonColors(contentColor = AuthPrimary),
             ) {
-                Text("Ya tengo un código")
+                Text("Ya tengo un código de recuperación")
             }
         }
         
@@ -344,6 +402,7 @@ fun OtpScreen(
     state: AuthUiState,
     initialEmail: String,
     onNext: (String, String) -> Unit,
+    onResend: () -> Unit,
     onBack: () -> Unit,
 ) {
     var otp by remember { mutableStateOf("") }
@@ -358,6 +417,13 @@ fun OtpScreen(
         AuthStateMessage(state)
         OtpCodeField(value = otp, onValueChange = { value -> otp = value.filter(Char::isDigit).take(6) })
         PrimaryAuthButton("Siguiente", enabled = validOtp && initialEmail.isNotBlank()) { onNext(initialEmail, otp) }
+        TextButton(
+            onClick = onResend,
+            enabled = !state.isSubmitting,
+            colors = ButtonDefaults.textButtonColors(contentColor = AuthPrimary),
+        ) {
+            Text("No he recibido el código", fontWeight = FontWeight.Bold)
+        }
         TextButton(onClick = onBack, colors = ButtonDefaults.textButtonColors(contentColor = AuthPrimary)) {
             Text("Volver a recuperar contraseña", fontWeight = FontWeight.Bold)
         }
@@ -389,6 +455,7 @@ private fun AuthVisualScaffold(
     compact: Boolean = false,
     logoTop: androidx.compose.ui.unit.Dp = 86.dp,
     logoSize: androidx.compose.ui.unit.Dp = 230.dp,
+    headerHeight: androidx.compose.ui.unit.Dp = 360.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     CompositionLocalProvider(LocalContentColor provides AuthText) {
@@ -397,7 +464,7 @@ private fun AuthVisualScaffold(
                 .fillMaxSize()
                 .background(AuthPage),
         ) {
-            HeaderArtwork(title = title, showBack = showBack, onBack = onBack, logoTop = logoTop, logoSize = logoSize)
+            HeaderArtwork(title = title, showBack = showBack, onBack = onBack, logoTop = logoTop, logoSize = logoSize, height = headerHeight)
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -427,11 +494,12 @@ private fun HeaderArtwork(
     onBack: () -> Unit,
     logoTop: androidx.compose.ui.unit.Dp,
     logoSize: androidx.compose.ui.unit.Dp,
+    height: androidx.compose.ui.unit.Dp = 360.dp,
 ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(360.dp)
+            .height(height)
             .background(Brush.verticalGradient(listOf(AuthPrimary, Color(0xFF6CC51D), AuthPage))),
     ) {
         if (showBack) {
@@ -601,8 +669,9 @@ private fun RoundedTextField(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier
-            .height(if (compact) 56.dp else 60.dp)
+            .defaultMinSize(minHeight = if (compact) 56.dp else 60.dp)
             .semantics { this.contentDescription = contentDescription },
+        textStyle = TextStyle(fontSize = 16.sp, lineHeight = 20.sp, color = AuthText),
         label = if (compact) null else ({ Text(label) }),
         placeholder = if (compact) ({ Text(label, color = AuthMuted) }) else null,
         leadingIcon = leadingIcon?.let { icon ->

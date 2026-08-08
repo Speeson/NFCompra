@@ -1,7 +1,7 @@
 import type { Env } from '../env';
 import type { AuthUser } from '../middleware/auth';
 import { errorResponse, notFound } from '../shared/http';
-import { listNotifications, markAllNotificationsRead, markNotificationRead, unreadNotificationCount } from './repository';
+import { listNotifications, markAllNotificationsRead, markNotificationRead, unreadNotificationCount, deleteAllNotifications } from './repository';
 
 const notificationPattern = /^\/v1\/notifications\/([^/]+)\/read$/;
 
@@ -19,6 +19,10 @@ export async function handleNotificationRoute(request: Request, env: Env, user: 
   if (url.pathname === '/v1/notifications/read-all' && request.method === 'POST') {
     await markAllNotificationsRead(env, user.id);
     return Response.json({ status: 'read' });
+  }
+  if (url.pathname === '/v1/notifications' && request.method === 'DELETE') {
+    await deleteAllNotifications(env, user.id);
+    return Response.json({ status: 'deleted' });
   }
   const match = url.pathname.match(notificationPattern);
   if (!match || request.method !== 'PATCH') return null;

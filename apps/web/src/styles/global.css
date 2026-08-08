@@ -616,3 +616,14 @@ h2 { font-size: 1rem; }
   .product-edit-form .edit-quantity-stepper { grid-column: 1 / -1; grid-template-columns: 1fr minmax(2.75rem, auto) 1fr; }
   .product-edit-form .edit-form-action { width: 100%; }
 }
+
+.invitation-card { display: grid; gap: var(--space-5); padding: var(--space-6); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-card); text-align: center; }
+.invitation-icon { font-size: 2.5rem; }
+.invitation-message { color: var(--color-text); font-size: 1.05rem; font-weight: 600; line-height: 1.5; margin: 0; }
+.invitation-error { color: #b42318; background: rgb(254 226 226 / 70%); border-radius: var(--radius-sm); padding: var(--space-3); font-weight: 700; margin: 0; }
+.invitation-loading { color: var(--color-muted); font-weight: 700; padding: var(--space-4) 0; }
+.button-primary { border: 0; border-radius: var(--radius-pill); padding: 0.85rem 1.5rem; background: var(--color-primary); color: var(--color-primary-contrast); cursor: pointer; font: inherit; font-weight: 800; font-size: 1rem; }
+.button-primary:hover, .button-primary:focus-visible { filter: brightness(1.1); }
+.button-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.button-secondary { border: 1px solid var(--color-border); border-radius: var(--radius-pill); padding: 0.65rem 1.25rem; background: transparent; color: var(--color-muted); cursor: pointer; font: inherit; font-weight: 700; }
+.button-secondary:hover, .button-secondary:focus-visible { background: var(--color-page); color: var(--color-text); }

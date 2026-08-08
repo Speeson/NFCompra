@@ -101,3 +101,7 @@ export async function markAllNotificationsRead(env: Env, userId: string): Promis
   const now = new Date().toISOString();
   await env.DB.prepare('UPDATE notifications SET read_at = ?, updated_at = ? WHERE user_id = ? AND read_at IS NULL').bind(now, now, userId).run();
 }
+
+export async function deleteAllNotifications(env: Env, userId: string): Promise<void> {
+  await env.DB.prepare('DELETE FROM notifications WHERE user_id = ?').bind(userId).run();
+}

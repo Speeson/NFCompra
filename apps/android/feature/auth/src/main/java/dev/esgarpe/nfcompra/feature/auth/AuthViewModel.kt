@@ -31,6 +31,18 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
         viewModelScope.launch { runCatching { repository.logout() } }
     }
 
+    fun tryAutoSignIn() {
+        viewModelScope.launch {
+            mutableState.value = AuthUiState(isSubmitting = true)
+            val result = repository.refresh()
+            mutableState.value = when (result) {
+                AuthResult.SignedIn -> AuthUiState(message = "Sesión iniciada.", isSignedIn = true)
+                is AuthResult.Failure -> AuthUiState(message = "no_session")
+                else -> AuthUiState(message = "no_session")
+            }
+        }
+    }
+
     fun resetTransientState() {
         mutableState.value = AuthUiState()
     }

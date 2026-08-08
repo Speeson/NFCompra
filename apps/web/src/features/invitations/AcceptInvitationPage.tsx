@@ -37,9 +37,39 @@ export function AcceptInvitationPage({ token, invitationId, onNavigate }: { toke
     sessionStorage.setItem(continuationKey, token ? `/invitations/accept?token=${encodeURIComponent(token)}` : `/invitations/${encodeURIComponent(invitationId!)}/accept`);
   }, [invitationId, status, token]);
 
-  if (status === 'anonymous') return <AuthLayout title="Acepta tu invitación"><p>Inicia sesión con el correo invitado para continuar.</p><button type="button" onClick={() => onNavigate('/login')}>Iniciar sesión para continuar</button></AuthLayout>;
-  if (!token && !invitationId) return <AuthLayout title="Acepta tu invitación"><p role="alert">Falta la invitación.</p><button type="button" onClick={() => { sessionStorage.removeItem(continuationKey); onNavigate('/'); }}>Cancelar</button></AuthLayout>;
-  return <AuthLayout title="Acepta tu invitación"><p>Confirma que quieres unirte al hogar invitado.</p>{error ? <p role="alert">{error}</p> : null}<button type="button" onClick={() => { setError(undefined); accept.mutate(); }} disabled={accept.isPending}>Aceptar invitación</button><button type="button" onClick={() => { sessionStorage.removeItem(continuationKey); onNavigate('/'); }}>Cancelar</button></AuthLayout>;
+  if (status === 'anonymous') return (
+    <AuthLayout title="Acepta tu invitación">
+      <div className="invitation-card">
+        <p className="invitation-message">Inicia sesión con el correo invitado para continuar.</p>
+        <button type="button" className="button-primary" onClick={() => onNavigate('/login')}>Iniciar sesión para continuar</button>
+      </div>
+    </AuthLayout>
+  );
+
+  if (!token && !invitationId) return (
+    <AuthLayout title="Invitación no disponible">
+      <div className="invitation-card">
+        <p role="alert" className="invitation-error">Falta la invitación o el enlace no es válido.</p>
+        <button type="button" className="button-secondary" onClick={() => { sessionStorage.removeItem(continuationKey); onNavigate('/'); }}>Volver al inicio</button>
+      </div>
+    </AuthLayout>
+  );
+
+  return (
+    <AuthLayout title="Acepta tu invitación">
+      <div className="invitation-card">
+        <div className="invitation-icon">🏠</div>
+        <p className="invitation-message">Has sido invitado a unirte a un hogar en NFCompra. Al aceptar, podrás ver y gestionar las listas de compra compartidas.</p>
+        {error ? <p role="alert" className="invitation-error">{error}</p> : null}
+        {accept.isPending ? (
+          <p className="invitation-loading">Aceptando invitación…</p>
+        ) : (
+          <button type="button" className="button-primary" onClick={() => { setError(undefined); accept.mutate(); }}>Aceptar invitación</button>
+        )}
+        <button type="button" className="button-secondary" onClick={() => { sessionStorage.removeItem(continuationKey); onNavigate('/'); }}>Cancelar</button>
+      </div>
+    </AuthLayout>
+  );
 }
 
 async function apiAccept(target: { token: string } | { invitationId: string }): Promise<{ householdId: string }> {

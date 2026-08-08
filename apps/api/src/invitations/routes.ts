@@ -77,9 +77,11 @@ export async function handleInvitationRoute(request: Request, env: Env, user: Au
       const rawToken = createRawToken();
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
       const invitation = await createOrRenewInvitation(env, { householdId, invitedBy: user.id, invitedEmail: email, rawToken, expiresAt });
+      const household = await env.DB.prepare('SELECT name FROM households WHERE id = ?').bind(householdId).first<{ name: string }>();
+      const householdName = household?.name ?? 'Hogar';
       const url = `${env.APP_BASE_URL}/invitations/accept?token=${encodeURIComponent(rawToken)}`;
       try {
-        await emailSender.sendInvitation({ to: email, subject: 'Invitacion a un hogar de NFCompra', url });
+        await emailSender.sendInvitation({ to: email, householdName, inviterName: user.name, url });
       } catch {
         return errorResponse('EMAIL_DELIVERY_FAILED', 'No se pudo enviar la invitacion.', 503);
       }
