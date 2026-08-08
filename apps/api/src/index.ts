@@ -59,7 +59,8 @@ function isShoppingRoute(path: string): boolean {
     || path === '/v1/notifications/unread-count'
     || path === '/v1/notifications/read-all'
     || /^\/v1\/notifications\/[^/]+\/read$/.test(path)
-    || /^\/v1\/households\/[^/]+\/(?:invitations|members)(?:\/[^/]+)?$/.test(path)
+    || /^\/v1\/notifications\/[^/]+$/.test(path)
+    || /^\/v1\/households\/[^/]+\/(?:invitations|members|leave)(?:\/[^/]+)?$/.test(path)
     || /^\/v1\/households\/[^/]+\/lists$/.test(path)
     || /^\/v1\/lists\/[^/]+$/.test(path)
     || /^\/v1\/lists\/[^/]+\/items(?:\/checked)?$/.test(path)
