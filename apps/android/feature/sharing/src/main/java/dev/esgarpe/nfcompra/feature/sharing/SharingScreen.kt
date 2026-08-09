@@ -440,7 +440,10 @@ fun NotificationPopup(
                                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                     ) {
                                                         Button(
-                                                            onClick = { onAction(SharingAction.OpenNotification(notification.id)) },
+                                                            onClick = {
+                                                                notification.invitationId?.let { onAction(SharingAction.AcceptInvitationById(it)) }
+                                                                expandedId = null
+                                                            },
                                                             modifier = Modifier.weight(1f).height(36.dp),
                                                             shape = RoundedCornerShape(8.dp),
                                                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C7144), contentColor = Color.White),
