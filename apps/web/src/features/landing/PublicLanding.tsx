@@ -34,18 +34,14 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
       <section className="public-landing__hero public-landing__hero--updated" id="inicio" aria-labelledby="landing-title">
         <div className="public-landing__hero-copy">
           <p className="public-landing__eyebrow">PWA + Android + NFC</p>
-          <h1 id="landing-title">Tu compra, con solo acercar.</h1>
+          <h1 id="landing-title">NFCompra</h1>
           <p className="public-landing__lead">
-            NFCompra organiza hogares, listas compartidas, catálogo de supermercado y favoritos para añadir productos más rápido desde la web o desde la app Android.
+            Hogares, listas compartidas, catálogo, favoritos y pegatinas NFC para abrir la compra correcta desde Android, iPhone o navegador.
           </p>
-          <div className="public-landing__actions">
-            <button className="button" type="button" onClick={() => onOpenAuth('register')}>Registrarse</button>
-            <button className="button button--secondary" type="button" onClick={() => onOpenAuth('login')}>Iniciar sesión</button>
-          </div>
           <div className="public-landing__badges" aria-label="Funciones principales">
-            <span>Catálogo con autocompletado</span>
+            <span>App Link NFC con fallback web</span>
             <span>Favoritos por usuario</span>
-            <span>App Android desarrollada</span>
+            <span>APK con avisos de actualización</span>
           </div>
         </div>
 
@@ -58,19 +54,19 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
             </div>
             <div className="landing-phone__card landing-phone__card--list">
               <div>
-                <span>Mercadona</span>
-                <strong>Lista semanal</strong>
+                <span>Casa</span>
+                <strong>Compra semanal</strong>
               </div>
               <button type="button" aria-label="Cambiar vista">▦</button>
             </div>
             <div className="landing-phone__input">
               <span>Producto</span>
-              <strong>Leche</strong>
+              <strong>Leche entera</strong>
               <em>− 1 +</em>
             </div>
             <div className="landing-section-preview landing-section-preview--pending">
               <h3>Pendientes</h3>
-              <p><span /> Leche <b>2</b></p>
+              <p><span /> Leche entera <b>2</b></p>
               <p><span /> Queso rallado <b>1</b></p>
               <p><span /> Tomate frito <b>3</b></p>
             </div>
@@ -87,6 +83,7 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
             </div>
             <div className="landing-search">Buscar productos</div>
             <div className="landing-favorites-card"><span>★</span><strong>Favoritos</strong></div>
+            <div className="landing-nfc-chip">Código NFC: https://nfcompra.esgarpe.dev/household/...</div>
             <div className="landing-category-grid">
               <article><span>🥛</span><strong>Leche y huevos</strong></article>
               <article><span>🍎</span><strong>Fruta</strong></article>
@@ -109,9 +106,9 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
           <article><span aria-hidden="true">↗</span><h3>Lista compartida</h3><p>Todos ven qué falta y qué ya está comprado en tiempo real.</p></article>
           <article><span aria-hidden="true">✓</span><h3>Compra sin fricción</h3><p>Añade, marca, edita cantidades y vacía listas cuando termines la compra.</p></article>
           <article id="hogares"><span aria-hidden="true">⌂</span><h3>Para todo el hogar</h3><p>Crea varios hogares y varias listas por hogar para organizar supermercados o recados distintos.</p></article>
-          <article><span aria-hidden="true">🔔</span><h3>Notificaciones</h3><p>Consulta invitaciones y avisos desde la campanita sin salir de la pantalla.</p></article>
-          <article><span aria-hidden="true">☁</span><h3>Offline-first en Android</h3><p>Room conserva hogares, listas y productos; la cola sincroniza cambios cuando vuelve la conexión.</p></article>
-          <article><span aria-hidden="true">📌</span><h3>Lista fijada</h3><p>Ancla una lista habitual para abrirla rápido desde Inicio en modo vista supermercado.</p></article>
+          <article><span aria-hidden="true">🔔</span><h3>Notificaciones</h3><p>Abre avisos, acepta invitaciones, marca como leídas o elimina todas desde la campanita.</p></article>
+          <article><span aria-hidden="true">☁</span><h3>Offline en Android</h3><p>La app Android conserva datos locales y sincroniza cambios pendientes cuando vuelve la conexión.</p></article>
+          <article><span aria-hidden="true">★</span><h3>Catálogo y favoritos</h3><p>Busca productos con tarjetas visuales y guarda favoritos para repetir compras habituales.</p></article>
         </div>
       </section>
 
@@ -120,13 +117,13 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
           <p className="public-landing__eyebrow">Aplicación web instalable</p>
           <h2 id="webapp-title">La web también funciona como aplicación.</h2>
           <p>
-            En iPhone y ordenador puedes usar NFCompra desde el navegador como una aplicación web instalable: iniciar sesión, crear hogares, revisar listas, añadir productos y gestionar invitaciones sin instalar nada desde una tienda.
+            En iPhone y ordenador puedes usar NFCompra desde el navegador como aplicación web: iniciar sesión, crear hogares, revisar listas, añadir productos con catálogo y gestionar invitaciones sin instalar nada desde una tienda.
           </p>
           <div className="public-landing__webapp-features">
             <span>Acceso desde iPhone</span>
             <span>Panel de hogares</span>
-            <span>Listas por supermercado</span>
-            <span>Notificaciones integradas</span>
+            <span>Catálogo y favoritos</span>
+            <span>NFC como fallback web</span>
           </div>
         </div>
         <div className="landing-web-gallery" aria-label="Vistas de la aplicación web NFCompra">
@@ -145,16 +142,16 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
             <div className="landing-web-dashboard">
               <div className="landing-web-dashboard__welcome">
                 <span>Hola, Esteban</span>
-                <strong>Resumen de la compra</strong>
+                <strong>Acciones rápidas arriba</strong>
               </div>
               <div className="landing-web-stats">
                 <span><b>2</b> hogares</span>
                 <span><b>5</b> listas</span>
-                <span><b>Mercadona</b> fijada</span>
+                <span><b>3</b> pendientes</span>
               </div>
               <div className="landing-web-actions">
                 <button type="button">Crear hogar</button>
-                <button type="button">Crear lista</button>
+                <button type="button">Abrir catálogo</button>
               </div>
             </div>
           </article>
@@ -167,7 +164,7 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
               <strong>Listas activas</strong>
             </div>
             <div className="landing-web-listcards">
-              <h3>Resumen de tus listas guardadas</h3>
+              <h3>Listas por hogar</h3>
               <div className="landing-web-listcard">
                 <strong>Mercadona</strong>
                 <span>Costa Marina III</span>
@@ -204,16 +201,16 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
       <section className="public-landing__android" id="android" aria-labelledby="android-title">
         <div className="public-landing__android-copy">
           <p className="public-landing__eyebrow">App Android ya desarrollada</p>
-          <h2 id="android-title">Instalable en móvil real para uso personal.</h2>
+          <h2 id="android-title">APK propia, biometría y actualización integrada.</h2>
           <p>
-            La app Android ya tiene login, registro, recuperación por OTP, catálogo, favoritos, modo vista supermercado, listas fijadas y caché local del catálogo para acelerar búsquedas tras el primer uso.
+            La app Android tiene login, registro, recuperación por OTP, acceso biométrico opcional, catálogo, favoritos, enlaces NFC al hogar correcto y comprobación de nuevas versiones desde GitHub Releases.
           </p>
         </div>
         <div className="public-landing__android-panel">
           <div className="public-landing__android-features">
-            <span>Launcher con logo NFCompra</span>
-            <span>Navbar flotante</span>
-            <span>Cache local por cuenta</span>
+            <span>Acceso biométrico opcional</span>
+            <span>Actualización desde release APK</span>
+            <span>Enlaces NFC al hogar</span>
             <span>Favoritos sincronizados</span>
           </div>
           <div className="landing-android-strip" aria-label="Vistas de la app Android">
@@ -222,10 +219,18 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
               <strong>Bienvenido</strong>
               <span className="landing-android-strip__primary">Iniciar sesión</span>
               <span>Acceder con biometría</span>
+              <small>Nueva versión disponible</small>
             </article>
             <article>
-              <strong>Mercadona</strong>
-              <span>Costa Marina III</span>
+              <strong>Código NFC</strong>
+              <span>Casa principal</span>
+              <p>URL / URI</p>
+              <em>https://nfcompra.esgarpe.dev/household/...</em>
+              <span className="landing-android-strip__primary">Copiar</span>
+            </article>
+            <article>
+              <strong>Compra semanal</strong>
+              <span>Casa principal</span>
               <p>Pendientes</p>
               <em>☐ Leche 2</em>
               <em>☐ Tomate frito 3</em>
@@ -240,7 +245,7 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
         <div>
           <p className="public-landing__eyebrow">NFC ya disponible</p>
           <h2 id="nfc-title">NFC listo para tu hogar</h2>
-          <p>Las pegatinas NFC ya funcionan: cada una abre el hogar al que está vinculada. Así puedes entrar directamente en el contexto correcto desde la cocina, la nevera o la zona donde prepares la compra.</p>
+          <p>Las pegatinas NFC usan un enlace HTTPS del hogar. En Android pueden abrir la app instalada; si no está instalada o se usa iPhone, abren la versión web en el mismo hogar.</p>
         </div>
         <span className="public-landing__nfc-mark" aria-hidden="true">NFC</span>
       </section>

@@ -243,7 +243,7 @@ describe('autenticaciÃ³n desde la landing', () => {
     stubAnonymousSession();
     render(<AuthProvider><App /></AuthProvider>);
 
-    const opener = (await screen.findAllByRole('button', { name: /Iniciar sesi.n/ }))[1];
+    const opener = (await screen.findAllByRole('button', { name: /Iniciar sesi.n/ }))[0];
     opener.focus();
     fireEvent.click(opener);
 

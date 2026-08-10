@@ -21,7 +21,7 @@ describe('la landing pública', () => {
 
     render(<AuthProvider><App /></AuthProvider>);
 
-    expect(await screen.findByRole('heading', { name: 'Tu compra, con solo acercar.' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'NFCompra' })).toBeVisible();
     expect(screen.getByRole('link', { name: 'NFCompra' })).toHaveAttribute('href', '#inicio');
     expect(screen.getByRole('link', { name: 'Cómo funciona' })).toHaveAttribute('href', '#como-funciona');
     expect(screen.getByRole('link', { name: 'Hogares' })).toHaveAttribute('href', '#hogares');
@@ -33,9 +33,9 @@ describe('la landing pública', () => {
     expect(screen.getByText('Compra sin fricción')).toBeVisible();
     expect(screen.getByText('Para todo el hogar')).toBeVisible();
     expect(screen.getByText('Favoritos por usuario')).toBeVisible();
-    expect(screen.getByText('App Android desarrollada')).toBeVisible();
-    expect(screen.getAllByRole('button', { name: 'Iniciar sesión' })).toHaveLength(2);
-    expect(screen.getAllByRole('button', { name: 'Registrarse' })).toHaveLength(2);
+    expect(screen.getByText('APK con avisos de actualización')).toBeVisible();
+    expect(screen.getAllByRole('button', { name: 'Iniciar sesión' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Registrarse' })).toHaveLength(1);
   });
 
   it('explica que las pegatinas NFC abren el hogar al que están vinculadas', async () => {
@@ -46,7 +46,7 @@ describe('la landing pública', () => {
     render(<AuthProvider><App /></AuthProvider>);
 
     expect(await screen.findByRole('heading', { name: 'NFC listo para tu hogar' })).toBeVisible();
-    expect(screen.getByText(/Las pegatinas NFC ya funcionan: cada una abre el hogar al que está vinculada/)).toBeVisible();
+    expect(screen.getByText(/Las pegatinas NFC usan un enlace HTTPS del hogar/)).toBeVisible();
   });
 
   it('menciona catálogo, favoritos y Android', () => {
@@ -56,17 +56,18 @@ describe('la landing pública', () => {
     expect(screen.getByRole('heading', { name: 'La web también funciona como aplicación.' })).toBeVisible();
     expect(screen.getByText('Acceso desde iPhone')).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Productos, categorías y favoritos para buscar menos.' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Instalable en móvil real para uso personal.' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'APK propia, biometría y actualización integrada.' })).toBeVisible();
     expect(screen.getByText('Favoritos sincronizados')).toBeVisible();
     expect(screen.getByText('Acceder con biometría')).toBeVisible();
+    expect(screen.getByText('Actualización desde release APK')).toBeVisible();
   });
 
   it('entrega el modo de autenticación elegido a la aplicación', () => {
     const onOpenAuth = vi.fn();
     render(<PublicLanding onOpenAuth={onOpenAuth} />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Registrarse' })[0]);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Iniciar sesión' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Registrarse' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión' }));
 
     expect(onOpenAuth).toHaveBeenNthCalledWith(1, 'register');
     expect(onOpenAuth).toHaveBeenNthCalledWith(2, 'login');
