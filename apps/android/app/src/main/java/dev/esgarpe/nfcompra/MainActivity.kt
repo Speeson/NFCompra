@@ -1,7 +1,7 @@
 package dev.esgarpe.nfcompra
 
 import android.content.Intent
-import android.graphics.Color
+import android.graphics.Color as AndroidColor
 import android.net.Uri
 import android.nfc.NfcAdapter
 import android.os.Bundle
@@ -13,14 +13,24 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
@@ -45,6 +55,7 @@ import dev.esgarpe.nfcompra.feature.sharing.SharingRepository
 import dev.esgarpe.nfcompra.feature.sharing.SharingRoute
 import dev.esgarpe.nfcompra.feature.sharing.SharingUiState
 import dev.esgarpe.nfcompra.feature.sharing.SharingViewModel
+import kotlinx.coroutines.launch
 
 class MainActivity : FragmentActivity() {
     private lateinit var invitationHandoff: InvitationTokenHandoff
@@ -58,7 +69,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = Color.rgb(108, 197, 29)
+        window.statusBarColor = AndroidColor.rgb(108, 197, 29)
         invitationHandoff = InvitationTokenHandoff(savedInstanceState?.getString(PENDING_INVITATION_TOKEN))
         pendingInvitationToken = invitationHandoff.token
         pendingHouseholdDeepLink = savedInstanceState?.getString(PENDING_HOUSEHOLD_DEEP_LINK)
@@ -80,9 +91,14 @@ class MainActivity : FragmentActivity() {
             }.apply()
         }
         val sharingRepository = SharingRepository(NetworkClient.authenticatedApi(BuildConfig.AUTH_BASE_URL, tokenStore, SharingApi::class.java))
+        val appUpdateService = AppUpdateService(applicationContext)
         setContent {
             val session by tokenStore.session.collectAsState()
             val authViewModel = remember { AuthViewModel(authRepository) }
+            val coroutineScope = rememberCoroutineScope()
+            var availableUpdate by remember { mutableStateOf<AppUpdateInfo?>(null) }
+            var isDownloadingUpdate by remember { mutableStateOf(false) }
+            var updateMessage by remember { mutableStateOf<String?>(null) }
             var biometricPreferenceVersion by remember { mutableStateOf(0) }
             var sessionAccessGrantedAccountId by remember { mutableStateOf<String?>(null) }
             var biometricPromptRunning by remember { mutableStateOf(false) }
@@ -96,6 +112,10 @@ class MainActivity : FragmentActivity() {
                         .putString("remembered_email", email.trim())
                         .apply()
                 }
+            }
+            LaunchedEffect(Unit) {
+                runCatching { appUpdateService.checkLatestRelease() }
+                    .onSuccess { availableUpdate = it }
             }
             val accountId = session?.accessToken?.let(::userIdFromJwt)
             val biometricAccessEnabled = remember(accountId, biometricPreferenceVersion) {
@@ -211,25 +231,26 @@ class MainActivity : FragmentActivity() {
                 if (globalNavigation != null) globalNotifications.consumeNavigation()
             }
             NFCompraTheme {
-                if (!authenticatedContentUnlocked) AuthApp(
-                    authViewModel,
-                    onSignedIn = {
-                        tokenStore.current()?.accessToken?.let(::userIdFromJwt)?.let { signedInAccountId ->
-                            sessionAccessGrantedAccountId = signedInAccountId
-                        }
-                    },
-                    rememberedEmail = rememberedEmail,
-                    onRememberEmail = onRememberEmail,
-                    hasSavedSession = session != null && accountId != null,
-                    canUseBiometricAccess = welcomeBiometricAccessEnabled,
-                    onSavedSessionAccess = {
-                        accountId?.let { sessionAccessGrantedAccountId = it }
-                    },
-                    onBiometricAccess = {
-                        accountId?.let(::requestBiometricUnlock)
-                    },
-                )
-                else {
+                if (!authenticatedContentUnlocked) {
+                    AuthApp(
+                        authViewModel,
+                        onSignedIn = {
+                            tokenStore.current()?.accessToken?.let(::userIdFromJwt)?.let { signedInAccountId ->
+                                sessionAccessGrantedAccountId = signedInAccountId
+                            }
+                        },
+                        rememberedEmail = rememberedEmail,
+                        onRememberEmail = onRememberEmail,
+                        hasSavedSession = session != null && accountId != null,
+                        canUseBiometricAccess = welcomeBiometricAccessEnabled,
+                        onSavedSessionAccess = {
+                            accountId?.let { sessionAccessGrantedAccountId = it }
+                        },
+                        onBiometricAccess = {
+                            accountId?.let(::requestBiometricUnlock)
+                        },
+                    )
+                } else {
                     val authenticatedShoppingSession = requireNotNull(shoppingSession) {
                         "La sesión autenticada no contiene un identificador de cuenta."
                     }
@@ -314,9 +335,39 @@ class MainActivity : FragmentActivity() {
                         )
                     }
                 }
+                availableUpdate?.let { update ->
+                    AppUpdateDialog(
+                        update = update,
+                        currentVersionName = BuildConfig.VERSION_NAME,
+                        message = updateMessage,
+                        isDownloading = isDownloadingUpdate,
+                        onDismiss = {
+                            availableUpdate = null
+                            updateMessage = null
+                        },
+                        onUpdate = {
+                            if (isDownloadingUpdate) return@AppUpdateDialog
+                            coroutineScope.launch {
+                                isDownloadingUpdate = true
+                                updateMessage = null
+                                runCatching {
+                                    val apk = appUpdateService.downloadApk(update)
+                                    appUpdateService.startInstall(apk)
+                                }.onSuccess { installerOpened ->
+                                    if (!installerOpened) {
+                                        updateMessage = "Activa el permiso para instalar apps desde NFCompra y vuelve a pulsar Actualizar."
+                                    }
+                                }.onFailure {
+                                    updateMessage = "No se pudo descargar la actualizacion. Intentalo de nuevo."
+                                }
+                                isDownloadingUpdate = false
+                            }
+                        },
+                    )
                 }
             }
         }
+    }
     }
 
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); receiveViewIntent(intent) }
@@ -407,6 +458,52 @@ class MainActivity : FragmentActivity() {
         const val PENDING_INVITATION_TOKEN = "pending_invitation_token"
         const val PENDING_HOUSEHOLD_DEEP_LINK = "pending_household_deep_link"
     }
+}
+
+@Composable
+private fun AppUpdateDialog(
+    update: AppUpdateInfo,
+    currentVersionName: String,
+    message: String?,
+    isDownloading: Boolean,
+    onDismiss: () -> Unit,
+    onUpdate: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Actualizacion disponible", color = Color(0xFF1C7144), fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Version actual: $currentVersionName")
+                Text("Nueva version: ${update.versionName}")
+                Text("Se descargara el APK desde GitHub Releases y Android te pedira confirmar la instalacion.")
+                message?.let { Text(it, color = Color(0xFFB42318)) }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onUpdate,
+                enabled = !isDownloading,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFDCFF72),
+                    contentColor = Color(0xFF10271E),
+                ),
+            ) {
+                Text(if (isDownloading) "Descargando..." else "Actualizar", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isDownloading,
+                colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF527062)),
+            ) {
+                Text("Ahora no")
+            }
+        },
+    )
 }
 
 private sealed interface HouseholdDeepLinkDestination {
