@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { demoShoppingItems } from '../features/shopping-list/fixtures';
 import { ShoppingListScreen } from '../features/shopping-list/ShoppingListScreen';
-import { AuthenticatedRoute } from './App';
+import { AuthenticatedRoute, androidIntentUrlForHouseholdLink } from './App';
 
 vi.mock('../features/shopping-list/ShoppingListRoute', () => ({
   createWebQueryClient: () => ({ clear: vi.fn() }),
@@ -43,5 +43,17 @@ describe('ShoppingListScreen', () => {
     render(<AuthenticatedRoute {...props} pathname="/household/home-1/lists" />);
 
     expect(screen.getByTestId('shopping-route')).toHaveTextContent('home-1');
+  });
+
+  it('builds an Android intent URL for HTTPS NFC household links', () => {
+    const intentUrl = androidIntentUrlForHouseholdLink(
+      '/household/home-1/lists',
+      'https://nfcompra.esgarpe.dev/household/home-1/lists',
+      'Mozilla/5.0 (Linux; Android 15)',
+    );
+
+    expect(intentUrl).toBe('intent://household/home-1/lists#Intent;scheme=nfcompra;package=dev.esgarpe.nfcompra;S.browser_fallback_url=https%3A%2F%2Fnfcompra.esgarpe.dev%2Fhousehold%2Fhome-1%2Flists;end');
+    expect(androidIntentUrlForHouseholdLink('/household/home-1/lists', 'https://nfcompra.esgarpe.dev/household/home-1/lists', 'iPhone')).toBeNull();
+    expect(androidIntentUrlForHouseholdLink('/lists', 'https://nfcompra.esgarpe.dev/lists', 'Mozilla/5.0 (Linux; Android 15)')).toBeNull();
   });
 });

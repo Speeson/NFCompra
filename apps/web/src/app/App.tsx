@@ -65,6 +65,15 @@ function AppRoute(): JSX.Element {
     if (status === 'authenticated' && location.pathname === '/login' && continuation?.startsWith('/invitations/')) navigate(continuation);
   }, [location.pathname, status]);
 
+  useEffect(() => {
+    const intentUrl = androidIntentUrlForHouseholdLink(location.pathname, location.href, navigator.userAgent);
+    if (!intentUrl) return;
+    const storageKey = `nfcompra.android-intent-attempt:${location.pathname}`;
+    if (sessionStorage.getItem(storageKey) === '1') return;
+    sessionStorage.setItem(storageKey, '1');
+    window.location.href = intentUrl;
+  }, [location.href, location.pathname]);
+
   async function handleLogout(): Promise<void> {
     setLogoutError(false);
     queryClient.clear();
@@ -94,6 +103,13 @@ function AppRoute(): JSX.Element {
     {notificationActionAlert}
     <AuthenticatedRoute pathname={location.pathname} search={location.searchParams} userId={user?.id ?? ''} userName={user?.name ?? ''} onNavigate={navigate} />
   </AppShell>;
+}
+
+export function androidIntentUrlForHouseholdLink(pathname: string, href: string, userAgent: string): string | null {
+  if (!/Android/i.test(userAgent)) return null;
+  const householdListsMatch = pathname.match(/^\/household\/([^/]+)\/lists$/);
+  if (!householdListsMatch) return null;
+  return `intent://household/${householdListsMatch[1]}/lists#Intent;scheme=nfcompra;package=dev.esgarpe.nfcompra;S.browser_fallback_url=${encodeURIComponent(href)};end`;
 }
 
 export function AuthenticatedRoute({ pathname, search, userId, userName, onNavigate }: { pathname: string; search: URLSearchParams; userId: string; userName: string; onNavigate(path: string): void }): JSX.Element {
