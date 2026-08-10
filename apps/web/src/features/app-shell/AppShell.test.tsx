@@ -32,7 +32,7 @@ function renderShell(pathname = '/') {
 afterEach(cleanup);
 
 describe('AppShell', () => {
-  it('muestra la marca, navegación principal, APK deshabilitado y notificaciones', () => {
+  it('muestra la marca, navegación principal, enlace de APK y notificaciones', () => {
     renderShell();
     const desktopNavigation = screen.getByRole('navigation', { name: 'Navegación principal' });
 
@@ -41,7 +41,10 @@ describe('AppShell', () => {
     expect(within(desktopNavigation).getByRole('link', { name: 'Hogares' })).toHaveAttribute('href', '/households');
     expect(within(desktopNavigation).getByRole('link', { name: 'Mis listas' })).toHaveAttribute('href', '/lists');
     expect(within(desktopNavigation).getByRole('link', { name: 'NFC' })).toHaveAttribute('href', '/nfc');
-    expect(screen.getByRole('button', { name: 'Descargar APK' })).toBeDisabled();
+    expect(screen.getByRole('link', { name: 'Descargar APK' })).toHaveAttribute(
+      'href',
+      'https://github.com/Speeson/NFCompra/releases/latest/download/NFCompra-release.apk',
+    );
     expect(screen.getByRole('button', { name: 'Notificaciones' })).toBeVisible();
   });
 

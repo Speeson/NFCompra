@@ -14,6 +14,7 @@ interface AppShellProps extends PropsWithChildren {
 
 const desktopNavigation = [['Inicio', '/'], ['Hogares', '/households'], ['Mis listas', '/lists'], ['NFC', '/nfc']] as const;
 const mobileNavigation = [['Inicio', '/'], ['Hogares', '/households'], ['Listas', '/lists'], ['NFC', '/nfc']] as const;
+const androidApkDownloadUrl = 'https://github.com/Speeson/NFCompra/releases/latest/download/NFCompra-release.apk';
 
 export function AppShell({ user, pathname, onNavigate, onLogout, onNotificationActionError, children }: AppShellProps): JSX.Element {
   const [profileOpen, setProfileOpen] = useState(false);
@@ -62,7 +63,7 @@ export function AppShell({ user, pathname, onNavigate, onLogout, onNotificationA
         {desktopNavigation.map(([label, path]) => <a key={path} href={path} aria-current={isCurrent(path) ? 'page' : undefined} onClick={(event) => { event.preventDefault(); go(path); }}>{label}</a>)}
       </nav>
       <div className="app-shell__actions">
-        <button className="app-shell__apk" type="button" disabled title="Próximamente">Descargar APK</button>
+        <a className="app-shell__apk" href={androidApkDownloadUrl}>Descargar APK</a>
         <NotificationBell onNavigate={onNavigate} onActionError={onNotificationActionError} />
         <div className="app-shell__profile" ref={menuRef}>
           <button ref={triggerRef} className="app-shell__profile-trigger" type="button" aria-haspopup="menu" aria-expanded={profileOpen} onClick={() => setProfileOpen((open) => !open)}><span aria-hidden="true">{user.name.slice(0, 1).toUpperCase()}</span>{user.name}</button>
