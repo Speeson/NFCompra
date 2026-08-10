@@ -280,6 +280,22 @@ class ShoppingListViewModelTest {
         }
     }
 
+    @Test fun `requested household context fails closed when it is not authorized`() = runTest {
+        server.enqueue(json("{\"households\":[{\"id\":\"home-1\",\"name\":\"Casa\",\"ownerId\":\"owner\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}"))
+        val viewModel = ShoppingListViewModel(ShoppingListRepository(NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java)))
+
+        viewModel.openContext("home-9")
+
+        viewModel.state.test {
+            assertEquals(ShoppingListViewState.Loading, awaitItem())
+            val error = awaitItem() as ShoppingListViewState.Error
+            assertEquals("No se pudo abrir este hogar.", error.message)
+        }
+
+        assertEquals("/v1/households", server.takeRequest(1, TimeUnit.SECONDS)?.path)
+        assertEquals(1, server.requestCount)
+    }
+
     @Test fun `context requested during initial load wins and retains household selectors`() = runTest {
         kotlinx.coroutines.Dispatchers.setMain(UnconfinedTestDispatcher())
         val defaultStarted = CountDownLatch(1)

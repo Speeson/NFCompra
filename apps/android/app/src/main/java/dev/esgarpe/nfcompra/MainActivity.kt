@@ -2,6 +2,7 @@ package dev.esgarpe.nfcompra
 
 import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -43,6 +44,9 @@ import dev.esgarpe.nfcompra.feature.sharing.SharingViewModel
 class MainActivity : ComponentActivity() {
     private lateinit var invitationHandoff: InvitationTokenHandoff
     private var pendingInvitationToken by mutableStateOf<String?>(null)
+    private var pendingHouseholdDeepLink by mutableStateOf<String?>(null)
+    private var householdDeepLinkError by mutableStateOf<String?>(null)
+    private var openListsRequestKey by mutableStateOf(0)
     private var notificationViewModel: SharingViewModel? = null
     private var membersViewModel: SharingViewModel? = null
     private var foregroundRefreshGate: AuthenticatedRefreshGate? = null
@@ -52,7 +56,8 @@ class MainActivity : ComponentActivity() {
         window.statusBarColor = Color.rgb(108, 197, 29)
         invitationHandoff = InvitationTokenHandoff(savedInstanceState?.getString(PENDING_INVITATION_TOKEN))
         pendingInvitationToken = invitationHandoff.token
-        receiveInvitationIntent(intent)
+        pendingHouseholdDeepLink = savedInstanceState?.getString(PENDING_HOUSEHOLD_DEEP_LINK)
+        receiveViewIntent(intent)
         val tokenStore = KeystoreTokenStore(applicationContext)
         foregroundRefreshGate = AuthenticatedRefreshGate { tokenStore.current() != null }
         val profilePreferences = getSharedPreferences("nfcompra.ui", MODE_PRIVATE)
@@ -138,6 +143,9 @@ class MainActivity : ComponentActivity() {
                     Box(modifier = Modifier.fillMaxSize()) {
                         Column(modifier = Modifier.fillMaxSize()) {
                             val visibleNotificationError = contextualNotificationError ?: notificationActionError
+                            householdDeepLinkError?.let {
+                                NotificationActionErrorBanner(it) { householdDeepLinkError = null }
+                            }
                             visibleNotificationError?.let {
                                 NotificationActionErrorBanner(it) {
                                     contextualNotificationError = null
@@ -163,6 +171,13 @@ class MainActivity : ComponentActivity() {
                                 }
                                 else -> {
                                     membersViewModel = null
+                                LaunchedEffect(pendingHouseholdDeepLink, authenticatedShoppingViewModel) {
+                                    pendingHouseholdDeepLink?.let { householdId ->
+                                        authenticatedShoppingViewModel.openContext(householdId)
+                                        pendingHouseholdDeepLink = null
+                                        openListsRequestKey++
+                                    }
+                                }
                                 ShoppingListApp(
                                     authenticatedShoppingViewModel,
                                     {
@@ -172,6 +187,7 @@ class MainActivity : ComponentActivity() {
                                     { selectedHouseholdId = it },
                                     onOpenNotifications = { showNotificationPopup = true },
                                     currentUserId = accountId,
+                                    openListsRequestKey = openListsRequestKey,
                                 )
                                 }
                             }
@@ -201,14 +217,31 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); receiveInvitationIntent(intent) }
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); receiveViewIntent(intent) }
     override fun onResume() { super.onResume(); foregroundRefreshGate?.onForeground { notificationViewModel?.onForeground(); membersViewModel?.onForeground() } }
     override fun onSaveInstanceState(outState: Bundle) {
         invitationHandoff.savedStateToken()?.let { outState.putString(PENDING_INVITATION_TOKEN, it) }
+        pendingHouseholdDeepLink?.let { outState.putString(PENDING_HOUSEHOLD_DEEP_LINK, it) }
         super.onSaveInstanceState(outState)
     }
 
-    private fun receiveInvitationIntent(intent: Intent?) {
+    private fun receiveViewIntent(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_VIEW) return
+        val data = intent.data
+        when (val destination = data?.toHouseholdDeepLinkDestination()) {
+            is HouseholdDeepLinkDestination.HouseholdLists -> {
+                pendingHouseholdDeepLink = destination.householdId
+                householdDeepLinkError = null
+                intent.data = null
+                return
+            }
+            HouseholdDeepLinkDestination.Invalid -> {
+                householdDeepLinkError = "No se pudo abrir este enlace NFC."
+                intent.data = null
+                return
+            }
+            null -> Unit
+        }
         invitationHandoff.receiveLink(intent?.dataString)
         pendingInvitationToken = invitationHandoff.token
         intent?.data = null
@@ -217,7 +250,26 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val PENDING_INVITATION_TOKEN = "pending_invitation_token"
+        const val PENDING_HOUSEHOLD_DEEP_LINK = "pending_household_deep_link"
     }
+}
+
+private sealed interface HouseholdDeepLinkDestination {
+    data class HouseholdLists(val householdId: String) : HouseholdDeepLinkDestination
+    data object Invalid : HouseholdDeepLinkDestination
+}
+
+private fun Uri.toHouseholdDeepLinkDestination(): HouseholdDeepLinkDestination? {
+    val segments = pathSegments
+    val householdId = when {
+        scheme == "nfcompra" && host == "household" && segments.size == 2 && segments[1] == "lists" -> segments[0]
+        scheme == "https" && host == "nfcompra.esgarpe.dev" && segments.size == 3 && segments[0] == "household" && segments[2] == "lists" -> segments[1]
+        scheme == "nfcompra" && host == "household" -> return HouseholdDeepLinkDestination.Invalid
+        scheme == "https" && host == "nfcompra.esgarpe.dev" && segments.firstOrNull() == "household" -> return HouseholdDeepLinkDestination.Invalid
+        else -> return null
+    }.trim()
+    return if (householdId.isBlank()) HouseholdDeepLinkDestination.Invalid
+    else HouseholdDeepLinkDestination.HouseholdLists(householdId)
 }
 
 private fun userIdFromJwt(token: String): String? = runCatching {

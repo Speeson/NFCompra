@@ -44,6 +44,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ListAlt
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Home
@@ -103,11 +104,13 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextAlign
@@ -205,7 +208,14 @@ private fun LoadingLogoScreen() {
 }
 
 @Composable
-fun ShoppingListApp(viewModel: ShoppingListViewModel, onLogout: () -> Unit = {}, onMembers: (String) -> Unit = {}, onOpenNotifications: (() -> Unit)? = null, currentUserId: String? = null) {
+fun ShoppingListApp(
+    viewModel: ShoppingListViewModel,
+    onLogout: () -> Unit = {},
+    onMembers: (String) -> Unit = {},
+    onOpenNotifications: (() -> Unit)? = null,
+    currentUserId: String? = null,
+    openListsRequestKey: Int = 0,
+) {
     val state by viewModel.state.collectAsState()
     LaunchedEffect(viewModel) { viewModel.load() }
     when (state) {
@@ -234,7 +244,17 @@ fun ShoppingListApp(viewModel: ShoppingListViewModel, onLogout: () -> Unit = {},
             )
         }
         is ShoppingListViewState.Error -> Text((state as ShoppingListViewState.Error).message, color = MaterialTheme.colorScheme.error)
-        is ShoppingListViewState.Data -> ShoppingListContent(state as ShoppingListViewState.Data, viewModel::onAction, viewModel::searchProductCatalog, viewModel::setProductFavorite, onLogout, onMembers, onOpenNotifications = onOpenNotifications, currentUserId = currentUserId)
+        is ShoppingListViewState.Data -> ShoppingListContent(
+            state as ShoppingListViewState.Data,
+            viewModel::onAction,
+            viewModel::searchProductCatalog,
+            viewModel::setProductFavorite,
+            onLogout,
+            onMembers,
+            onOpenNotifications = onOpenNotifications,
+            currentUserId = currentUserId,
+            openListsRequestKey = openListsRequestKey,
+        )
     }
 }
 
@@ -248,6 +268,7 @@ internal fun ShoppingListContent(
     onMembers: (String) -> Unit,
     onOpenNotifications: (() -> Unit)? = null,
     currentUserId: String? = null,
+    openListsRequestKey: Int = 0,
 ) {
     var selectedTab by remember { mutableStateOf(DashboardTab.Home) }
     var creatingHousehold by remember { mutableStateOf(false) }
@@ -257,6 +278,12 @@ internal fun ShoppingListContent(
     var notificationsOpen by remember { mutableStateOf(false) }
     var openedListId by remember { mutableStateOf<String?>(null) }
     var openedListMode by remember { mutableStateOf(ListOpenMode.Edit) }
+    LaunchedEffect(openListsRequestKey) {
+        if (openListsRequestKey > 0) {
+            selectedTab = DashboardTab.Lists
+            openedListId = null
+        }
+    }
     val context = LocalContext.current
     val pinnedPreferences = remember(context) {
         context.getSharedPreferences("nfcompra.ui", Context.MODE_PRIVATE)
@@ -792,6 +819,7 @@ private fun HouseholdsPanel(
     var expandedHouseholdId by remember(data.households) { mutableStateOf<String?>(null) }
     var renamingHousehold by remember { mutableStateOf<HouseholdUiModel?>(null) }
     var deletingHousehold by remember { mutableStateOf<HouseholdUiModel?>(null) }
+    var nfcHousehold by remember { mutableStateOf<HouseholdUiModel?>(null) }
     val visibleHouseholds = expandedHouseholdId?.let { id -> data.households.filter { it.id == id } } ?: data.households
     Column(
         modifier = Modifier
@@ -828,6 +856,7 @@ private fun HouseholdsPanel(
                 onRename = { renamingHousehold = household },
                 onDelete = { deletingHousehold = household },
                 onMembers = { onMembers(household.id) },
+                onNfcCode = { nfcHousehold = household },
                 onLeave = { onAction(ShoppingListAction.LeaveHousehold(household.id)) },
             )
         }
@@ -854,6 +883,12 @@ private fun HouseholdsPanel(
                 if (expandedHouseholdId == household.id) expandedHouseholdId = null
             },
             onDismiss = { deletingHousehold = null },
+        )
+    }
+    nfcHousehold?.let { household ->
+        NfcCodeDialog(
+            household = household,
+            onDismiss = { nfcHousehold = null },
         )
     }
 }
@@ -1477,6 +1512,7 @@ private fun HouseholdCard(
     onDelete: () -> Unit = {},
     onLeave: () -> Unit = {},
     onMembers: () -> Unit = {},
+    onNfcCode: () -> Unit = {},
 ) {
     Card(colors = CardDefaults.cardColors(containerColor = if (selected) WebLime.copy(alpha = 0.85f) else WebSurface)) {
         Column(
@@ -1540,10 +1576,71 @@ private fun HouseholdCard(
                         Icon(Icons.Outlined.Person, contentDescription = null, modifier = Modifier.size(18.dp))
                         Text("  Miembros")
                     }
+                    Button(
+                        onClick = onNfcCode,
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = MaterialTheme.shapes.medium,
+                        colors = ButtonDefaults.buttonColors(containerColor = WebSurface, contentColor = WebPrimary),
+                    ) {
+                        Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Text("  Codigo NFC")
+                    }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun NfcCodeDialog(household: HouseholdUiModel, onDismiss: () -> Unit) {
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    val nfcUrl = remember(household.id) { "https://nfcompra.esgarpe.dev/household/${household.id}/lists" }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = MaterialTheme.shapes.large,
+        containerColor = WebSurface,
+        title = { DialogTitle("Codigo NFC") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(household.name, color = WebText, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                StyledOutlinedTextField(
+                    value = nfcUrl,
+                    onValueChange = {},
+                    label = "Codigo URL / URI",
+                    readOnly = true,
+                    trailing = {
+                        IconButton(
+                            onClick = {
+                                clipboard.setText(AnnotatedString(nfcUrl))
+                                Toast.makeText(context, "Codigo NFC copiado", Toast.LENGTH_SHORT).show()
+                            },
+                        ) {
+                            Icon(Icons.Outlined.ContentCopy, contentDescription = "Copiar codigo NFC", tint = WebPrimary)
+                        }
+                    },
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    clipboard.setText(AnnotatedString(nfcUrl))
+                    Toast.makeText(context, "Codigo NFC copiado", Toast.LENGTH_SHORT).show()
+                },
+                shape = MaterialTheme.shapes.medium,
+                colors = webPrimaryButtonColors(),
+            ) {
+                Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                Text("  Copiar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, colors = ButtonDefaults.textButtonColors(contentColor = WebMuted)) {
+                Text("Cerrar")
+            }
+        },
+    )
 }
 
 @Composable

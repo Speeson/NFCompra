@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "dev.esgarpe.nfcompra",
+      "sha256_cert_fingerprints": [
+        "91:A7:36:48:A8:B8:41:AC:F0:47:77:A3:B2:01:71:0B:C5:6D:B1:42:F4:23:23:3F:92:D0:3E:84:DA:53:7B:3E"
+      ]
+    }
+  }
+]

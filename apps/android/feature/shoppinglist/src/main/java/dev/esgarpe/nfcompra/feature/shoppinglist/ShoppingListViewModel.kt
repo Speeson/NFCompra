@@ -121,8 +121,10 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
                     if (generation == loadGeneration) mutableState.value = ShoppingListViewState.NoHouseholds
                     return@launch
                 }
-                val household = context?.let { requested -> households.firstOrNull { it.id == requested.householdId } }
-                    ?: households.first()
+                val household = context?.let { requested ->
+                    households.firstOrNull { it.id == requested.householdId }
+                        ?: throw ShoppingListApiException(404, "HOUSEHOLD_NOT_ACCESSIBLE", "No se pudo abrir este hogar.")
+                } ?: households.first()
                 val lists = repository.lists(household.id)
                 val list = context?.listId?.let { requested -> lists.firstOrNull { it.id == requested } }
                     ?: lists.firstOrNull()
@@ -130,7 +132,15 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
                 publishSelection(households, lists, household.id, list?.id, expectedGeneration = generation)
                 if (pendingContext == context) pendingContext = null
             } catch (error: ShoppingListApiException) {
-                if (generation == loadGeneration) mutableState.value = ShoppingListViewState.Error(error.message)
+                if (generation == loadGeneration) {
+                    val current = mutableState.value as? ShoppingListViewState.Data
+                    mutableState.value = if (context != null && current != null) {
+                        current.copy(message = error.message)
+                    } else {
+                        ShoppingListViewState.Error(error.message)
+                    }
+                    if (pendingContext == context) pendingContext = null
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
