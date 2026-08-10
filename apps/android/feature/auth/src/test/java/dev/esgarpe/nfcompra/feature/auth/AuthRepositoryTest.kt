@@ -409,6 +409,43 @@ class AuthRepositoryTest {
     }
 
     @Test
+    fun `auto sign in refresh keeps the session on transient server failures`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(503))
+        server.start()
+        try {
+            val tokens = SessionTokens("expired-access", "refresh-still-valid")
+            val store = FakeTokenStore().apply { this.tokens = tokens }
+            val repository = AuthRepository(NetworkClient.authApi(server.url("/").toString()), store)
+
+            val result = repository.refresh()
+
+            assertTrue(result is AuthResult.Failure)
+            assertEquals(tokens, store.tokens)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `auto sign in refresh clears the session when the refresh token is unauthorized`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(401))
+        server.start()
+        try {
+            val store = FakeTokenStore().apply { tokens = SessionTokens("expired-access", "expired-refresh") }
+            val repository = AuthRepository(NetworkClient.authApi(server.url("/").toString()), store)
+
+            val result = repository.refresh()
+
+            assertTrue(result is AuthResult.Failure)
+            assertNull(store.tokens)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
     fun `refresh failure publishes an anonymous observable session`() {
         val server = MockWebServer()
         server.dispatcher = object : Dispatcher() {

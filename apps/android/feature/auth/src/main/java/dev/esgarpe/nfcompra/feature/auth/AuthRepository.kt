@@ -89,7 +89,9 @@ class AuthRepository(
                 AuthResult.Failure("La sesión ha cambiado.")
             }
         } catch (error: Exception) {
-            runCatching { tokenStore.compareAndClear(snapshot) }
+            if (error is HttpException && error.code() == 401) {
+                runCatching { tokenStore.compareAndClear(snapshot) }
+            }
             AuthResult.Failure(error.messageForUser())
         }
     }
