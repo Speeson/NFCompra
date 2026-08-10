@@ -8,3 +8,4 @@ export async function fetchNotifications(): Promise<Notification[]> { return (aw
 export async function fetchUnreadCount(): Promise<number> { return (await apiClient.request<{ count: number }>('/notifications/unread-count')).count; }
 export async function markNotificationRead(id: string): Promise<void> { await apiClient.request(`/notifications/${id}/read`, { method: 'PATCH' }); }
 export async function markAllNotificationsRead(): Promise<void> { await apiClient.request('/notifications/read-all', { method: 'POST' }); }
+export async function deleteAllNotifications(): Promise<void> { await apiClient.request('/notifications', { method: 'DELETE' }); }

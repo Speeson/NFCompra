@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type JSX, type PointerEvent } from 'react';
 
-import { searchProductCatalog, type ProductCatalogItem } from '../catalog/product-catalog-api';
+import { ProductCatalogCard, ProductCatalogListItem, productIcon } from '../catalog/ProductCatalogCards';
+import { searchProductCatalog, setProductFavorite, type ProductCatalogItem } from '../catalog/product-catalog-api';
 import type { ShoppingItem } from './model';
 
 type ProductInput = { name: string; quantity: number; unit: string | null };
@@ -38,6 +39,7 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
   const [waitlist, setWaitlist] = useState<PendingProduct[]>([]);
   const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
   const [isProductSearchOpen, setIsProductSearchOpen] = useState(true);
+  const [favoriteOverrides, setFavoriteOverrides] = useState<Record<string, boolean>>({});
   const [isRenamingList, setIsRenamingList] = useState(false);
   const [listNameDraft, setListNameDraft] = useState(title);
   const productSearchRef = useRef<HTMLDivElement>(null);
@@ -65,14 +67,14 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
     }
     const timer = window.setTimeout(() => {
       void searchProductCatalog(search, pickerMode === 'cards' ? 12 : 8)
-        .then((products) => { if (active) setSuggestions(products); })
+        .then((products) => { if (active) setSuggestions(applyFavoriteOverrides(products, favoriteOverrides)); })
         .catch(() => { if (active) setSuggestions([]); });
     }, pickerMode === 'cards' ? 80 : 150);
     return () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [isOffline, name, pickerMode]);
+  }, [favoriteOverrides, isOffline, name, pickerMode]);
 
   function changePickerMode(mode: ProductPickerMode): void {
     setPickerMode(mode);
@@ -107,6 +109,17 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
     setName(suggestion.name);
     setSuggestions([]);
     setIsProductSearchOpen(false);
+  }
+
+  async function changeFavorite(product: ProductCatalogItem, favorite: boolean): Promise<void> {
+    setFavoriteOverrides((current) => ({ ...current, [product.id]: favorite }));
+    setSuggestions((current) => current.map((entry) => entry.id === product.id ? { ...entry, isFavorite: favorite } : entry));
+    try {
+      await setProductFavorite(product.id, favorite);
+    } catch {
+      setFavoriteOverrides((current) => ({ ...current, [product.id]: !favorite }));
+      setSuggestions((current) => current.map((entry) => entry.id === product.id ? { ...entry, isFavorite: !favorite } : entry));
+    }
   }
 
   function updateCardQuantity(productId: string, delta: number): void {
@@ -175,12 +188,12 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
           <form className={`product-form product-form--${pickerMode}`} onSubmit={addItem}>
             <label htmlFor="new-product-name">Producto</label>
             <div className="product-autocomplete"><input id="new-product-name" disabled={isOffline} value={name} onFocus={() => setIsProductSearchOpen(true)} onChange={(event) => { setName(event.target.value); setIsProductSearchOpen(true); }} required maxLength={200} autoComplete="off" />
-              {pickerMode === 'list' && isProductSearchOpen && suggestions.length ? <div className="product-suggestions" role="listbox" aria-label="Sugerencias de productos">{suggestions.map((suggestion) => <button key={suggestion.id} type="button" className="product-suggestion" onClick={() => selectSuggestion(suggestion)}>{suggestionLabel(suggestion)}</button>)}</div> : null}
+              {pickerMode === 'list' && isProductSearchOpen && suggestions.length ? <div className="product-suggestions" role="listbox" aria-label="Sugerencias de productos">{suggestions.map((suggestion) => <ProductCatalogListItem key={suggestion.id} product={suggestion} onSelect={selectSuggestion} onFavoriteChange={(product, favorite) => void changeFavorite(product, favorite)} />)}</div> : null}
             </div>
             <ManualQuantityStepper quantity={quantity} disabled={isOffline} onChange={updateManualQuantity} />
             <button type="submit" disabled={isOffline}>Añadir</button>
           </form>
-          {pickerMode === 'cards' && isProductSearchOpen && suggestions.length ? <ProductCardResults suggestions={suggestions} quantities={cardQuantities} recentlyAddedId={recentlyAddedId} onQuantityChange={updateCardQuantity} onSelect={addSuggestionToWaitlist} /> : null}
+          {pickerMode === 'cards' && isProductSearchOpen && suggestions.length ? <ProductCardResults suggestions={suggestions} quantities={cardQuantities} recentlyAddedId={recentlyAddedId} onQuantityChange={updateCardQuantity} onSelect={addSuggestionToWaitlist} onFavoriteChange={(product, favorite) => void changeFavorite(product, favorite)} /> : null}
           {pickerMode === 'cards' && waitlist.length ? <PendingProductWaitlist products={waitlist} onRemove={removeFromWaitlist} onCommit={addWaitlist} /> : null}
         </div>
       </> : null}
@@ -206,23 +219,9 @@ function ManualQuantityStepper({ quantity, disabled, onChange }: { quantity: str
   </div>;
 }
 
-function ProductCardResults({ suggestions, quantities, recentlyAddedId, onQuantityChange, onSelect }: { suggestions: ProductCatalogItem[]; quantities: Record<string, number>; recentlyAddedId: string | null; onQuantityChange(productId: string, delta: number): void; onSelect(suggestion: ProductCatalogItem): void }): JSX.Element {
+function ProductCardResults({ suggestions, quantities, recentlyAddedId, onQuantityChange, onSelect, onFavoriteChange }: { suggestions: ProductCatalogItem[]; quantities: Record<string, number>; recentlyAddedId: string | null; onQuantityChange(productId: string, delta: number): void; onSelect(suggestion: ProductCatalogItem): void; onFavoriteChange(product: ProductCatalogItem, favorite: boolean): void }): JSX.Element {
   return <section className="product-card-results" aria-label="Resultados de productos">
-    {suggestions.map((suggestion) => {
-      const selectedQuantity = quantities[suggestion.id] ?? 0;
-      return <article key={suggestion.id} className={recentlyAddedId === suggestion.id ? 'product-result-card product-result-card--added' : 'product-result-card'}>
-        <button type="button" className="product-result-card__main" aria-label={`Seleccionar ${suggestion.name}`} onClick={() => onSelect(suggestion)} disabled={selectedQuantity === 0}>
-          <span className="product-result-card__icon" aria-hidden="true">{productIcon(suggestion)}</span>
-          <span><strong>{suggestion.name}</strong><small>{[suggestion.categoryName, suggestion.packageSize].filter(Boolean).join(' · ')}</small></span>
-          <span className="product-result-card__status">{selectedQuantity > 0 ? `x${selectedQuantity}` : 'Elige cantidad'}</span>
-        </button>
-        <div className="product-result-card__quantity" aria-label={`Cantidad de ${suggestion.name}`}>
-          <button type="button" aria-label={`Reducir cantidad de ${suggestion.name}`} onClick={() => onQuantityChange(suggestion.id, -1)} disabled={selectedQuantity === 0}>−</button>
-          <span>{selectedQuantity}</span>
-          <button type="button" aria-label={`Aumentar cantidad de ${suggestion.name}`} onClick={() => onQuantityChange(suggestion.id, 1)}>+</button>
-        </div>
-      </article>;
-    })}
+    {suggestions.map((suggestion) => <ProductCatalogCard key={suggestion.id} product={suggestion} quantity={quantities[suggestion.id] ?? 0} recentlyAdded={recentlyAddedId === suggestion.id} onQuantityChange={onQuantityChange} onAdd={onSelect} onFavoriteChange={onFavoriteChange} />)}
   </section>;
 }
 
@@ -260,23 +259,8 @@ function PendingProductWaitlist({ products, onRemove, onCommit }: { products: Pe
   </section>;
 }
 
-function suggestionLabel(suggestion: ProductCatalogItem): string {
-  return [suggestion.name, suggestion.categoryName, suggestion.packageSize].filter(Boolean).join(' · ');
-}
-
-function productIcon(product: ProductCatalogItem): string {
-  const text = `${product.iconKey} ${product.categoryName ?? ''} ${product.name}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  if (text.includes('atun') || text.includes('pescado') || text.includes('marisco') || text.includes('fish')) return '🐟';
-  if (text.includes('leche') || text.includes('lacteo') || text.includes('yogur') || text.includes('milk')) return '🥛';
-  if (text.includes('pan') || text.includes('bolleria') || text.includes('bread')) return '🥖';
-  if (text.includes('fruta') || text.includes('manzana') || text.includes('apple')) return '🍎';
-  if (text.includes('verdura') || text.includes('zanahoria') || text.includes('carrot')) return '🥕';
-  if (text.includes('carne') || text.includes('pollo') || text.includes('meat')) return '🥩';
-  if (text.includes('agua') || text.includes('bebida') || text.includes('refresco') || text.includes('bottle')) return '💧';
-  if (text.includes('limpieza') || text.includes('drogueria')) return '🧽';
-  if (text.includes('mascota') || text.includes('perro') || text.includes('gato')) return '🐾';
-  if (text.includes('conserva')) return '🥫';
-  return '🛒';
+function applyFavoriteOverrides(products: ProductCatalogItem[], overrides: Record<string, boolean>): ProductCatalogItem[] {
+  return products.map((product) => product.id in overrides ? { ...product, isFavorite: overrides[product.id] } : product);
 }
 
 function pickerModeFromStorage(): ProductPickerMode {

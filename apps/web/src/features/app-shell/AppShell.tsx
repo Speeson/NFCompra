@@ -12,8 +12,8 @@ interface AppShellProps extends PropsWithChildren {
   onNotificationActionError?(message: string): void;
 }
 
-const desktopNavigation = [['Inicio', '/'], ['Hogares', '/households'], ['Mis listas', '/lists'], ['NFC', '/nfc']] as const;
-const mobileNavigation = [['Inicio', '/'], ['Hogares', '/households'], ['Listas', '/lists'], ['NFC', '/nfc']] as const;
+const desktopNavigation = [['Inicio', '/'], ['Hogares', '/households'], ['Mis listas', '/lists'], ['Catálogo', '/catalog'], ['NFC', '/nfc']] as const;
+const mobileNavigation = [['Inicio', '/'], ['Hogares', '/households'], ['Listas', '/lists'], ['Catálogo', '/catalog']] as const;
 const androidApkDownloadUrl = 'https://github.com/Speeson/NFCompra/releases/latest/download/NFCompra-release.apk';
 
 export function AppShell({ user, pathname, onNavigate, onLogout, onNotificationActionError, children }: AppShellProps): JSX.Element {
@@ -74,7 +74,6 @@ export function AppShell({ user, pathname, onNavigate, onLogout, onNotificationA
             <button className="app-shell__profile-logout" role="menuitem" type="button" onClick={() => void onLogout()}><LogoutIcon />Cerrar sesión</button>
           </div> : null}
         </div>
-        <button className="app-shell__logout" type="button" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={() => void onLogout()}><LogoutIcon /></button>
       </div>
     </header>
     <main ref={contentRef} className="app-shell__content" tabIndex={-1}>{children}</main>

@@ -11,6 +11,7 @@ export interface ProductCategory {
   sourceCategoryId: string | null;
   createdAt: string;
   updatedAt: string;
+  isFavorite?: boolean;
 }
 
 export interface ProductCatalogItem {
@@ -24,6 +25,7 @@ export interface ProductCatalogItem {
   packageSize: string | null;
   source: string | null;
   sourceProductId: string | null;
+  isFavorite?: boolean;
 }
 
 interface ProductCatalogSnapshot {
@@ -43,6 +45,12 @@ export async function fetchProductCategories(): Promise<ProductCategory[]> {
 export async function loadProductCatalogSnapshot(): Promise<ProductCatalogItem[]> {
   const snapshot = await loadSnapshot();
   return snapshot.products;
+}
+
+export async function setProductFavorite(productId: string, favorite: boolean): Promise<{ productId: string; isFavorite: boolean }> {
+  return apiClient.request<{ productId: string; isFavorite: boolean }>(`/product-catalog/${encodeURIComponent(productId)}/favorite`, {
+    method: favorite ? 'POST' : 'DELETE',
+  });
 }
 
 export async function searchProductCatalog(search: string, limit = 10): Promise<ProductCatalogItem[]> {

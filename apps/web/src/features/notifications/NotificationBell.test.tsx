@@ -24,6 +24,7 @@ describe('NotificationBell', () => {
       if (url.endsWith('/notifications/notice-invite/read') && init?.method === 'PATCH') return Promise.resolve(Response.json({ status: 'read' }));
       if (url.endsWith('/notifications/notice-list/read') && init?.method === 'PATCH') return Promise.resolve(Response.json({ status: 'read' }));
       if (url.endsWith('/notifications/read-all') && init?.method === 'POST') return Promise.resolve(Response.json({ status: 'read' }));
+      if (url.endsWith('/notifications') && init?.method === 'DELETE') return Promise.resolve(Response.json({ status: 'deleted' }));
       throw new Error(`Solicitud inesperada: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -31,14 +32,18 @@ describe('NotificationBell', () => {
     expect(await screen.findByRole('button', { name: 'Notificaciones (2 sin leer)' })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Notificaciones (2 sin leer)' }));
     expect(screen.getByRole('region', { name: 'Panel de notificaciones' })).toHaveClass('notification-bell__panel');
-    fireEvent.click(await screen.findByRole('button', { name: 'Nueva invitación' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva invitación/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aceptar' }));
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/invitations/invite-1/accept'));
     fireEvent.click(screen.getByRole('button', { name: 'Notificaciones (2 sin leer)' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Pan añadido' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Pan añadido/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir' }));
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/?household=home-1&list=list-1'));
     fireEvent.click(screen.getByRole('button', { name: 'Notificaciones (2 sin leer)' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Marcar todas como leídas' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Marcar como leídas' }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([input, init]) => String(input).endsWith('/notifications/read-all') && init?.method === 'POST')).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar todas' }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input, init]) => String(input).endsWith('/notifications') && init?.method === 'DELETE')).toBe(true));
   });
 
   it('only enables notification polling while the document is visible', async () => {
@@ -76,11 +81,12 @@ describe('NotificationBell', () => {
     }));
     render(<QueryClientProvider client={createWebQueryClient()}><NotificationBell onNavigate={navigate} /></QueryClientProvider>);
     fireEvent.click(await screen.findByRole('button', { name: 'Notificaciones (1 sin leer)' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Pan añadido' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Pan añadido/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir' }));
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/?household=home-1&list=list-1'));
     expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo marcar la notificación.');
     fireEvent.click(screen.getByRole('button', { name: 'Notificaciones (1 sin leer)' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Marcar todas como leídas' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Marcar como leídas' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('No se pudieron marcar las notificaciones.');
   });
 
@@ -103,7 +109,8 @@ describe('NotificationBell', () => {
     render(<AuthProvider><App /></AuthProvider>);
     await screen.findByRole('heading', { name: 'Lista uno' });
     fireEvent.click(screen.getByRole('button', { name: 'Notificaciones (1 sin leer)' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Pan añadido' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Pan añadido/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir' }));
     expect(await screen.findByRole('heading', { name: 'Lista dos' })).toBeVisible();
     expect(screen.getByLabelText('Hogar')).toHaveValue('home-2');
     expect(screen.getByLabelText('Lista')).toHaveValue('list-2');
@@ -133,7 +140,8 @@ describe('NotificationBell', () => {
     render(<AuthProvider><App /></AuthProvider>);
     await screen.findByRole('heading', { name: 'Compra' });
     fireEvent.click(screen.getByRole('button', { name: 'Notificaciones (1 sin leer)' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Nueva invitación' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva invitación/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aceptar' }));
     expect(await screen.findByRole('heading', { name: 'Acepta tu invitación' })).toBeVisible();
     expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo marcar la notificación.');
   });

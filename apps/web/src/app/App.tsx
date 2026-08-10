@@ -13,6 +13,7 @@ import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { HouseholdDetailPage, HouseholdsPage } from '../features/households/HouseholdsPage';
 import { ListsPage } from '../features/shopping-list/ListsPage';
 import { NfcPage } from '../features/nfc/NfcPage';
+import { CatalogPage } from '../features/catalog/CatalogPage';
 
 export function App(): JSX.Element {
   const { user } = useSession();
@@ -122,6 +123,7 @@ export function AuthenticatedRoute({ pathname, search, userId, userName, onNavig
   if (householdListsMatch) return <ShoppingListRoute currentUserId={userId} requestedHouseholdId={decodeURIComponent(householdListsMatch[1])} onNavigate={onNavigate} />;
   if (pathname === '/lists') return <ListsPage onNavigate={onNavigate} startCreating={search.get('create') === '1'} />;
   if (listMatch) return <ShoppingListRoute currentUserId={userId} requestedListId={decodeURIComponent(listMatch[1])} onNavigate={onNavigate} />;
+  if (pathname === '/catalog') return <CatalogPage />;
   if (pathname === '/nfc') return <NfcPage />;
   if (pathname === '/profile') return <PlaceholderPage title="Perfil" text="Tu perfil se mostrará aquí cuando haya ajustes guardados disponibles." />;
   if (pathname === '/settings') return <PlaceholderPage title="Ajustes" text="Los ajustes de la cuenta estarán disponibles aquí próximamente." />;

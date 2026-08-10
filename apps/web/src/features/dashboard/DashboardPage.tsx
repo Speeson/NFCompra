@@ -1,5 +1,5 @@
 import { useQueries, useQuery } from '@tanstack/react-query';
-import type { JSX } from 'react';
+import { useState, type JSX } from 'react';
 
 import { fetchMembers, memberQueryKey, type HouseholdMember } from '../households/household-api';
 import { fetchNotifications, notificationsQueryKey, type Notification } from '../notifications/notification-api';
@@ -27,26 +27,29 @@ export function DashboardPage({ userName, onNavigate }: DashboardPageProps): JSX
   if (!households.data?.length) return <section className="dashboard"><header><p className="eyebrow">Resumen</p><h1>Hola, {userName}</h1></header><p className="dashboard__empty">Todavía no tienes hogares.</p><QuickActions onNavigate={onNavigate} /></section>;
 
   return <section className="dashboard">
-    <header className="dashboard__header"><div><p className="eyebrow">Resumen</p><h1>Hola, {userName}</h1><p>Todo lo importante de tus hogares, de un vistazo.</p></div></header>
+    <header className="dashboard__header"><div><p className="eyebrow">Resumen</p><h1>Hola, {userName}</h1></div></header>
+    <QuickActions onNavigate={onNavigate} />
     {memberQueries.some((query) => query.isPending) || listQueries.some((query) => query.isPending) || itemQueries.some((query) => query.isPending) ? <p role="status">Cargando los detalles de tus hogares…</p> : null}
     <div className="dashboard__households">
       {householdList.map((household, index) => <HouseholdCard key={household.id} household={household} members={memberQueries[index].data} lists={listQueries[index].data} isPending={memberQueries[index].isPending || listQueries[index].isPending} memberOrListError={memberQueries[index].isError || listQueries[index].isError} itemQueryByListId={itemQueryByListId} onNavigate={onNavigate} />)}
     </div>
     <RecentActivity notifications={notifications.data} isPending={notifications.isPending} isError={notifications.isError} onNavigate={onNavigate} />
-    <QuickActions onNavigate={onNavigate} />
   </section>;
 }
 
 function HouseholdCard({ household, members, lists, isPending, memberOrListError, itemQueryByListId, onNavigate }: { household: Household; members: HouseholdMember[] | undefined; lists: ShoppingList[] | undefined; isPending: boolean; memberOrListError: boolean; itemQueryByListId: Map<string, { data?: ApiShoppingItem[]; isError: boolean; isPending: boolean } | undefined>; onNavigate(path: string): void }): JSX.Element {
+  const [expanded, setExpanded] = useState(false);
   const listDetails = (lists ?? []).map((list) => ({ list, items: itemQueryByListId.get(list.id)?.data ?? [] }));
   const hasItemError = (lists ?? []).some((list) => itemQueryByListId.get(list.id)?.isError);
   const hasPendingItems = (lists ?? []).some((list) => itemQueryByListId.get(list.id)?.isPending ?? true);
   const items = listDetails.flatMap(({ items: listItems }) => listItems);
   const pending = items.filter((item) => !item.isChecked).length;
-  return <article className="dashboard__household-card">
-    <div><p className="eyebrow">Hogar</p><h2>{household.name}</h2></div>
-    {memberOrListError || hasItemError ? <p role="alert">No se pudo cargar este hogar.</p> : isPending || hasPendingItems ? <p role="status">Cargando este hogar…</p> : <><dl className="dashboard__stats"><div><dt>Miembros</dt><dd>{members?.length ?? 0} {(members?.length ?? 0) === 1 ? 'miembro' : 'miembros'}</dd></div><div><dt>Listas</dt><dd>{listDetails.length} {listDetails.length === 1 ? 'lista' : 'listas'}</dd></div><div><dt>Pendientes</dt><dd>{pending} {pending === 1 ? 'pendiente' : 'pendientes'}</dd></div></dl><div className="dashboard__list-progress">{listDetails.map(({ list, items: listItems }) => <button key={list.id} type="button" onClick={() => onNavigate(`/?household=${encodeURIComponent(household.id)}&list=${encodeURIComponent(list.id)}`)}><strong>{list.name}</strong><span>{listItems.filter((item) => item.isChecked).length} de {listItems.length} artículos comprados</span></button>)}</div></>}
-    <button className="button" type="button" onClick={() => onNavigate(householdPath(household.id))}>Abrir {household.name}</button>
+  return <article className={expanded ? 'dashboard__household-card is-expanded' : 'dashboard__household-card'}>
+    <button className="dashboard__household-summary" type="button" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+      <span><p className="eyebrow">Hogar</p><h2>{household.name}</h2></span>
+      <span aria-hidden="true">{expanded ? '−' : '+'}</span>
+    </button>
+    {memberOrListError || hasItemError ? <p role="alert">No se pudo cargar este hogar.</p> : isPending || hasPendingItems ? <p role="status">Cargando este hogar…</p> : <><dl className="dashboard__stats"><div><dt>Miembros</dt><dd>{members?.length ?? 0}</dd></div><div><dt>Listas</dt><dd>{listDetails.length}</dd></div><div><dt>Pendientes</dt><dd>{pending}</dd></div></dl>{expanded ? <div className="dashboard__list-progress">{listDetails.map(({ list, items: listItems }) => <button key={list.id} type="button" onClick={() => onNavigate(`/?household=${encodeURIComponent(household.id)}&list=${encodeURIComponent(list.id)}`)}><strong>{list.name}</strong><span>{listItems.filter((item) => item.isChecked).length} de {listItems.length} artículos comprados</span><b>Abrir</b></button>)}</div> : null}</>}
   </article>;
 }
 
@@ -55,5 +58,5 @@ function RecentActivity({ notifications, isPending, isError, onNavigate }: { not
 }
 
 function QuickActions({ onNavigate }: { onNavigate(path: string): void }): JSX.Element {
-  return <section className="dashboard__quick-actions" aria-labelledby="quick-actions-title"><h2 id="quick-actions-title">Acciones rápidas</h2><div><button className="button" type="button" onClick={() => onNavigate('/households?create=1')}>Crear hogar</button><button className="button button--secondary" type="button" onClick={() => onNavigate('/lists?create=1')}>Crear lista</button><button className="button button--quiet" type="button" onClick={() => onNavigate('/nfc')}>Abrir NFC</button></div></section>;
+  return <section className="dashboard__quick-actions" aria-labelledby="quick-actions-title"><h2 id="quick-actions-title">Acciones rápidas</h2><div><button className="button" type="button" onClick={() => onNavigate('/households?create=1')}>Crear hogar</button><button className="button button--secondary" type="button" onClick={() => onNavigate('/lists?create=1')}>Crear lista</button><button className="button button--quiet" type="button" onClick={() => onNavigate('/catalog')}>Abrir catálogo</button></div></section>;
 }

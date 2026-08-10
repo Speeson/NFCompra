@@ -50,7 +50,7 @@ describe('LoginPage', () => {
     });
   });
 
-  it('offers the persistent resend route when login reports an unverified email', async () => {
+  it('does not show the persistent resend route inside login when email is unverified', async () => {
     const navigate = vi.fn();
     vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
       const url = String(input);
@@ -71,8 +71,8 @@ describe('LoginPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Debes verificar tu correo.');
-    fireEvent.click(screen.getByRole('button', { name: /Reenviar correo/ }));
-    expect(navigate).toHaveBeenCalledWith('/auth/resend-verification');
+    expect(screen.queryByRole('button', { name: /Reenviar correo/ })).not.toBeInTheDocument();
+    expect(navigate).not.toHaveBeenCalled();
   });
 });
 
@@ -390,8 +390,8 @@ describe('logout', () => {
 
     render(<AuthProvider><App /></AuthProvider>);
 
-    await screen.findByRole('button', { name: 'Cerrar sesión' });
-    fireEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Persona/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Cerrar sesión' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo cerrar sesión en el servidor. La sesión local se ha cerrado.');
     expect(screen.getByRole('button', { name: 'Iniciar sesión' })).toBeVisible();
@@ -426,7 +426,8 @@ describe('logout', () => {
     fireEvent.click(screen.getByRole('button', { name: /Iniciar/ }));
     await screen.findByText('Producto de Ana');
 
-    fireEvent.click(screen.getByRole('button', { name: /Cerrar/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Ana$/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Cerrar/ }));
     await screen.findByRole('button', { name: /Iniciar/ });
     fireEvent.change(screen.getByLabelText(/Correo/), { target: { value: 'b@example.com' } });
     fireEvent.change(screen.getByLabelText(/Contrase/), { target: { value: 'contraseña' } });

@@ -18,7 +18,7 @@ function errorMessage(error: unknown): string {
 }
 
 export function RegisterPage({ onNavigate }: AuthPageProps): JSX.Element {
-  return <AuthLayout title="Crea tu cuenta de NFCompra"><RegisterForm onNavigate={onNavigate} /></AuthLayout>;
+  return <AuthLayout title="Crea tu cuenta de NFCompra" brandOnly><RegisterForm onNavigate={onNavigate} /></AuthLayout>;
 }
 
 export function RegisterForm({ onNavigate, onSwitchToLogin }: RegisterFormProps): JSX.Element {
@@ -92,7 +92,6 @@ export function RegisterForm({ onNavigate, onSwitchToLogin }: RegisterFormProps)
       {retryEmail && <button type="button" onClick={() => void resend()}>Reenviar verificación</button>}
       <button type="submit">Crear cuenta</button>
     </form>
-    <button type="button" onClick={() => onNavigate?.('/auth/resend-verification')}>Reenviar correo de verificación</button>
     <p>¿Ya tienes cuenta? <button type="button" onClick={() => {
       if (onSwitchToLogin) onSwitchToLogin();
       else onNavigate?.('/login');

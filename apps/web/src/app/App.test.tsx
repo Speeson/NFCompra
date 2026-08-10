@@ -12,6 +12,10 @@ vi.mock('../features/shopping-list/ShoppingListRoute', () => ({
   ShoppingListRoute: ({ requestedHouseholdId }: { requestedHouseholdId?: string | null }) => <div data-testid="shopping-route">{requestedHouseholdId}</div>,
 }));
 
+vi.mock('../features/catalog/CatalogPage', () => ({
+  CatalogPage: () => <h1>Catálogo</h1>,
+}));
+
 afterEach(cleanup);
 
 describe('ShoppingListScreen', () => {
@@ -35,6 +39,12 @@ describe('ShoppingListScreen', () => {
     expect(screen.getByRole('heading', { name: 'Perfil' })).toBeVisible();
     rerender(<AuthenticatedRoute {...props} pathname="/settings" />);
     expect(screen.getByRole('heading', { name: 'Ajustes' })).toBeVisible();
+  });
+
+  it('routes the authenticated catalog page', () => {
+    const props = { search: new URLSearchParams(), userId: 'user-1', userName: 'Ana', onNavigate: () => undefined };
+    render(<AuthenticatedRoute {...props} pathname="/catalog" />);
+    expect(screen.getByRole('heading', { name: 'Catálogo' })).toBeVisible();
   });
 
   it('routes HTTPS NFC household links to the shopping list household context', () => {

@@ -40,6 +40,7 @@ describe('AppShell', () => {
     expect(within(desktopNavigation).getByRole('link', { name: 'Inicio' })).toHaveAttribute('href', '/');
     expect(within(desktopNavigation).getByRole('link', { name: 'Hogares' })).toHaveAttribute('href', '/households');
     expect(within(desktopNavigation).getByRole('link', { name: 'Mis listas' })).toHaveAttribute('href', '/lists');
+    expect(within(desktopNavigation).getByRole('link', { name: 'Catálogo' })).toHaveAttribute('href', '/catalog');
     expect(within(desktopNavigation).getByRole('link', { name: 'NFC' })).toHaveAttribute('href', '/nfc');
     expect(screen.getByRole('link', { name: 'Descargar APK' })).toHaveAttribute(
       'href',
@@ -101,9 +102,9 @@ describe('AppShell', () => {
     expect(within(mobileNavigation).getByRole('link', { name: 'Inicio' })).toHaveAttribute('href', '/');
     expect(within(mobileNavigation).getByRole('link', { name: 'Hogares' })).toHaveAttribute('href', '/households');
     expect(within(mobileNavigation).getByRole('link', { name: 'Listas' })).toHaveAttribute('href', '/lists');
-    const nfc = within(mobileNavigation).getByRole('link', { name: 'NFC' });
-    expect(nfc).toHaveAttribute('href', '/nfc');
-    fireEvent.click(nfc);
-    expect(onNavigate).toHaveBeenCalledWith('/nfc');
+    const catalog = within(mobileNavigation).getByRole('link', { name: 'Catálogo' });
+    expect(catalog).toHaveAttribute('href', '/catalog');
+    fireEvent.click(catalog);
+    expect(onNavigate).toHaveBeenCalledWith('/catalog');
   });
 });

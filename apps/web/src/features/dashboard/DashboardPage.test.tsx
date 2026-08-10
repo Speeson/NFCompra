@@ -30,9 +30,10 @@ describe('DashboardPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Hola, Ana' })).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Casa' })).toBeVisible();
-    expect(await screen.findByText('1 pendiente')).toBeVisible();
-    expect(screen.getByText('2 miembros')).toBeVisible();
-    expect(screen.getByText('1 lista')).toBeVisible();
+    expect(await screen.findByText('Pendientes')).toBeVisible();
+    expect(screen.getByText('Miembros')).toBeVisible();
+    expect(screen.getByText('Listas')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: /Casa/ }));
     expect(screen.getByText('Compra semanal')).toBeVisible();
     expect(screen.getByText('1 de 2 artículos comprados')).toBeVisible();
     expect(screen.getByText('Bea actualizó Compra semanal')).toBeVisible();
@@ -45,15 +46,16 @@ describe('DashboardPage', () => {
     renderDashboard(navigate);
 
     await screen.findByRole('heading', { name: 'Casa' });
-    fireEvent.click(screen.getByRole('button', { name: 'Abrir Casa' }));
+    fireEvent.click(screen.getByRole('button', { name: /Casa/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Compra semanal/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Crear hogar' }));
     fireEvent.click(screen.getByRole('button', { name: 'Crear lista' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Abrir NFC' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir catálogo' }));
 
-    expect(navigate).toHaveBeenNthCalledWith(1, '/households/home-1');
+    expect(navigate).toHaveBeenNthCalledWith(1, '/?household=home-1&list=list-1');
     expect(navigate).toHaveBeenNthCalledWith(2, '/households?create=1');
     expect(navigate).toHaveBeenNthCalledWith(3, '/lists?create=1');
-    expect(navigate).toHaveBeenNthCalledWith(4, '/nfc');
+    expect(navigate).toHaveBeenNthCalledWith(4, '/catalog');
     expect(fetchMock.mock.calls.some(([, init]) => init?.method && init.method !== 'GET')).toBe(false);
   });
 
@@ -116,6 +118,7 @@ describe('DashboardPage', () => {
     expect(screen.queryByText('0 de 0 artículos comprados')).not.toBeInTheDocument();
 
     resolveItems(Response.json({ items: [] }));
-    expect(await screen.findByText('0 pendientes')).toBeVisible();
+    expect(await screen.findByText('Pendientes')).toBeVisible();
+    expect(screen.getByText('0')).toBeVisible();
   });
 });

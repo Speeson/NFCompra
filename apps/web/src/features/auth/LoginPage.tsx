@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type JSX, type ReactNode } from 'react';
 
 import { ApiError } from '../../api/client';
+import logo from '../../assets/brand/nfcompra-logo.png';
 import { useSession } from './AuthProvider';
 
 interface AuthPageProps {
@@ -16,7 +17,7 @@ function errorMessage(error: unknown): string {
 }
 
 export function LoginPage({ onNavigate }: AuthPageProps): JSX.Element {
-  return <AuthLayout title="Inicia sesión en NFCompra"><LoginForm onNavigate={onNavigate} /></AuthLayout>;
+  return <AuthLayout title="Inicia sesión en NFCompra" brandOnly><LoginForm onNavigate={onNavigate} /></AuthLayout>;
 }
 
 export function LoginForm({ onNavigate, onSwitchToRegister }: LoginFormProps): JSX.Element {
@@ -39,14 +40,13 @@ export function LoginForm({ onNavigate, onSwitchToRegister }: LoginFormProps): J
   }
 
   return <>
-    <form onSubmit={submit}>
+    <form onSubmit={submit} className="auth-form">
       <label>Correo electrónico<input name="email" type="email" autoComplete="email" required /></label>
       <label>Contraseña<input name="password" type="password" autoComplete="current-password" required /></label>
       {error && <p role="alert">{error}</p>}
       <button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Iniciando sesión…' : 'Iniciar sesión'}</button>
     </form>
     <button type="button" onClick={() => onNavigate?.('/auth/forgot-password')}>¿Has olvidado tu contraseña?</button>
-    <button type="button" onClick={() => onNavigate?.('/auth/resend-verification')}>Reenviar correo de verificación</button>
     <p>¿No tienes cuenta? <button type="button" onClick={() => {
       if (onSwitchToRegister) onSwitchToRegister();
       else onNavigate?.('/register');
@@ -109,6 +109,9 @@ export function ForgotPasswordPage({ onNavigate }: AuthPageProps): JSX.Element {
   </AuthLayout>;
 }
 
-export function AuthLayout({ title, children }: { title: string; children: ReactNode }): JSX.Element {
-  return <main className="auth-page"><h1>{title}</h1>{children}</main>;
+export function AuthLayout({ title, brandOnly = false, children }: { title: string; brandOnly?: boolean; children: ReactNode }): JSX.Element {
+  return <main className={brandOnly ? 'auth-page auth-page--brand' : 'auth-page'}>
+    {brandOnly ? <img className="auth-page__logo" src={logo} alt="NFCompra" /> : <h1>{title}</h1>}
+    {children}
+  </main>;
 }
