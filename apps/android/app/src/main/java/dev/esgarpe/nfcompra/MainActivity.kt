@@ -3,6 +3,7 @@ package dev.esgarpe.nfcompra
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
+import android.nfc.NfcAdapter
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -226,7 +227,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun receiveViewIntent(intent: Intent?) {
-        if (intent?.action != Intent.ACTION_VIEW) return
+        if (intent?.action != Intent.ACTION_VIEW && intent?.action != NfcAdapter.ACTION_NDEF_DISCOVERED) return
         val data = intent.data
         when (val destination = data?.toHouseholdDeepLinkDestination()) {
             is HouseholdDeepLinkDestination.HouseholdLists -> {
