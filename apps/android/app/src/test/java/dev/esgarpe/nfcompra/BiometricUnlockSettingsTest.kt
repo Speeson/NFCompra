@@ -28,6 +28,31 @@ class BiometricUnlockSettingsTest {
         settings.clearForLoggedOutAccount("account-a")
         assertFalse(settings.isEnabledFor("account-a"))
     }
+
+    @Test
+    fun `auto restored sign in does not count as biometric unlock`() {
+        assertFalse(
+            shouldAcceptAuthSignInAsBiometricUnlock(
+                accountId = "account-a",
+                biometricAccessEnabled = true,
+                loginFallbackActive = false,
+            ),
+        )
+        assertTrue(
+            shouldAcceptAuthSignInAsBiometricUnlock(
+                accountId = "account-a",
+                biometricAccessEnabled = true,
+                loginFallbackActive = true,
+            ),
+        )
+        assertTrue(
+            shouldAcceptAuthSignInAsBiometricUnlock(
+                accountId = "account-a",
+                biometricAccessEnabled = false,
+                loginFallbackActive = false,
+            ),
+        )
+    }
 }
 
 private class FakeBiometricUnlockStorage : BiometricUnlockStorage {

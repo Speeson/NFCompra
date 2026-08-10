@@ -189,7 +189,7 @@ class MainActivity : FragmentActivity() {
                 previousAccountId = accountId
             }
             LaunchedEffect(biometricUnlockRequired, accountId) {
-                if (biometricUnlockRequired && accountId != null) requestBiometricUnlock(accountId)
+                if (biometricUnlockRequired) requestBiometricUnlock(requireNotNull(accountId))
             }
             val authenticatedContentUnlocked = session != null && accountId != null && !biometricUnlockRequired
             val shoppingSession = remember(accountId, authenticatedContentUnlocked) {
@@ -233,10 +233,21 @@ class MainActivity : FragmentActivity() {
                 if (session == null || accountId == null || biometricLoginFallbackActive) AuthApp(
                     authViewModel,
                     onSignedIn = {
-                        tokenStore.current()?.accessToken?.let(::userIdFromJwt)?.let {
-                            biometricUnlockedAccountId = it
-                            biometricLoginFallbackAccountId = null
-                            biometricLockMessage = null
+                        tokenStore.current()?.accessToken?.let(::userIdFromJwt)?.let { signedInAccountId ->
+                            val signedInBiometricEnabled =
+                                biometricUnlockSettings.isEnabledFor(signedInAccountId)
+                            val signedInFallbackActive =
+                                biometricLoginFallbackAccountId == signedInAccountId
+                            if (shouldAcceptAuthSignInAsBiometricUnlock(
+                                    accountId = signedInAccountId,
+                                    biometricAccessEnabled = signedInBiometricEnabled,
+                                    loginFallbackActive = signedInFallbackActive,
+                                )
+                            ) {
+                                biometricUnlockedAccountId = signedInAccountId
+                                biometricLoginFallbackAccountId = null
+                                biometricLockMessage = null
+                            }
                         }
                     },
                     rememberedEmail = rememberedEmail,
