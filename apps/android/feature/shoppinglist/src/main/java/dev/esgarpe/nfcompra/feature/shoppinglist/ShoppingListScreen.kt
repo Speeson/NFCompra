@@ -51,6 +51,7 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.HomeWork
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Person
@@ -74,6 +75,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.CompositionLocalProvider
@@ -215,6 +217,9 @@ fun ShoppingListApp(
     onOpenNotifications: (() -> Unit)? = null,
     currentUserId: String? = null,
     openListsRequestKey: Int = 0,
+    biometricAccessEnabled: Boolean = false,
+    biometricAccessMessage: String? = null,
+    onBiometricAccessChange: ((Boolean) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsState()
     LaunchedEffect(viewModel) { viewModel.load() }
@@ -254,6 +259,9 @@ fun ShoppingListApp(
             onOpenNotifications = onOpenNotifications,
             currentUserId = currentUserId,
             openListsRequestKey = openListsRequestKey,
+            biometricAccessEnabled = biometricAccessEnabled,
+            biometricAccessMessage = biometricAccessMessage,
+            onBiometricAccessChange = onBiometricAccessChange,
         )
     }
 }
@@ -262,13 +270,16 @@ fun ShoppingListApp(
 internal fun ShoppingListContent(
     data: ShoppingListViewState.Data,
     onAction: (ShoppingListAction) -> Unit,
-    onSearchProducts: suspend (String, Int) -> List<ProductCatalogUiModel>,
-    onSetProductFavorite: suspend (String, Boolean) -> ProductCatalogUiModel?,
+    onSearchProducts: suspend (String, Int) -> List<ProductCatalogUiModel> = { _, _ -> emptyList() },
+    onSetProductFavorite: suspend (String, Boolean) -> ProductCatalogUiModel? = { _, _ -> null },
     onLogout: () -> Unit,
     onMembers: (String) -> Unit,
     onOpenNotifications: (() -> Unit)? = null,
     currentUserId: String? = null,
     openListsRequestKey: Int = 0,
+    biometricAccessEnabled: Boolean = false,
+    biometricAccessMessage: String? = null,
+    onBiometricAccessChange: ((Boolean) -> Unit)? = null,
 ) {
     var selectedTab by remember { mutableStateOf(DashboardTab.Home) }
     var creatingHousehold by remember { mutableStateOf(false) }
@@ -420,7 +431,13 @@ internal fun ShoppingListContent(
                                 onTogglePinned = togglePinnedList,
                             )
                             DashboardTab.Catalog -> CatalogPanel(data.productCategories)
-                            DashboardTab.Profile -> ProfilePanel(displayName, onLogout)
+                            DashboardTab.Profile -> ProfilePanel(
+                                displayName,
+                                onLogout,
+                                biometricAccessEnabled = biometricAccessEnabled,
+                                biometricAccessMessage = biometricAccessMessage,
+                                onBiometricAccessChange = onBiometricAccessChange,
+                            )
                         }
                     }
                 }
@@ -1212,7 +1229,13 @@ private fun categoryEmoji(category: ProductCategoryUiModel): String {
 }
 
 @Composable
-private fun ProfilePanel(displayName: String, onLogout: () -> Unit) {
+private fun ProfilePanel(
+    displayName: String,
+    onLogout: () -> Unit,
+    biometricAccessEnabled: Boolean = false,
+    biometricAccessMessage: String? = null,
+    onBiometricAccessChange: ((Boolean) -> Unit)? = null,
+) {
     var showProfile by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showLogoutConfirm by remember { mutableStateOf(false) }
@@ -1285,7 +1308,12 @@ private fun ProfilePanel(displayName: String, onLogout: () -> Unit) {
     }
 
     if (showProfile) ProfileDialog(displayName, { showProfile = false })
-    if (showSettings) SettingsDialog({ showSettings = false })
+    if (showSettings) SettingsDialog(
+        onDismiss = { showSettings = false },
+        biometricAccessEnabled = biometricAccessEnabled,
+        biometricAccessMessage = biometricAccessMessage,
+        onBiometricAccessChange = onBiometricAccessChange,
+    )
     if (showLogoutConfirm) AlertDialog(
         onDismissRequest = { showLogoutConfirm = false },
         title = { Text("Cerrar sesión", fontWeight = FontWeight.Bold, color = WebText) },
@@ -1348,7 +1376,12 @@ private fun ProfileDialog(displayName: String, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun SettingsDialog(onDismiss: () -> Unit) {
+private fun SettingsDialog(
+    onDismiss: () -> Unit,
+    biometricAccessEnabled: Boolean = false,
+    biometricAccessMessage: String? = null,
+    onBiometricAccessChange: ((Boolean) -> Unit)? = null,
+) {
     val limeButtonColors = ButtonDefaults.buttonColors(containerColor = WebLime, contentColor = WebText)
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1374,6 +1407,41 @@ private fun SettingsDialog(onDismiss: () -> Unit) {
                     Button(onClick = {}, enabled = false, modifier = Modifier.weight(1f)) { Text("Grande") }
                 }
                 Text("Ajuste de tamaño disponible próximamente.", color = WebMuted, fontSize = 12.sp)
+
+                if (onBiometricAccessChange != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    SectionTitle("Seguridad")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Outlined.Lock,
+                            contentDescription = null,
+                            tint = WebPrimary,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Text("Acceso con biometria", color = WebText, fontWeight = FontWeight.Bold)
+                            Text(
+                                "Usa la biometria de tu dispositivo para acceder",
+                                color = WebMuted,
+                                fontSize = 12.sp,
+                            )
+                        }
+                        Switch(
+                            checked = biometricAccessEnabled,
+                            onCheckedChange = onBiometricAccessChange,
+                        )
+                    }
+                    biometricAccessMessage?.let {
+                        Text(it, color = WebMuted, fontSize = 12.sp)
+                    }
+                }
             }
         },
         confirmButton = {
