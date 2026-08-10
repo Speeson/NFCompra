@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createWebQueryClient } from './ShoppingListRoute';
 import { ListsPage } from './ListsPage';
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 
 describe('ListsPage', () => {
   it('groups active lists by household and opens the exact list context', async () => {
@@ -30,6 +30,35 @@ describe('ListsPage', () => {
     fireEvent.click(within(casaGroup).getByRole('button', { name: 'Abrir Compra semanal' }));
 
     expect(navigate).toHaveBeenCalledWith('/lists/list-7');
+  });
+
+  it('shows only the active household lists when a household context is selected', async () => {
+    localStorage.setItem('nfcompra.active-household-id', 'home-2');
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'home-1', name: 'Casa' }, { id: 'home-2', name: 'Piso' }] }));
+      if (url.endsWith('/households/home-2/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-8', householdId: 'home-2', name: 'Mercadona', isDefault: false, version: 1, createdAt: '', updatedAt: '' }] }));
+      if (url.endsWith('/lists/list-8/items')) return Promise.resolve(Response.json({ items: [] }));
+      throw new Error(`Ruta inesperada: ${url}`);
+    }));
+    render(<QueryClientProvider client={createWebQueryClient()}><ListsPage onNavigate={vi.fn()} /></QueryClientProvider>);
+
+    expect(await screen.findByRole('region', { name: 'Piso' })).toBeVisible();
+    expect(screen.queryByRole('region', { name: 'Casa' })).not.toBeInTheDocument();
+  });
+
+  it('falls back to all household lists when the stored active household no longer exists', async () => {
+    localStorage.setItem('nfcompra.active-household-id', 'missing-home');
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'home-1', name: 'Casa' }] }));
+      if (url.endsWith('/households/home-1/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-7', householdId: 'home-1', name: 'Compra semanal', isDefault: true, version: 1, createdAt: '', updatedAt: '' }] }));
+      if (url.endsWith('/lists/list-7/items')) return Promise.resolve(Response.json({ items: [] }));
+      throw new Error(`Ruta inesperada: ${url}`);
+    }));
+    render(<QueryClientProvider client={createWebQueryClient()}><ListsPage onNavigate={vi.fn()} /></QueryClientProvider>);
+
+    expect(await screen.findByRole('region', { name: 'Casa' })).toBeVisible();
   });
 
   it('does not show a zero count while products load and reports product errors', async () => {

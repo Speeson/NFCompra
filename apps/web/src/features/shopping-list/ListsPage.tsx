@@ -2,19 +2,33 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import { useEffect, useState, type CSSProperties, type FormEvent, type JSX } from 'react';
 
 import { createList, fetchHouseholds, fetchItems, fetchLists, householdQueryKey, itemQueryKey, listQueryKey, type ShoppingList } from './queries';
+import { readActiveHouseholdId, writeActiveHouseholdId } from '../households/active-household';
 
-export function ListsPage({ onNavigate, startCreating = false }: { onNavigate(path: string): void; startCreating?: boolean }): JSX.Element {
+export function ListsPage({ onNavigate, startCreating = false, selectedHouseholdId }: { onNavigate(path: string): void; startCreating?: boolean; selectedHouseholdId?: string | null }): JSX.Element {
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(startCreating);
   const [householdId, setHouseholdId] = useState('');
   const [name, setName] = useState('');
+  const [storedHouseholdId, setStoredHouseholdId] = useState(() => readActiveHouseholdId());
   const households = useQuery({ queryKey: householdQueryKey, queryFn: fetchHouseholds });
   const homes = households.data ?? [];
-  const listQueries = useQueries({ queries: homes.map((home) => ({ queryKey: listQueryKey(home.id), queryFn: () => fetchLists(home.id) })) });
+  const activeHouseholdId = selectedHouseholdId ?? storedHouseholdId;
+  const validActiveHouseholdId = activeHouseholdId && homes.some((home) => home.id === activeHouseholdId) ? activeHouseholdId : null;
+  const visibleHomes = validActiveHouseholdId ? homes.filter((home) => home.id === validActiveHouseholdId) : homes;
+  const listQueries = useQueries({ queries: visibleHomes.map((home) => ({ queryKey: listQueryKey(home.id), queryFn: () => fetchLists(home.id) })) });
   const lists = listQueries.flatMap((query) => query.data ?? []);
   const itemQueries = useQueries({ queries: lists.map((list) => ({ queryKey: itemQueryKey(list.id), queryFn: () => fetchItems(list.id) })) });
 
-  useEffect(() => { if (!householdId && homes[0]) setHouseholdId(homes[0].id); }, [homes, householdId]);
+  useEffect(() => {
+    if (selectedHouseholdId) {
+      writeActiveHouseholdId(selectedHouseholdId);
+      setStoredHouseholdId(selectedHouseholdId);
+    }
+  }, [selectedHouseholdId]);
+  useEffect(() => {
+    const target = visibleHomes.some((home) => home.id === householdId) ? householdId : visibleHomes[0]?.id ?? homes[0]?.id ?? '';
+    if (target !== householdId) setHouseholdId(target);
+  }, [homes, householdId, visibleHomes]);
 
   const creation = useMutation({
     mutationFn: ({ targetHouseholdId, listName }: { targetHouseholdId: string; listName: string }) => createList(targetHouseholdId, listName),
@@ -45,14 +59,14 @@ export function ListsPage({ onNavigate, startCreating = false }: { onNavigate(pa
     {creating && homes.length ? <form className="route-create-form route-create-form--list" onSubmit={submit}>
       <h2>Crear lista</h2>
       <label htmlFor="new-list-household">Hogar</label>
-      <select id="new-list-household" value={householdId} onChange={(event) => setHouseholdId(event.target.value)}>{homes.map((home) => <option key={home.id} value={home.id}>{home.name}</option>)}</select>
+      <select id="new-list-household" value={householdId} onChange={(event) => setHouseholdId(event.target.value)}>{visibleHomes.map((home) => <option key={home.id} value={home.id}>{home.name}</option>)}</select>
       <label htmlFor="new-route-list-name">Nombre de la nueva lista</label>
       <input id="new-route-list-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={100} autoFocus />
       <div><button className="button" type="submit" disabled={creation.isPending}>{creation.isPending ? 'Creando...' : 'Crear lista'}</button><button className="button button--quiet" type="button" onClick={() => setCreating(false)}>Cancelar</button></div>
       {creation.isError ? <p role="alert">No se pudo crear la lista.</p> : null}
     </form> : null}
 
-    {homes.length ? <div className="route-list-household-groups">{homes.map((home, homeIndex) => {
+    {homes.length ? <div className="route-list-household-groups">{visibleHomes.map((home, homeIndex) => {
       const query = listQueries[homeIndex];
       const groupTitleId = `route-list-household-${home.id}`;
       const homeLists = query.data ?? [];

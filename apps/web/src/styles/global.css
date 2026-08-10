@@ -1148,3 +1148,195 @@ h2 { font-size: 1rem; }
     width: 100%;
   }
 }
+
+/* Final route overrides for Android-like household cards and stable catalog cards. */
+.catalog-products {
+  grid-template-columns: repeat(auto-fill, minmax(13.5rem, 13.5rem));
+  align-items: stretch;
+}
+
+.catalog-products .product-result-card {
+  width: 13.5rem;
+  min-height: 8.75rem;
+}
+
+.route-card--household {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.route-card--household.is-active {
+  border-color: color-mix(in srgb, var(--color-primary) 62%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 9%, var(--color-surface));
+}
+
+.household-card-main {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) auto auto auto auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.household-card-title {
+  display: grid;
+  min-width: 0;
+  gap: .15rem;
+}
+
+.household-card-title h2,
+.household-card-title p,
+.route-card--household .route-card__members {
+  margin: 0;
+}
+
+.household-card-expanded {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.household-card-expanded__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.household-card-expanded__meta > div:first-child {
+  display: grid;
+  gap: .15rem;
+}
+
+.household-card-expanded__meta strong {
+  color: var(--color-primary);
+}
+
+.household-card-expanded__meta span {
+  color: var(--color-muted);
+  font-size: .82rem;
+  font-weight: 800;
+}
+
+.household-card-wide-action {
+  width: 100%;
+  justify-content: center;
+}
+
+.household-card-action svg,
+.nfc-code-dialog .button svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.household-card-action:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.household-card-panel {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-page);
+}
+
+.nfc-code-dialog {
+  display: grid;
+  gap: var(--space-3);
+  width: min(100% - 2rem, 28rem);
+  padding: var(--space-5);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.nfc-code-dialog h2,
+.nfc-code-dialog p {
+  margin: 0;
+}
+
+.nfc-code-dialog label,
+.route-panel[aria-label="NFC"] label {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--color-primary);
+  font-size: .78rem;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.nfc-code-dialog input,
+.route-panel[aria-label="NFC"] input {
+  width: 100%;
+  min-height: 2.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-page);
+  color: var(--color-text);
+  padding: 0 var(--space-3);
+  font: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.nfc-code-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.nfc-code-dialog__actions .button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+@media (max-width: 42rem) {
+  .catalog-products {
+    grid-template-columns: 1fr;
+  }
+
+  .catalog-products .product-result-card {
+    width: 100%;
+    min-height: 0;
+  }
+
+  .household-card-main {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-2);
+  }
+
+  .household-card-main > .household-card-actions {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: start;
+  }
+
+  .household-card-main > .button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .route-card--household .route-card__members {
+    grid-column: 1;
+  }
+
+  .household-card-expanded__meta {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .household-card-expanded__meta .household-card-actions {
+    align-self: stretch;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .household-card-expanded__meta .household-card-action {
+    width: 100%;
+  }
+}

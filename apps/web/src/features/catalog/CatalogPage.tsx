@@ -59,6 +59,7 @@ export function CatalogPage(): JSX.Element {
           key={product.id}
           product={product}
           disabled={favoriteMutation.isPending}
+          statusLabel={product.packageSize ?? null}
           onFavoriteChange={(entry, favorite) => favoriteMutation.mutate({ productId: entry.id, favorite })}
         />)}
       </section>

@@ -1,17 +1,17 @@
 import '@testing-library/jest-dom/vitest';
 
 import { QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createWebQueryClient } from '../shopping-list/ShoppingListRoute';
 import { HouseholdDetailPage, HouseholdsPage } from './HouseholdsPage';
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 
 function respond(url: string): Response {
-  if (url.endsWith('/households')) return Response.json({ households: [{ id: 'home-1', name: 'Casa' }] });
+  if (url.endsWith('/households')) return Response.json({ households: [{ id: 'home-1', name: 'Casa', ownerId: 'user-1', createdAt: '', updatedAt: '' }] });
   if (url.endsWith('/households/home-1/lists')) return Response.json({ lists: [{ id: 'list-1', householdId: 'home-1', name: 'Compra', isDefault: true, version: 1, createdAt: '', updatedAt: '' }] });
   if (url.endsWith('/households/home-1/members')) return Response.json({ members: [{ userId: 'user-1', name: 'Ana', email: 'ana@example.test', role: 'owner', createdAt: '' }] });
   if (url.endsWith('/households/home-1/invitations')) return Response.json({ invitations: [] });
@@ -31,7 +31,7 @@ describe('household route views', () => {
       throw new Error(`Ruta inesperada: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
-    renderPage(<HouseholdsPage onNavigate={navigate} startCreating />);
+    renderPage(<HouseholdsPage currentUserId="user-1" onNavigate={navigate} startCreating />);
 
     fireEvent.change(await screen.findByLabelText('Nombre del nuevo hogar'), { target: { value: 'Piso' } });
     fireEvent.click(screen.getByRole('button', { name: 'Crear hogar' }));
@@ -44,11 +44,18 @@ describe('household route views', () => {
   it('shows a household card and opens its exact detail route', async () => {
     const navigate = vi.fn();
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => Promise.resolve(respond(String(input)))));
-    renderPage(<HouseholdsPage onNavigate={navigate} />);
+    renderPage(<HouseholdsPage currentUserId="user-1" onNavigate={navigate} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Abrir Casa' }));
+    const card = await screen.findByRole('article', { name: 'Casa' });
+    fireEvent.click(within(card).getByRole('button', { name: 'Abrir Casa' }));
 
-    expect(navigate).toHaveBeenCalledWith('/households/home-1');
+    expect(within(card).getByRole('button', { name: 'Acceder Casa' })).toBeVisible();
+    expect(within(card).getByText('Hogar abierto')).toBeVisible();
+    expect(localStorage.getItem('nfcompra.active-household-id')).toBe('home-1');
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Acceder Casa' }));
+
+    expect(navigate).toHaveBeenCalledWith('/lists?household=home-1');
   });
 
   it('renames and deletes a household from the household list', async () => {
@@ -71,7 +78,7 @@ describe('household route views', () => {
       throw new Error(`Ruta inesperada: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
-    renderPage(<HouseholdsPage onNavigate={vi.fn()} />);
+    renderPage(<HouseholdsPage currentUserId="user-1" onNavigate={vi.fn()} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Editar Casa' }));
     fireEvent.change(screen.getByLabelText('Nombre del hogar'), { target: { value: 'Costa Marina III' } });
@@ -83,6 +90,54 @@ describe('household route views', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Eliminar Costa Marina III' }));
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Costa Marina III' })).not.toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/\/households\/home-1$/), expect.objectContaining({ method: 'DELETE' }));
+  });
+
+  it('shows a leave action instead of delete for household members', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/households/home-1/leave') && init?.method === 'DELETE') return Promise.resolve(Response.json({ status: 'left' }));
+      if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'home-1', name: 'Casa', ownerId: 'owner-1', createdAt: '', updatedAt: '' }] }));
+      if (url.endsWith('/households/home-1/lists')) return Promise.resolve(Response.json({ lists: [] }));
+      if (url.endsWith('/households/home-1/members')) return Promise.resolve(Response.json({ members: [{ userId: 'user-2', name: 'Luis', email: 'luis@example.test', role: 'member', createdAt: '' }] }));
+      throw new Error(`Ruta inesperada: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage(<HouseholdsPage currentUserId="user-2" onNavigate={vi.fn()} />);
+
+    const card = await screen.findByRole('article', { name: 'Casa' });
+    fireEvent.click(within(card).getByRole('button', { name: 'Desplegar Casa' }));
+
+    expect(within(card).queryByRole('button', { name: 'Eliminar Casa' })).not.toBeInTheDocument();
+    fireEvent.click(within(card).getByRole('button', { name: 'Salir de Casa' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/\/households\/home-1\/leave$/), expect.objectContaining({ method: 'DELETE' })));
+  });
+
+  it('shows members and NFC actions only for the expanded household', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [
+        { id: 'home-1', name: 'Casa', ownerId: 'user-1', createdAt: '', updatedAt: '' },
+        { id: 'home-2', name: 'Piso', ownerId: 'user-1', createdAt: '', updatedAt: '' },
+      ] }));
+      if (url.endsWith('/households/home-1/lists') || url.endsWith('/households/home-2/lists')) return Promise.resolve(Response.json({ lists: [] }));
+      if (url.endsWith('/households/home-1/members') || url.endsWith('/households/home-2/members')) return Promise.resolve(Response.json({ members: [{ userId: 'user-1', role: 'owner' }] }));
+      throw new Error(`Ruta inesperada: ${url}`);
+    }));
+    renderPage(<HouseholdsPage currentUserId="user-1" onNavigate={vi.fn()} />);
+
+    const casa = await screen.findByRole('article', { name: 'Casa' });
+    const piso = await screen.findByRole('article', { name: 'Piso' });
+    fireEvent.click(within(casa).getByRole('button', { name: 'Desplegar Casa' }));
+
+    expect(within(casa).getByRole('button', { name: 'Miembros de Casa' })).toBeVisible();
+    expect(within(casa).getByRole('button', { name: 'Codigo NFC de Casa' })).toBeVisible();
+    expect(within(piso).queryByRole('button', { name: 'Miembros de Piso' })).not.toBeInTheDocument();
+
+    fireEvent.click(within(piso).getByRole('button', { name: 'Desplegar Piso' }));
+
+    expect(within(casa).queryByRole('button', { name: 'Miembros de Casa' })).not.toBeInTheDocument();
+    expect(within(piso).getByRole('button', { name: 'Miembros de Piso' })).toBeVisible();
   });
 
   it('keeps list and member workflows in separate household detail tabs', async () => {

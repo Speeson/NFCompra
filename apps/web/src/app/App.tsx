@@ -118,10 +118,10 @@ export function AuthenticatedRoute({ pathname, search, userId, userName, onNavig
   const householdListsMatch = pathname.match(/^\/household\/([^/]+)\/lists$/);
   const listMatch = pathname.match(/^\/lists\/([^/]+)$/);
   if (pathname === '/' && !search.has('household') && !search.has('list')) return <DashboardPage userName={userName} onNavigate={onNavigate} />;
-  if (pathname === '/households') return <HouseholdsPage onNavigate={onNavigate} startCreating={search.get('create') === '1'} />;
+  if (pathname === '/households') return <HouseholdsPage currentUserId={userId} onNavigate={onNavigate} startCreating={search.get('create') === '1'} />;
   if (householdMatch) return <HouseholdDetailPage householdId={decodeURIComponent(householdMatch[1])} currentUserId={userId} onNavigate={onNavigate} />;
   if (householdListsMatch) return <ShoppingListRoute currentUserId={userId} requestedHouseholdId={decodeURIComponent(householdListsMatch[1])} onNavigate={onNavigate} />;
-  if (pathname === '/lists') return <ListsPage onNavigate={onNavigate} startCreating={search.get('create') === '1'} />;
+  if (pathname === '/lists') return <ListsPage onNavigate={onNavigate} startCreating={search.get('create') === '1'} selectedHouseholdId={search.get('household')} />;
   if (listMatch) return <ShoppingListRoute currentUserId={userId} requestedListId={decodeURIComponent(listMatch[1])} onNavigate={onNavigate} />;
   if (pathname === '/catalog') return <CatalogPage />;
   if (pathname === '/nfc') return <NfcPage />;

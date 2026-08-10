@@ -27,6 +27,10 @@ export async function deleteHousehold(household: Household): Promise<void> {
   await apiClient.request(`/households/${household.id}`, { method: 'DELETE' });
 }
 
+export async function leaveHousehold(household: Household): Promise<void> {
+  await apiClient.request(`/households/${household.id}/leave`, { method: 'DELETE' });
+}
+
 export async function fetchLists(householdId: string): Promise<ShoppingList[]> {
   return (await apiClient.request<{ lists: ShoppingList[] }>(`/households/${householdId}/lists`)).lists;
 }

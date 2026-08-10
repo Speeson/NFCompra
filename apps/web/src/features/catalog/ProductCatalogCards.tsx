@@ -7,6 +7,7 @@ export function ProductCatalogCard({
   quantity,
   disabled = false,
   recentlyAdded = false,
+  statusLabel,
   onQuantityChange,
   onAdd,
   onFavoriteChange,
@@ -15,6 +16,7 @@ export function ProductCatalogCard({
   quantity?: number;
   disabled?: boolean;
   recentlyAdded?: boolean;
+  statusLabel?: string | null;
   onQuantityChange?(productId: string, delta: number): void;
   onAdd?(product: ProductCatalogItem): void;
   onFavoriteChange?(product: ProductCatalogItem, favorite: boolean): void;
@@ -22,11 +24,12 @@ export function ProductCatalogCard({
   const selectedQuantity = quantity ?? 0;
   const hasQuantity = Boolean(onQuantityChange);
   const canAdd = !disabled && (!hasQuantity || selectedQuantity > 0);
-  return <article className={recentlyAdded ? 'product-result-card product-result-card--added' : product.isFavorite ? 'product-result-card product-result-card--favorite' : 'product-result-card'}>
+  const visibleStatus = hasQuantity ? selectedQuantity > 0 ? `x${selectedQuantity}` : 'Elige cantidad' : statusLabel === undefined ? product.categoryName ?? 'Producto' : statusLabel;
+  return <article className={recentlyAdded ? 'product-result-card product-result-card--added' : product.isFavorite ? 'product-result-card product-result-card--favorite' : 'product-result-card'} aria-label={product.name}>
     <button type="button" className="product-result-card__main" aria-label={`Seleccionar ${product.name}`} disabled={!canAdd} onClick={() => onAdd?.(product)}>
       <span className="product-result-card__icon" aria-hidden="true">{productIcon(product)}</span>
       <span><strong>{product.name}</strong><small>{productDetails(product)}</small></span>
-      <span className="product-result-card__status">{hasQuantity ? selectedQuantity > 0 ? `x${selectedQuantity}` : 'Elige cantidad' : product.categoryName ?? 'Producto'}</span>
+      {visibleStatus ? <span className="product-result-card__status">{visibleStatus}</span> : null}
     </button>
     <button
       type="button"
