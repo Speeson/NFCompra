@@ -26,11 +26,10 @@ internal class BiometricUnlockSettings(
     }
 }
 
-internal fun shouldAcceptAuthSignInAsBiometricUnlock(
+internal fun canUseWelcomeBiometricAccess(
     accountId: String?,
     biometricAccessEnabled: Boolean,
-    loginFallbackActive: Boolean,
-): Boolean = !accountId.isNullOrBlank() && (!biometricAccessEnabled || loginFallbackActive)
+): Boolean = !accountId.isNullOrBlank() && biometricAccessEnabled
 
 internal class SharedPreferencesBiometricUnlockStorage(
     context: Context,

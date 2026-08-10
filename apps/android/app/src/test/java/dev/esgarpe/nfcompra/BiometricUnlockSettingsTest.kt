@@ -30,26 +30,23 @@ class BiometricUnlockSettingsTest {
     }
 
     @Test
-    fun `auto restored sign in does not count as biometric unlock`() {
+    fun `welcome biometric action is available only for saved biometric sessions`() {
+        assertTrue(
+            canUseWelcomeBiometricAccess(
+                accountId = "account-a",
+                biometricAccessEnabled = true,
+            ),
+        )
         assertFalse(
-            shouldAcceptAuthSignInAsBiometricUnlock(
-                accountId = "account-a",
-                biometricAccessEnabled = true,
-                loginFallbackActive = false,
-            ),
-        )
-        assertTrue(
-            shouldAcceptAuthSignInAsBiometricUnlock(
-                accountId = "account-a",
-                biometricAccessEnabled = true,
-                loginFallbackActive = true,
-            ),
-        )
-        assertTrue(
-            shouldAcceptAuthSignInAsBiometricUnlock(
+            canUseWelcomeBiometricAccess(
                 accountId = "account-a",
                 biometricAccessEnabled = false,
-                loginFallbackActive = false,
+            ),
+        )
+        assertFalse(
+            canUseWelcomeBiometricAccess(
+                accountId = null,
+                biometricAccessEnabled = true,
             ),
         )
     }

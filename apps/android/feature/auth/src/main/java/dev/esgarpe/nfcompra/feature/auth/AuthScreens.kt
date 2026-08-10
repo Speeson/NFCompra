@@ -94,7 +94,16 @@ private val AuthField = Color(0xFFF2F3F2)
 private val AuthDanger = Color(0xFFB42318)
 
 @Composable
-fun AuthApp(viewModel: AuthViewModel, onSignedIn: () -> Unit = {}, rememberedEmail: String = "", onRememberEmail: (String) -> Unit = {}) {
+fun AuthApp(
+    viewModel: AuthViewModel,
+    onSignedIn: () -> Unit = {},
+    rememberedEmail: String = "",
+    onRememberEmail: (String) -> Unit = {},
+    hasSavedSession: Boolean = false,
+    canUseBiometricAccess: Boolean = false,
+    onSavedSessionAccess: () -> Unit = {},
+    onBiometricAccess: () -> Unit = {},
+) {
     var route by remember { mutableStateOf(AuthRoute.WELCOME) }
     var resetEmail by remember { mutableStateOf("") }
     var resetOtp by remember { mutableStateOf("") }
@@ -131,12 +140,6 @@ fun AuthApp(viewModel: AuthViewModel, onSignedIn: () -> Unit = {}, rememberedEma
             viewModel.clearMessage()
         }
     }
-    LaunchedEffect(state.message) {
-        if (state.message == "no_session" && route == AuthRoute.WELCOME) {
-            viewModel.clearMessage()
-            route = AuthRoute.LOGIN
-        }
-    }
     LaunchedEffect(route, state.message) {
         if (route == AuthRoute.OTP && state.message == "Código verificado.") {
             route = AuthRoute.RESET
@@ -146,8 +149,10 @@ fun AuthApp(viewModel: AuthViewModel, onSignedIn: () -> Unit = {}, rememberedEma
         AuthRoute.WELCOME -> WelcomeScreen(
             state = state,
             onLogin = {
-                viewModel.tryAutoSignIn()
+                if (hasSavedSession) onSavedSessionAccess() else route = AuthRoute.LOGIN
             },
+            canUseBiometricAccess = canUseBiometricAccess,
+            onBiometricAccess = onBiometricAccess,
             onRegister = { route = AuthRoute.REGISTER },
         )
         AuthRoute.LOGIN -> LoginScreen(
@@ -197,6 +202,8 @@ fun AuthApp(viewModel: AuthViewModel, onSignedIn: () -> Unit = {}, rememberedEma
 fun WelcomeScreen(
     state: AuthUiState,
     onLogin: () -> Unit,
+    canUseBiometricAccess: Boolean,
+    onBiometricAccess: () -> Unit,
     onRegister: () -> Unit,
 ) {
     val screenH = LocalConfiguration.current.screenHeightDp
@@ -216,7 +223,11 @@ fun WelcomeScreen(
         Text("Organiza la compra de casa con listas compartidas y acceso rápido por NFC.", color = AuthMuted, lineHeight = 22.sp)
         AuthStateMessage(state)
         PrimaryAuthButton("Iniciar sesión", onClick = onLogin)
-        SecondaryAuthButton("Acceder con biometría") {}
+        SecondaryAuthButton(
+            "Acceder con biometría",
+            enabled = canUseBiometricAccess && !state.isSubmitting,
+            onClick = onBiometricAccess,
+        )
         CenterLink(
             normal = "¿No tienes una cuenta? ",
             action = "Crear cuenta",
@@ -726,14 +737,20 @@ private fun PrimaryAuthButton(label: String, enabled: Boolean = true, compact: B
 }
 
 @Composable
-private fun SecondaryAuthButton(label: String, onClick: () -> Unit) {
+private fun SecondaryAuthButton(label: String, enabled: Boolean = true, onClick: () -> Unit) {
     Button(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier
             .fillMaxWidth()
             .height(60.dp),
         shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = AuthField, contentColor = AuthText),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = AuthField,
+            contentColor = AuthText,
+            disabledContainerColor = AuthField.copy(alpha = 0.55f),
+            disabledContentColor = AuthMuted.copy(alpha = 0.75f),
+        ),
         elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
     ) {
         Text(label, fontWeight = FontWeight.Bold, fontSize = 16.sp)

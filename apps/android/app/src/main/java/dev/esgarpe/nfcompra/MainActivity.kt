@@ -13,24 +13,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
@@ -94,11 +84,9 @@ class MainActivity : FragmentActivity() {
             val session by tokenStore.session.collectAsState()
             val authViewModel = remember { AuthViewModel(authRepository) }
             var biometricPreferenceVersion by remember { mutableStateOf(0) }
-            var biometricUnlockedAccountId by remember { mutableStateOf<String?>(null) }
+            var sessionAccessGrantedAccountId by remember { mutableStateOf<String?>(null) }
             var biometricPromptRunning by remember { mutableStateOf(false) }
-            var biometricLockMessage by remember { mutableStateOf<String?>(null) }
             var biometricSettingsMessage by remember { mutableStateOf<String?>(null) }
-            var biometricLoginFallbackAccountId by remember { mutableStateOf<String?>(null) }
             var rememberedEmail by remember {
                 mutableStateOf(profilePreferences.getString("remembered_email", null).orEmpty())
             }
@@ -113,16 +101,15 @@ class MainActivity : FragmentActivity() {
             val biometricAccessEnabled = remember(accountId, biometricPreferenceVersion) {
                 biometricUnlockSettings.isEnabledFor(accountId)
             }
-            val biometricLoginFallbackActive = accountId != null && biometricLoginFallbackAccountId == accountId
-            val biometricUnlockRequired = accountId != null &&
-                biometricAccessEnabled &&
-                biometricUnlockedAccountId != accountId &&
-                !biometricLoginFallbackActive
+            val welcomeBiometricAccessEnabled = canUseWelcomeBiometricAccess(
+                accountId = accountId,
+                biometricAccessEnabled = biometricAccessEnabled,
+            )
             fun requestBiometricUnlock(accountId: String) {
                 if (biometricPromptRunning) return
                 val unavailableMessage = biometricUnavailableMessage()
                 if (unavailableMessage != null) {
-                    biometricLockMessage = unavailableMessage
+                    biometricSettingsMessage = unavailableMessage
                     return
                 }
                 biometricPromptRunning = true
@@ -132,13 +119,12 @@ class MainActivity : FragmentActivity() {
                     negativeButton = "Usar inicio de sesion",
                     onSuccess = {
                         biometricPromptRunning = false
-                        biometricLockMessage = null
-                        biometricLoginFallbackAccountId = null
-                        biometricUnlockedAccountId = accountId
+                        biometricSettingsMessage = null
+                        sessionAccessGrantedAccountId = accountId
                     },
                     onError = { message ->
                         biometricPromptRunning = false
-                        biometricLockMessage = message
+                        biometricSettingsMessage = message
                     },
                 )
             }
@@ -146,7 +132,6 @@ class MainActivity : FragmentActivity() {
                 val id = accountId ?: return
                 if (!enabled) {
                     biometricUnlockSettings.disable()
-                    biometricUnlockedAccountId = null
                     biometricPreferenceVersion++
                     biometricSettingsMessage = "Acceso con biometria desactivado."
                     return
@@ -165,7 +150,6 @@ class MainActivity : FragmentActivity() {
                     onSuccess = {
                         biometricPromptRunning = false
                         biometricUnlockSettings.enableFor(id)
-                        biometricUnlockedAccountId = id
                         biometricPreferenceVersion++
                         biometricSettingsMessage = "Acceso con biometria activado."
                     },
@@ -182,16 +166,13 @@ class MainActivity : FragmentActivity() {
                     AccountShoppingSession.revoke(applicationContext, previous)
                 }
                 if (accountId == null || previous != accountId) {
-                    biometricUnlockedAccountId = null
-                    biometricLoginFallbackAccountId = null
-                    biometricLockMessage = null
+                    sessionAccessGrantedAccountId = null
                 }
                 previousAccountId = accountId
             }
-            LaunchedEffect(biometricUnlockRequired, accountId) {
-                if (biometricUnlockRequired) requestBiometricUnlock(requireNotNull(accountId))
-            }
-            val authenticatedContentUnlocked = session != null && accountId != null && !biometricUnlockRequired
+            val authenticatedContentUnlocked = session != null &&
+                accountId != null &&
+                sessionAccessGrantedAccountId == accountId
             val shoppingSession = remember(accountId, authenticatedContentUnlocked) {
                 accountId?.takeIf { authenticatedContentUnlocked }?.let {
                     AccountShoppingSession.create(
@@ -230,37 +211,24 @@ class MainActivity : FragmentActivity() {
                 if (globalNavigation != null) globalNotifications.consumeNavigation()
             }
             NFCompraTheme {
-                if (session == null || accountId == null || biometricLoginFallbackActive) AuthApp(
+                if (!authenticatedContentUnlocked) AuthApp(
                     authViewModel,
                     onSignedIn = {
                         tokenStore.current()?.accessToken?.let(::userIdFromJwt)?.let { signedInAccountId ->
-                            val signedInBiometricEnabled =
-                                biometricUnlockSettings.isEnabledFor(signedInAccountId)
-                            val signedInFallbackActive =
-                                biometricLoginFallbackAccountId == signedInAccountId
-                            if (shouldAcceptAuthSignInAsBiometricUnlock(
-                                    accountId = signedInAccountId,
-                                    biometricAccessEnabled = signedInBiometricEnabled,
-                                    loginFallbackActive = signedInFallbackActive,
-                                )
-                            ) {
-                                biometricUnlockedAccountId = signedInAccountId
-                                biometricLoginFallbackAccountId = null
-                                biometricLockMessage = null
-                            }
+                            sessionAccessGrantedAccountId = signedInAccountId
                         }
                     },
                     rememberedEmail = rememberedEmail,
                     onRememberEmail = onRememberEmail,
+                    hasSavedSession = session != null && accountId != null,
+                    canUseBiometricAccess = welcomeBiometricAccessEnabled,
+                    onSavedSessionAccess = {
+                        accountId?.let { sessionAccessGrantedAccountId = it }
+                    },
+                    onBiometricAccess = {
+                        accountId?.let(::requestBiometricUnlock)
+                    },
                 )
-                else if (biometricUnlockRequired) {
-                    BiometricLockedScreen(
-                        message = biometricLockMessage,
-                        isPromptRunning = biometricPromptRunning,
-                        onUnlock = { accountId?.let(::requestBiometricUnlock) },
-                        onUseLogin = { biometricLoginFallbackAccountId = accountId },
-                    )
-                }
                 else {
                     val authenticatedShoppingSession = requireNotNull(shoppingSession) {
                         "La sesión autenticada no contiene un identificador de cuenta."
@@ -310,7 +278,7 @@ class MainActivity : FragmentActivity() {
                                     authenticatedShoppingViewModel,
                                     {
                                         biometricUnlockSettings.clearForLoggedOutAccount(accountId)
-                                        biometricUnlockedAccountId = null
+                                        sessionAccessGrantedAccountId = null
                                         biometricPreferenceVersion++
                                         authenticatedShoppingSession.revoke()
                                         authViewModel.logout()
@@ -438,38 +406,6 @@ class MainActivity : FragmentActivity() {
     private companion object {
         const val PENDING_INVITATION_TOKEN = "pending_invitation_token"
         const val PENDING_HOUSEHOLD_DEEP_LINK = "pending_household_deep_link"
-    }
-}
-
-@Composable
-private fun BiometricLockedScreen(
-    message: String?,
-    isPromptRunning: Boolean,
-    onUnlock: () -> Unit,
-    onUseLogin: () -> Unit,
-) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                "NFCompra bloqueada",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                message ?: "Confirma tu identidad para abrir tu sesion guardada.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Button(onClick = onUnlock, enabled = !isPromptRunning, modifier = Modifier.fillMaxWidth()) {
-                Text(if (isPromptRunning) "Esperando biometria" else "Desbloquear")
-            }
-            TextButton(onClick = onUseLogin, modifier = Modifier.fillMaxWidth()) {
-                Text("Usar inicio de sesion")
-            }
-        }
     }
 }
 
