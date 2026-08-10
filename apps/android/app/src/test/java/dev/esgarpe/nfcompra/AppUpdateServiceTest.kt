@@ -13,8 +13,8 @@ class AppUpdateServiceTest {
             htmlUrl = "https://github.com/Speeson/NFCompra/releases/tag/v0.1.2",
             assets = listOf(
                 GitHubReleaseAsset(
-                    name = "NFCompra-debug.apk",
-                    browserDownloadUrl = "https://github.com/Speeson/NFCompra/releases/download/v0.1.2/NFCompra-debug.apk",
+                    name = "NFCompra-release.apk",
+                    browserDownloadUrl = "https://github.com/Speeson/NFCompra/releases/download/v0.1.2/NFCompra-release.apk",
                 ),
             ),
         )
@@ -22,11 +22,11 @@ class AppUpdateServiceTest {
         val update = findAppUpdate(
             currentVersionName = "0.1.1",
             release = release,
-            apkAssetName = "NFCompra-debug.apk",
+            apkAssetName = "NFCompra-release.apk",
         )
 
         assertEquals("0.1.2", update?.versionName)
-        assertEquals("NFCompra-debug.apk", update?.assetName)
+        assertEquals("NFCompra-release.apk", update?.assetName)
     }
 
     @Test
@@ -35,10 +35,10 @@ class AppUpdateServiceTest {
             tagName = "v0.1.1",
             name = "NFCompra 0.1.1",
             htmlUrl = "https://github.com/Speeson/NFCompra/releases/tag/v0.1.1",
-            assets = listOf(GitHubReleaseAsset("NFCompra-debug.apk", "https://example.test/app.apk")),
+            assets = listOf(GitHubReleaseAsset("NFCompra-release.apk", "https://example.test/app.apk")),
         )
 
-        assertNull(findAppUpdate("0.1.1", release, "NFCompra-debug.apk"))
+        assertNull(findAppUpdate("0.1.1", release, "NFCompra-release.apk"))
     }
 
     @Test
@@ -50,6 +50,6 @@ class AppUpdateServiceTest {
             assets = listOf(GitHubReleaseAsset("notes.txt", "https://example.test/notes.txt")),
         )
 
-        assertNull(findAppUpdate("0.1.1", release, "NFCompra-debug.apk"))
+        assertNull(findAppUpdate("0.1.1", release, "NFCompra-release.apk"))
     }
 }

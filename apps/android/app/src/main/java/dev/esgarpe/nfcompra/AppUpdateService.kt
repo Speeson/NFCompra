@@ -142,6 +142,6 @@ internal class AppUpdateService(
     private companion object {
         const val GITHUB_LATEST_RELEASE_URL =
             "https://api.github.com/repos/Speeson/NFCompra/releases/latest"
-        const val APK_ASSET_NAME = "NFCompra-debug.apk"
+        const val APK_ASSET_NAME = "NFCompra-release.apk"
     }
 }

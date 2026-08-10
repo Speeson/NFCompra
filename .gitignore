@@ -18,6 +18,7 @@ local.properties
 *.jks
 *.keystore
 NFCompra-debug.apk
+NFCompra-release.apk
 .vercel
 .codex-local/
 .idea/

@@ -9,6 +9,19 @@ val debugApiBaseUrl = providers.gradleProperty("NFCompraApiBaseUrl")
     .orElse("https://api.nfcompra.esgarpe.dev/")
     .map { if (it.endsWith("/")) it else "$it/" }
 
+val releaseKeystoreFile = providers.gradleProperty("NFCOMPRA_KEYSTORE_FILE")
+    .orElse(providers.environmentVariable("NFCOMPRA_KEYSTORE_FILE"))
+val releaseKeystorePassword = providers.gradleProperty("NFCOMPRA_KEYSTORE_PASSWORD")
+    .orElse(providers.environmentVariable("NFCOMPRA_KEYSTORE_PASSWORD"))
+val releaseKeyAlias = providers.gradleProperty("NFCOMPRA_KEY_ALIAS")
+    .orElse(providers.environmentVariable("NFCOMPRA_KEY_ALIAS"))
+val releaseKeyPassword = providers.gradleProperty("NFCOMPRA_KEY_PASSWORD")
+    .orElse(providers.environmentVariable("NFCOMPRA_KEY_PASSWORD"))
+val hasReleaseSigningConfig = releaseKeystoreFile.isPresent &&
+    releaseKeystorePassword.isPresent &&
+    releaseKeyAlias.isPresent &&
+    releaseKeyPassword.isPresent
+
 android {
     namespace = "dev.esgarpe.nfcompra"
     compileSdk = 36
@@ -23,12 +36,25 @@ android {
     }
 
     buildFeatures { buildConfig = true }
+    signingConfigs {
+        if (hasReleaseSigningConfig) {
+            create("release") {
+                storeFile = file(releaseKeystoreFile.get())
+                storePassword = releaseKeystorePassword.get()
+                keyAlias = releaseKeyAlias.get()
+                keyPassword = releaseKeyPassword.get()
+            }
+        }
+    }
     buildTypes {
         debug {
             buildConfigField("String", "AUTH_BASE_URL", "\"${debugApiBaseUrl.get()}\"")
         }
         release {
             buildConfigField("String", "AUTH_BASE_URL", "\"https://api.nfcompra.esgarpe.dev/\"")
+            if (hasReleaseSigningConfig) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
