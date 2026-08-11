@@ -59,4 +59,22 @@ describe('CatalogPage', () => {
     const card = await screen.findByRole('article', { name: 'Leche entera' });
     expect(within(card).getAllByText('Lacteos', { exact: false })).toHaveLength(1);
   });
+
+  it('keeps the favorite action in the product card left rail', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/product-categories')) return Promise.resolve(Response.json({ categories: [
+        { id: 'favorites', name: 'Favoritos', normalizedName: 'favoritos', parentId: null, iconKey: 'star', source: 'user', sourceCategoryId: null, createdAt: '', updatedAt: '', isFavorite: true },
+      ] }));
+      if (url.endsWith('/product-catalog/snapshot')) return Promise.resolve(Response.json({ version: 'v1', productCount: 1, products: [
+        { id: 'prod-milk', name: 'Leche entera', normalizedName: 'leche entera', categoryId: 'cat-dairy', categoryName: 'Lacteos', iconKey: 'milk', brand: null, packageSize: '1 L', source: null, sourceProductId: null, isFavorite: true },
+      ] }));
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+
+    render(<QueryClientProvider client={createWebQueryClient()}><CatalogPage /></QueryClientProvider>);
+
+    const card = await screen.findByRole('article', { name: 'Leche entera' });
+    expect(within(card).getByRole('button', { name: 'Quitar Leche entera de favoritos' }).parentElement).toHaveClass('product-result-card__rail');
+  });
 });
