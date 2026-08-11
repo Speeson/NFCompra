@@ -160,6 +160,8 @@ private class FakeSharingRepository(private val member: Boolean = true) : Sharin
     var invites = 0
     var revokes = 0
     var readAll = 0
+    var deleteAll = 0
+    var deleteOne = 0
     var accepts = 0
     var notificationRequests = 0
     var unreadCountRequests = 0
@@ -175,11 +177,13 @@ private class FakeSharingRepository(private val member: Boolean = true) : Sharin
     override suspend fun removeMember(householdId: String, userId: String) { removals++ }
     override suspend fun accept(token: String): InvitationAcceptance { accepts++; return acceptResult?.await() ?: InvitationAcceptance("home-1") }
     override suspend fun acceptById(invitationId: String) = InvitationAcceptance("home-1")
-    override suspend fun notifications(): List<NotificationUiModel> { notificationRequests++; return listOf(NotificationUiModel("notice-1", "Producto", "Leche", false, "home-1", "list-1", null)) }
+    override suspend fun notifications(): List<NotificationUiModel> { notificationRequests++; return listOf(NotificationUiModel("notice-1", "Producto", "Leche", false, "home-1", "list-1", null, "2026-07-27T00:00:00Z")) }
     override suspend fun unreadCount(): Int { unreadCountRequests++; return unreadCount }
     override suspend fun markRead(notificationId: String) {
         if (failMarkRead) throw IllegalStateException()
         unreadCount = 0
     }
     override suspend fun markAllRead() { readAll++ }
+    override suspend fun deleteAllNotifications() { deleteAll++ }
+    override suspend fun deleteNotification(notificationId: String) { deleteOne++ }
 }

@@ -16,21 +16,21 @@ class SharingScreenTest {
     @get:Rule val compose = createComposeRule()
 
     @Test fun `owner sees accessible bell and management controls`() {
-        compose.setContent { SharingScreen(ready(isOwner = true), {}) }
+        compose.setContent { SharingScreen(ready(isOwner = true), {}, {}) }
         compose.onNodeWithContentDescription("Notificaciones: 2 sin leer").assertIsDisplayed()
         compose.onNodeWithText("Invitar persona").assertIsDisplayed()
         compose.onNodeWithText("Revocar").assertIsDisplayed()
     }
 
     @Test fun `member sees a read only roster`() {
-        compose.setContent { SharingScreen(ready(isOwner = false), {}) }
+        compose.setContent { SharingScreen(ready(isOwner = false), {}, {}) }
         compose.onNodeWithText("Miembros del hogar").assertIsDisplayed()
         compose.onAllNodesWithText("Invitar persona").assertCountEquals(0)
     }
 
     @Test fun `error exposes retry`() {
         var action: SharingAction? = null
-        compose.setContent { SharingScreen(SharingUiState.Error("Sin red"), onAction = { action = it }) }
+        compose.setContent { SharingScreen(SharingUiState.Error("Sin red"), onAction = { action = it }, onBack = {}) }
         compose.onNodeWithText("Reintentar").performClick()
         assertEquals(SharingAction.Retry, action)
     }
@@ -43,7 +43,7 @@ class SharingScreenTest {
 
     @Test fun `bell renders rows and sends read actions`() {
         var action: SharingAction? = null
-        compose.setContent { SharingScreen(ready(isOwner = true, notifications = listOf(NotificationUiModel("notice-1", "Producto", "Leche", false, "home-1", "list-1", null))), onAction = { action = it }) }
+        compose.setContent { SharingScreen(ready(isOwner = true, notifications = listOf(NotificationUiModel("notice-1", "Producto", "Leche", false, "home-1", "list-1", null, "2026-07-27T00:00:00Z"))), onAction = { action = it }, onBack = {}) }
         compose.onNodeWithContentDescription("Notificaciones: 2 sin leer").performClick()
         compose.onNodeWithText("Producto").performClick()
         assertEquals(SharingAction.OpenNotification("notice-1"), action)
@@ -51,7 +51,7 @@ class SharingScreenTest {
 
     @Test fun `empty bell and owner confirmation are actionable`() {
         var action: SharingAction? = null
-        compose.setContent { SharingScreen(ready(isOwner = true), onAction = { action = it }) }
+        compose.setContent { SharingScreen(ready(isOwner = true), onAction = { action = it }, onBack = {}) }
         compose.onNodeWithContentDescription("Notificaciones: 2 sin leer").performClick()
         compose.onNodeWithText("No hay notificaciones").assertIsDisplayed()
         compose.onNodeWithText("Marcar todo como leído").performClick()
