@@ -47,6 +47,7 @@ import dev.esgarpe.nfcompra.core.network.KeystoreTokenStore
 import dev.esgarpe.nfcompra.core.network.NetworkClient
 import dev.esgarpe.nfcompra.feature.auth.AuthApp
 import dev.esgarpe.nfcompra.feature.auth.AuthRepository
+import dev.esgarpe.nfcompra.feature.auth.AuthResult
 import dev.esgarpe.nfcompra.feature.auth.AuthViewModel
 import dev.esgarpe.nfcompra.feature.shoppinglist.AccountShoppingSession
 import dev.esgarpe.nfcompra.feature.shoppinglist.ShoppingListApp
@@ -85,6 +86,9 @@ class MainActivity : FragmentActivity() {
         val biometricUnlockSettings = BiometricUnlockSettings(
             SharedPreferencesBiometricUnlockStorage(applicationContext),
         )
+        val localUnlockSettings = LocalUnlockSettings(
+            SharedPreferencesLocalUnlockStorage(applicationContext),
+        )
         foregroundRefreshGate = AuthenticatedRefreshGate { tokenStore.current() != null }
         val profilePreferences = getSharedPreferences("nfcompra.ui", MODE_PRIVATE)
         val authRepository = AuthRepository(
@@ -110,8 +114,10 @@ class MainActivity : FragmentActivity() {
             var updateMessage by remember { mutableStateOf<String?>(null) }
             var installedChangelog by remember { mutableStateOf(updatePreferences.pendingInstalledChangelog(BuildConfig.VERSION_NAME)) }
             var biometricPreferenceVersion by remember { mutableStateOf(0) }
+            var localUnlockVersion by remember { mutableStateOf(0) }
             var sessionAccessGrantedAccountId by remember { mutableStateOf<String?>(null) }
             var biometricPromptRunning by remember { mutableStateOf(false) }
+            var automaticBiometricPromptAccountId by remember { mutableStateOf<String?>(null) }
             var biometricSettingsMessage by remember { mutableStateOf<String?>(null) }
             var rememberedEmail by remember {
                 mutableStateOf(profilePreferences.getString("remembered_email", null).orEmpty())
@@ -144,6 +150,9 @@ class MainActivity : FragmentActivity() {
             val biometricAccessEnabled = remember(accountId, biometricPreferenceVersion) {
                 biometricUnlockSettings.isEnabledFor(accountId)
             }
+            val localUnlockValid = remember(accountId, localUnlockVersion) {
+                localUnlockSettings.isUnlockValidFor(accountId)
+            }
             val welcomeBiometricAccessEnabled = canUseWelcomeBiometricAccess(
                 accountId = accountId,
                 biometricAccessEnabled = biometricAccessEnabled,
@@ -161,9 +170,22 @@ class MainActivity : FragmentActivity() {
                     subtitle = "Usa la biometria configurada en este dispositivo.",
                     negativeButton = "Usar inicio de sesion",
                     onSuccess = {
-                        biometricPromptRunning = false
-                        biometricSettingsMessage = null
-                        sessionAccessGrantedAccountId = accountId
+                        coroutineScope.launch {
+                            val result = authRepository.refresh()
+                            val refreshedAccountId = tokenStore.current()?.accessToken?.let(::userIdFromJwt)
+                            if ((result is AuthResult.SignedIn || tokenStore.current() != null) && refreshedAccountId == accountId) {
+                                localUnlockSettings.recordBiometricSuccess(accountId)
+                                localUnlockVersion++
+                                sessionAccessGrantedAccountId = accountId
+                                biometricSettingsMessage = null
+                            } else {
+                                sessionAccessGrantedAccountId = null
+                                localUnlockSettings.clearForAccount(accountId)
+                                localUnlockVersion++
+                                biometricSettingsMessage = "La sesion ha caducado. Inicia sesion de nuevo."
+                            }
+                            biometricPromptRunning = false
+                        }
                     },
                     onError = { message ->
                         biometricPromptRunning = false
@@ -210,8 +232,25 @@ class MainActivity : FragmentActivity() {
                 }
                 if (accountId == null || previous != accountId) {
                     sessionAccessGrantedAccountId = null
+                    automaticBiometricPromptAccountId = null
                 }
                 previousAccountId = accountId
+            }
+            LaunchedEffect(accountId, localUnlockValid) {
+                if (accountId != null && localUnlockValid) {
+                    sessionAccessGrantedAccountId = accountId
+                }
+            }
+            LaunchedEffect(accountId, localUnlockValid, biometricAccessEnabled, sessionAccessGrantedAccountId) {
+                val id = accountId ?: return@LaunchedEffect
+                if (!localUnlockValid &&
+                    biometricAccessEnabled &&
+                    sessionAccessGrantedAccountId != id &&
+                    automaticBiometricPromptAccountId != id
+                ) {
+                    automaticBiometricPromptAccountId = id
+                    requestBiometricUnlock(id)
+                }
             }
             val authenticatedContentUnlocked = session != null &&
                 accountId != null &&
@@ -259,12 +298,14 @@ class MainActivity : FragmentActivity() {
                         authViewModel,
                         onSignedIn = {
                             tokenStore.current()?.accessToken?.let(::userIdFromJwt)?.let { signedInAccountId ->
+                                localUnlockSettings.recordCredentialLogin(signedInAccountId)
+                                localUnlockVersion++
                                 sessionAccessGrantedAccountId = signedInAccountId
                             }
                         },
                         rememberedEmail = rememberedEmail,
                         onRememberEmail = onRememberEmail,
-                        hasSavedSession = session != null && accountId != null,
+                        hasSavedSession = session != null && accountId != null && localUnlockValid,
                         canUseBiometricAccess = welcomeBiometricAccessEnabled,
                         onSavedSessionAccess = {
                             accountId?.let { sessionAccessGrantedAccountId = it }
@@ -322,7 +363,9 @@ class MainActivity : FragmentActivity() {
                                     authenticatedShoppingViewModel,
                                     {
                                         biometricUnlockSettings.clearForLoggedOutAccount(accountId)
+                                        localUnlockSettings.clearForAccount(accountId)
                                         sessionAccessGrantedAccountId = null
+                                        localUnlockVersion++
                                         biometricPreferenceVersion++
                                         authenticatedShoppingSession.revoke()
                                         authViewModel.logout()
