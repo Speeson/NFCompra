@@ -58,9 +58,9 @@ describe('AppShell', () => {
     expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
     const profileControls = screen.getByRole('menu', { name: 'Opciones de perfil' });
     expect(profileControls).toBeVisible();
-    expect(within(profileControls).getByRole('menuitem', { name: 'Profile' })).toBeVisible();
-    expect(within(profileControls).getByRole('menuitem', { name: 'Settings' })).toBeVisible();
-    expect(within(profileControls).getByRole('menuitem', { name: 'Profile' })).toHaveFocus();
+    expect(within(profileControls).getByRole('menuitem', { name: 'Perfil' })).toBeVisible();
+    expect(within(profileControls).getByRole('menuitem', { name: 'Ajustes' })).toBeVisible();
+    expect(within(profileControls).getByRole('menuitem', { name: 'Perfil' })).toHaveFocus();
     fireEvent.click(within(profileControls).getByRole('menuitem', { name: 'Cerrar sesión' }));
     expect(onLogout).toHaveBeenCalledOnce();
 

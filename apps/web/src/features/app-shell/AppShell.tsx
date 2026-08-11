@@ -69,8 +69,8 @@ export function AppShell({ user, pathname, onNavigate, onLogout, onNotificationA
           <button ref={triggerRef} className="app-shell__profile-trigger" type="button" aria-haspopup="menu" aria-expanded={profileOpen} onClick={() => setProfileOpen((open) => !open)}><span aria-hidden="true">{user.name.slice(0, 1).toUpperCase()}</span>{user.name}</button>
           {profileOpen ? <div className="app-shell__profile-menu" role="menu" aria-label="Opciones de perfil">
             <p><strong>{user.name}</strong><span>{user.email}</span></p>
-            <button ref={firstMenuItemRef} role="menuitem" type="button" onClick={() => go('/profile')}>Profile</button>
-            <button role="menuitem" type="button" onClick={() => go('/settings')}>Settings</button>
+            <button ref={firstMenuItemRef} role="menuitem" type="button" onClick={() => go('/profile')}>Perfil</button>
+            <button role="menuitem" type="button" onClick={() => go('/settings')}>Ajustes</button>
             <button className="app-shell__profile-logout" role="menuitem" type="button" onClick={() => void onLogout()}><LogoutIcon />Cerrar sesión</button>
           </div> : null}
         </div>
