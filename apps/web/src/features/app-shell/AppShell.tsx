@@ -12,7 +12,7 @@ interface AppShellProps extends PropsWithChildren {
   onNotificationActionError?(message: string): void;
 }
 
-const desktopNavigation = [['Inicio', '/'], ['Hogares', '/households'], ['Mis listas', '/lists'], ['Catálogo', '/catalog'], ['NFC', '/nfc']] as const;
+const desktopNavigation = [['Inicio', '/'], ['Hogares', '/households'], ['Mis listas', '/lists'], ['Catálogo', '/catalog']] as const;
 const mobileNavigation = [['Inicio', '/'], ['Hogares', '/households'], ['Listas', '/lists'], ['Catálogo', '/catalog']] as const;
 const androidApkDownloadUrl = 'https://github.com/Speeson/NFCompra/releases/latest/download/NFCompra-release.apk';
 

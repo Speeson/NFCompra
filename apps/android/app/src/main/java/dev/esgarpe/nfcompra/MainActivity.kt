@@ -1,6 +1,7 @@
 package dev.esgarpe.nfcompra
 
 import android.content.Intent
+import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.Color as AndroidColor
 import android.net.Uri
@@ -125,6 +126,19 @@ class MainActivity : FragmentActivity() {
             LaunchedEffect(Unit) {
                 runCatching { appUpdateService.checkLatestRelease() }
                     .onSuccess { availableUpdate = it }
+                if (installedChangelog == null && updatePreferences.shouldFetchInstalledChangelog(applicationContext, BuildConfig.VERSION_NAME)) {
+                    runCatching { appUpdateService.currentReleaseInfo() }
+                        .onSuccess { currentRelease ->
+                            currentRelease?.let {
+                                installedChangelog = InstalledUpdateChangelog(
+                                    versionName = it.versionName,
+                                    title = it.releaseName,
+                                    body = it.changelog,
+                                )
+                            }
+                        }
+                }
+                updatePreferences.markVersionSeen(BuildConfig.VERSION_NAME)
             }
             val accountId = session?.accessToken?.let(::userIdFromJwt)
             val biometricAccessEnabled = remember(accountId, biometricPreferenceVersion) {
@@ -627,6 +641,19 @@ private fun SharedPreferences.pendingInstalledChangelog(currentVersionName: Stri
     )
 }
 
+private fun SharedPreferences.shouldFetchInstalledChangelog(context: Context, currentVersionName: String): Boolean {
+    if (getString(SHOWN_CHANGELOG_VERSION, null) == currentVersionName) return false
+    if (getString(PENDING_CHANGELOG_VERSION, null) == currentVersionName) return false
+    val lastSeenVersion = getString(LAST_SEEN_VERSION, null)
+    val packageInfo = runCatching { context.packageManager.getPackageInfo(context.packageName, 0) }.getOrNull()
+    val packageWasUpdated = packageInfo != null && packageInfo.lastUpdateTime > packageInfo.firstInstallTime
+    return packageWasUpdated || (lastSeenVersion != null && lastSeenVersion != currentVersionName)
+}
+
+private fun SharedPreferences.markVersionSeen(versionName: String) {
+    edit().putString(LAST_SEEN_VERSION, versionName).apply()
+}
+
 private fun SharedPreferences.markChangelogShown(versionName: String) {
     edit()
         .putString(SHOWN_CHANGELOG_VERSION, versionName)
@@ -646,3 +673,4 @@ private const val PENDING_CHANGELOG_VERSION = "pending_changelog_version"
 private const val PENDING_CHANGELOG_TITLE = "pending_changelog_title"
 private const val PENDING_CHANGELOG_BODY = "pending_changelog_body"
 private const val SHOWN_CHANGELOG_VERSION = "shown_changelog_version"
+private const val LAST_SEEN_VERSION = "last_seen_version"

@@ -49,3 +49,30 @@ it('searches a cached snapshot locally instead of calling the remote search endp
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(fetchMock).toHaveBeenCalledWith('/v1/product-catalog/snapshot', expect.any(Object));
 });
+
+it('caps local search results to avoid overly generic result sets', async () => {
+  vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
+    const url = String(input);
+    if (url.startsWith('/v1/product-catalog/snapshot')) {
+      return Promise.resolve(Response.json({
+        version: 'v1',
+        productCount: 30,
+        products: Array.from({ length: 30 }, (_, index) => ({
+          id: `prod-${index}`,
+          name: `Patata ${index}`,
+          normalizedName: `patata ${index}`,
+          categoryId: 'cat-vegetables',
+          categoryName: 'Fruta y verdura',
+          iconKey: 'potato',
+          brand: null,
+          packageSize: null,
+          source: 'supermercados-espana',
+          sourceProductId: `potato-${index}`,
+        })),
+      }));
+    }
+    throw new Error(`Solicitud inesperada: ${url}`);
+  }));
+
+  await expect(searchProductCatalog('patata', 80)).resolves.toHaveLength(25);
+});

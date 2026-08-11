@@ -47,6 +47,22 @@ class AppUpdateServiceTest {
     }
 
     @Test
+    fun `finds current release info for installed changelog`() {
+        val release = GitHubRelease(
+            tagName = "v0.1.5",
+            name = "NFCompra 0.1.5",
+            htmlUrl = "https://github.com/Speeson/NFCompra/releases/tag/v0.1.5",
+            body = "Novedades instaladas",
+            assets = listOf(GitHubReleaseAsset("NFCompra-release.apk", "https://example.test/app.apk", 25L)),
+        )
+
+        val current = findCurrentReleaseInfo("0.1.5", release, "NFCompra-release.apk")
+
+        assertEquals("0.1.5", current?.versionName)
+        assertEquals("Novedades instaladas", current?.changelog)
+    }
+
+    @Test
     fun `ignores newer release without apk asset`() {
         val release = GitHubRelease(
             tagName = "v0.1.2",

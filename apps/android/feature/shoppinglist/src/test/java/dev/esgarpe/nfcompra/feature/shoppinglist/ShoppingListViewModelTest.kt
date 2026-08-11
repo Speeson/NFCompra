@@ -81,6 +81,17 @@ class ShoppingListViewModelTest {
         assertEquals(0, data.listMetrics["list-2"]?.checkedCount)
     }
 
+    @Test fun `refreshes product categories into data state for catalog tab`() = runTest {
+        val viewModel = ShoppingListViewModel(MultiListMetricsRepository())
+        viewModel.load()
+        advanceUntilIdle()
+        viewModel.refreshProductCategories()
+        advanceUntilIdle()
+
+        val data = viewModel.state.value as ShoppingListViewState.Data
+        assertEquals(listOf("Favoritos", "Lacteos"), data.productCategories.map { it.name })
+    }
+
     @Test fun `updates authenticated profile through me endpoint`() = runTest {
         server.enqueue(json("{\"user\":{\"id\":\"user-1\",\"email\":\"ana@example.test\",\"name\":\"Ana Garcia\",\"firstName\":\"Ana\",\"lastName\":\"Garcia\",\"username\":\"ana\"}}"))
         val repository = ShoppingListRepository(NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java))
@@ -500,6 +511,10 @@ private class MultiListMetricsRepository : ShoppingRepository {
     override suspend fun lists(householdId: String) = listOf(
         ShoppingListSummaryUiModel("list-1", householdId, "Compra"),
         ShoppingListSummaryUiModel("list-2", householdId, "Cena"),
+    )
+    override suspend fun productCategories() = listOf(
+        ProductCategoryUiModel("favorites", "Favoritos", "favoritos", "star", isFavorite = true),
+        ProductCategoryUiModel("cat-dairy", "Lacteos", "lacteos", "milk"),
     )
     override fun observeItems(listId: String) = MutableStateFlow(itemsByList.getValue(listId))
     override suspend fun createHousehold(name: String) = error("No se usa en esta prueba.")

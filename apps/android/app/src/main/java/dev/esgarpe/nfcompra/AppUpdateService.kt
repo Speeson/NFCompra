@@ -76,6 +76,27 @@ internal fun findAppUpdate(
     )
 }
 
+internal fun findCurrentReleaseInfo(
+    currentVersionName: String,
+    release: GitHubRelease,
+    apkAssetName: String,
+): AppUpdateInfo? {
+    val releaseVersion = release.tagName.removePrefix("v").trim()
+    if (compareVersions(releaseVersion, currentVersionName) != 0) return null
+    val apkAsset = release.assets.firstOrNull { it.name == apkAssetName }
+        ?: release.assets.firstOrNull { it.name.endsWith(".apk", ignoreCase = true) }
+        ?: return null
+    return AppUpdateInfo(
+        versionName = releaseVersion,
+        releaseName = release.name.ifBlank { release.tagName },
+        assetName = apkAsset.name,
+        downloadUrl = apkAsset.browserDownloadUrl,
+        releaseUrl = release.htmlUrl,
+        changelog = release.body.trim(),
+        sizeBytes = apkAsset.sizeBytes,
+    )
+}
+
 private fun compareVersions(left: String, right: String): Int {
     val leftParts = left.split('.', '-').mapNotNull { it.toIntOrNull() }
     val rightParts = right.split('.', '-').mapNotNull { it.toIntOrNull() }
@@ -93,6 +114,15 @@ internal class AppUpdateService(
     suspend fun checkLatestRelease(): AppUpdateInfo? = withContext(Dispatchers.IO) {
         val release = fetchRelease(GITHUB_LATEST_RELEASE_URL)
         findAppUpdate(
+            currentVersionName = BuildConfig.VERSION_NAME,
+            release = release,
+            apkAssetName = APK_ASSET_NAME,
+        )
+    }
+
+    suspend fun currentReleaseInfo(): AppUpdateInfo? = withContext(Dispatchers.IO) {
+        val release = fetchRelease(GITHUB_LATEST_RELEASE_URL)
+        findCurrentReleaseInfo(
             currentVersionName = BuildConfig.VERSION_NAME,
             release = release,
             apkAssetName = APK_ASSET_NAME,

@@ -266,6 +266,7 @@ fun ShoppingListApp(
             viewModel::updateProfile,
             viewModel::changePassword,
             viewModel::refreshProfile,
+            viewModel::refreshProductCategories,
             onLogout,
             onMembers,
             onOpenNotifications = onOpenNotifications,
@@ -293,6 +294,7 @@ internal fun ShoppingListContent(
     onUpdateProfile: suspend (String?, String?, String?) -> ProfileUiModel? = { _, _, _ -> null },
     onChangePassword: suspend (String, String) -> Boolean = { _, _ -> false },
     onRefreshProfile: () -> Unit = {},
+    onRefreshProductCategories: () -> Unit = {},
     onLogout: () -> Unit,
     onMembers: (String) -> Unit,
     onOpenNotifications: (() -> Unit)? = null,
@@ -330,6 +332,11 @@ internal fun ShoppingListContent(
         data.displayName?.takeIf { it.isNotBlank() }?.let { resolvedName ->
             displayName = resolvedName
             pinnedPreferences.edit().putString("display_name", resolvedName).apply()
+        }
+    }
+    LaunchedEffect(selectedTab, data.productCategories.isEmpty()) {
+        if (selectedTab == DashboardTab.Catalog && data.productCategories.isEmpty()) {
+            onRefreshProductCategories()
         }
     }
     val togglePinnedList: (String) -> Unit = { listId ->

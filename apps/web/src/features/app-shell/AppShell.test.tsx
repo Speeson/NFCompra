@@ -41,7 +41,7 @@ describe('AppShell', () => {
     expect(within(desktopNavigation).getByRole('link', { name: 'Hogares' })).toHaveAttribute('href', '/households');
     expect(within(desktopNavigation).getByRole('link', { name: 'Mis listas' })).toHaveAttribute('href', '/lists');
     expect(within(desktopNavigation).getByRole('link', { name: 'Catálogo' })).toHaveAttribute('href', '/catalog');
-    expect(within(desktopNavigation).getByRole('link', { name: 'NFC' })).toHaveAttribute('href', '/nfc');
+    expect(within(desktopNavigation).queryByRole('link', { name: 'NFC' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Descargar APK' })).toHaveAttribute(
       'href',
       'https://github.com/Speeson/NFCompra/releases/latest/download/NFCompra-release.apk',

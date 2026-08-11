@@ -115,7 +115,7 @@ export async function deleteProductCatalogItem(productId: string): Promise<void>
 
 export async function searchProductCatalog(search: string, limit = 10): Promise<ProductCatalogItem[]> {
   const query = normalized(search);
-  if (query.length < 2) return [];
+  if (query.length < 3) return [];
   try {
     const snapshot = await loadSnapshot();
     return searchSnapshot(snapshot.products, query, limit);

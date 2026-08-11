@@ -129,6 +129,14 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         }
     }
 
+    fun refreshProductCategories() {
+        viewModelScope.launch {
+            val current = mutableState.value as? ShoppingListViewState.Data ?: return@launch
+            val categories = loadCategories()
+            mutableState.value = current.copy(productCategories = categories)
+        }
+    }
+
     fun openContext(householdId: String, listId: String? = null) {
         pendingContext = ShoppingContext(householdId, listId)
         loadForCurrentIntent()

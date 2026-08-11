@@ -66,12 +66,12 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
   useEffect(() => {
     let active = true;
     const search = name.trim();
-    if (isOffline || search.length < 2) {
+    if (isOffline || search.length < 3) {
       setSuggestions([]);
       return () => { active = false; };
     }
     const timer = window.setTimeout(() => {
-      void searchProductCatalog(search, pickerMode === 'cards' ? 12 : 8)
+      void searchProductCatalog(search, pickerMode === 'cards' ? 8 : 12)
         .then((products) => { if (active) setSuggestions(applyFavoriteOverrides(products, favoriteOverrides)); })
         .catch(() => { if (active) setSuggestions([]); });
     }, pickerMode === 'cards' ? 80 : 150);

@@ -27,7 +27,39 @@ export function ProductCatalogCard({
   const hasQuantity = Boolean(onQuantityChange);
   const canAdd = !disabled && (!hasQuantity || selectedQuantity > 0);
   const visibleStatus = hasQuantity ? selectedQuantity > 0 ? `x${selectedQuantity}` : 'Elige cantidad' : statusLabel === undefined ? product.categoryName ?? 'Producto' : statusLabel;
-  return <article className={recentlyAdded ? 'product-result-card product-result-card--added' : product.isFavorite ? 'product-result-card product-result-card--favorite' : 'product-result-card'} aria-label={product.name}>
+  const cardClassName = [
+    'product-result-card',
+    hasQuantity ? 'product-result-card--picker' : null,
+    recentlyAdded ? 'product-result-card--added' : null,
+    product.isFavorite ? 'product-result-card--favorite' : null,
+  ].filter(Boolean).join(' ');
+
+  if (hasQuantity) {
+    return <article className={cardClassName} aria-label={product.name}>
+      <span className="product-result-card__content">
+        <strong>{product.name}</strong>
+        <small>{productDetails(product)}</small>
+      </span>
+      <div className="product-result-card__quantity" aria-label={`Cantidad de ${product.name}`}>
+        <button type="button" aria-label={`Reducir cantidad de ${product.name}`} disabled={disabled || selectedQuantity === 0} onClick={() => onQuantityChange?.(product.id, -1)}>−</button>
+        <span>{selectedQuantity}</span>
+        <button type="button" aria-label={`Aumentar cantidad de ${product.name}`} disabled={disabled} onClick={() => onQuantityChange?.(product.id, 1)}>+</button>
+      </div>
+      <div className="product-result-card__footer">
+        <button type="button" className="product-result-card__add" aria-label={`Seleccionar ${product.name}`} disabled={!canAdd} onClick={() => onAdd?.(product)}>A&ntilde;adir</button>
+        <button
+          type="button"
+          className={product.isFavorite ? 'product-favorite-button is-favorite' : 'product-favorite-button'}
+          aria-label={`${product.isFavorite ? 'Quitar' : 'A\u00f1adir'} ${product.name} de favoritos`}
+          aria-pressed={Boolean(product.isFavorite)}
+          disabled={disabled}
+          onClick={() => onFavoriteChange?.(product, !product.isFavorite)}
+        >{product.isFavorite ? '\u2605' : '\u2606'}</button>
+      </div>
+    </article>;
+  }
+
+  return <article className={cardClassName} aria-label={product.name}>
     <div className="product-result-card__rail">
       <span className="product-result-card__icon" aria-hidden="true">{productIcon(product)}</span>
       <button
@@ -71,18 +103,20 @@ export function ProductCatalogListItem({
   const details = productDetails(product);
   const accessibleName = details ? `${product.name} \u00b7 ${details}` : product.name;
   return <div className="product-suggestion-row" role="option" aria-selected="false">
-    <button
-      type="button"
-      className={product.isFavorite ? 'product-favorite-button product-favorite-button--compact is-favorite' : 'product-favorite-button product-favorite-button--compact'}
-      aria-label={`${product.isFavorite ? 'Quitar' : 'A\u00f1adir'} ${product.name} de favoritos`}
-      aria-pressed={Boolean(product.isFavorite)}
-      disabled={disabled}
-      onClick={() => onFavoriteChange?.(product, !product.isFavorite)}
-    >{product.isFavorite ? '\u2605' : '\u2606'}</button>
-    <button type="button" className="product-suggestion product-suggestion--with-favorite" aria-label={accessibleName} disabled={disabled} onClick={() => onSelect(product)}>
-      <span>{product.name}</span>
-      <small>{details}</small>
-    </button>
+    <div className="product-suggestion">
+      <button
+        type="button"
+        className={product.isFavorite ? 'product-favorite-button product-favorite-button--compact is-favorite' : 'product-favorite-button product-favorite-button--compact'}
+        aria-label={`${product.isFavorite ? 'Quitar' : 'A\u00f1adir'} ${product.name} de favoritos`}
+        aria-pressed={Boolean(product.isFavorite)}
+        disabled={disabled}
+        onClick={() => onFavoriteChange?.(product, !product.isFavorite)}
+      >{product.isFavorite ? '\u2605' : '\u2606'}</button>
+      <button type="button" className="product-suggestion__select" aria-label={accessibleName} disabled={disabled} onClick={() => onSelect(product)}>
+        <span>{product.name}</span>
+        <small>{details}</small>
+      </button>
+    </div>
   </div>;
 }
 export function productDetails(product: ProductCatalogItem): string {

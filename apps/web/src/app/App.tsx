@@ -12,7 +12,6 @@ import { AppShell } from '../features/app-shell/AppShell';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { HouseholdsPage } from '../features/households/HouseholdsPage';
 import { ListsPage } from '../features/shopping-list/ListsPage';
-import { NfcPage } from '../features/nfc/NfcPage';
 import { CatalogPage } from '../features/catalog/CatalogPage';
 import { ProfilePage } from '../features/profile/ProfilePage';
 import type { User } from '../api/session';
@@ -127,7 +126,6 @@ export function AuthenticatedRoute({ pathname, search, user, onNavigate }: { pat
   if (pathname === '/lists') return <ListsPage onNavigate={onNavigate} startCreating={search.get('create') === '1'} selectedHouseholdId={search.get('household')} />;
   if (listMatch) return <ShoppingListRoute currentUserId={userId} requestedListId={decodeURIComponent(listMatch[1])} onNavigate={onNavigate} />;
   if (pathname === '/catalog') return <CatalogPage />;
-  if (pathname === '/nfc') return <NfcPage />;
   if (pathname === '/profile') return <ProfilePage user={user} onNavigate={onNavigate} />;
   if (pathname === '/settings') return <PlaceholderPage title="Ajustes" text="Los ajustes de la cuenta estarán disponibles aquí próximamente." />;
   return <ShoppingListRoute currentUserId={userId} requestedHouseholdId={search.get('household')} requestedListId={search.get('list')} onNavigate={onNavigate} />;

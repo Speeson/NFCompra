@@ -7,7 +7,7 @@ import { ProductCatalogCard, productIcon } from './ProductCatalogCards';
 import type { ProductCatalogItem } from './product-catalog-api';
 
 describe('ProductCatalogCard', () => {
-  it('uses the shared compact card structure for catalog and search cards', () => {
+  it('uses the search picker card structure when quantity controls are enabled', () => {
     render(<ProductCatalogCard
       product={{
         id: 'prod-tomato',
@@ -27,8 +27,9 @@ describe('ProductCatalogCard', () => {
     />);
 
     const card = screen.getByRole('article', { name: 'Tomate frito estilo casero Hacendado' });
-    expect(card.querySelector('.product-result-card__rail')).toBeInTheDocument();
+    expect(card).toHaveClass('product-result-card--picker');
     expect(card.querySelector('.product-result-card__quantity')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Seleccionar Tomate frito estilo casero Hacendado' })).toBeDisabled();
   });
 
   it('uses specific supermarket icons for common grocery products', () => {
