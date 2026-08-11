@@ -35,8 +35,10 @@ export function MembersPanel({ householdId, currentUserId }: { householdId: stri
     </section>
     <section className="members-panel__section" aria-label="Miembros">
       <h3>Miembros</h3>
-      {members.length ? <ul>{members.map((member) => <li key={member.userId} className="members-panel__person"><MemberIdentity name={member.name} email={member.email} />
-        {isOwner ? <button className="button button--danger" type="button" onClick={() => remove.mutate(member.userId)}>Eliminar a {member.name}</button> : <span>Miembro</span>}
+      {members.length ? <ul>{members.map((member) => <li key={member.userId} className={isOwner ? 'members-panel__person members-panel__person--removable' : 'members-panel__person'}>
+        {isOwner ? <button className="members-panel__remove" type="button" aria-label={`Eliminar a ${member.name}`} onClick={() => remove.mutate(member.userId)}>×</button> : null}
+        <MemberIdentity name={member.name} email={member.email} />
+        {isOwner ? null : <span>Miembro</span>}
       </li>)}</ul> : <p className="members-panel__empty">Todavia no hay miembros invitados.</p>}
     </section>
     {message ? <p role="alert">{message}</p> : null}

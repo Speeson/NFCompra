@@ -33,6 +33,7 @@ describe('MembersPanel', () => {
     expect(within(ownerSection).getByText('ana@example.test')).toBeVisible();
     expect(within(memberSection).getByText('Bea')).toBeVisible();
     expect(within(memberSection).getByText('bea@example.test')).toBeVisible();
+    expect(within(memberSection).getByRole('button', { name: 'Eliminar a Bea' })).toHaveTextContent('×');
     fireEvent.change(screen.getByLabelText('Correo para invitar'), { target: { value: 'cora@example.test' } });
     fireEvent.click(screen.getByRole('button', { name: 'Enviar invitación' }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([input, init]) => String(input).endsWith('/households/home-1/invitations') && init?.method === 'POST')).toBe(true));
