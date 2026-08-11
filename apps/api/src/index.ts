@@ -70,7 +70,7 @@ function isShoppingRoute(path: string): boolean {
 async function handleCatalogRequest(request: Request, env: Env): Promise<Response | null> {
   const path = new URL(request.url).pathname;
   if (!isCatalogRoute(path)) return null;
-  const requiresUser = /^\/v1\/product-catalog\/[^/]+\/favorite$/.test(path);
+  const requiresUser = request.method !== 'GET' || /^\/v1\/product-catalog\/[^/]+\/favorite$/.test(path);
   const hasBearer = request.headers.get('authorization')?.startsWith('Bearer ') === true;
   if (!requiresUser && !hasBearer) return handleCatalogRoute(request, env);
   try {
@@ -84,7 +84,9 @@ async function handleCatalogRequest(request: Request, env: Env): Promise<Respons
 
 function isCatalogRoute(path: string): boolean {
   return path === '/v1/product-categories'
+    || /^\/v1\/product-categories\/[^/]+$/.test(path)
     || path === '/v1/product-catalog'
+    || /^\/v1\/product-catalog\/[^/]+$/.test(path)
     || path === '/v1/product-catalog/version'
     || path === '/v1/product-catalog/snapshot'
     || /^\/v1\/product-catalog\/[^/]+\/favorite$/.test(path);

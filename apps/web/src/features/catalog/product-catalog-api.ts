@@ -28,6 +28,20 @@ export interface ProductCatalogItem {
   isFavorite?: boolean;
 }
 
+export interface ProductCategoryInput {
+  name: string;
+  iconKey?: string | null;
+  parentId?: string | null;
+}
+
+export interface ProductCatalogInput {
+  name: string;
+  categoryId?: string | null;
+  iconKey?: string | null;
+  brand?: string | null;
+  packageSize?: string | null;
+}
+
 interface ProductCatalogSnapshot {
   version: string;
   productCount: number;
@@ -53,6 +67,52 @@ export async function setProductFavorite(productId: string, favorite: boolean): 
   });
 }
 
+export async function createProductCategory(input: ProductCategoryInput): Promise<ProductCategory> {
+  const response = await apiClient.request<{ category: ProductCategory }>('/product-categories', {
+    method: 'POST',
+    body: input,
+  });
+  clearProductCatalogCache();
+  return response.category;
+}
+
+export async function updateProductCategory(categoryId: string, input: Partial<ProductCategoryInput>): Promise<ProductCategory> {
+  const response = await apiClient.request<{ category: ProductCategory }>(`/product-categories/${encodeURIComponent(categoryId)}`, {
+    method: 'PATCH',
+    body: input,
+  });
+  clearProductCatalogCache();
+  return response.category;
+}
+
+export async function deleteProductCategory(categoryId: string): Promise<void> {
+  await apiClient.request<{ status: string }>(`/product-categories/${encodeURIComponent(categoryId)}`, { method: 'DELETE' });
+  clearProductCatalogCache();
+}
+
+export async function createProductCatalogItem(input: ProductCatalogInput): Promise<ProductCatalogItem> {
+  const response = await apiClient.request<{ product: ProductCatalogItem }>('/product-catalog', {
+    method: 'POST',
+    body: input,
+  });
+  clearProductCatalogCache();
+  return response.product;
+}
+
+export async function updateProductCatalogItem(productId: string, input: Partial<ProductCatalogInput>): Promise<ProductCatalogItem> {
+  const response = await apiClient.request<{ product: ProductCatalogItem }>(`/product-catalog/${encodeURIComponent(productId)}`, {
+    method: 'PATCH',
+    body: input,
+  });
+  clearProductCatalogCache();
+  return response.product;
+}
+
+export async function deleteProductCatalogItem(productId: string): Promise<void> {
+  await apiClient.request<{ status: string }>(`/product-catalog/${encodeURIComponent(productId)}`, { method: 'DELETE' });
+  clearProductCatalogCache();
+}
+
 export async function searchProductCatalog(search: string, limit = 10): Promise<ProductCatalogItem[]> {
   const query = normalized(search);
   if (query.length < 2) return [];
@@ -67,6 +127,10 @@ export async function searchProductCatalog(search: string, limit = 10): Promise<
 }
 
 export function clearProductCatalogCacheForTests(): void {
+  clearProductCatalogCache();
+}
+
+function clearProductCatalogCache(): void {
   snapshotPromise = null;
   snapshotCache = null;
 }

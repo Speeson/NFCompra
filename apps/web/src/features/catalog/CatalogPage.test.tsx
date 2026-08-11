@@ -122,9 +122,99 @@ describe('CatalogPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Lacteos/ }));
     fireEvent.change(screen.getByLabelText('Buscar productos'), { target: { value: 'pan' } });
-    fireEvent.change(screen.getByLabelText('Filtro de búsqueda'), { target: { value: 'category' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir filtros de búsqueda' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Categoría seleccionada' }));
 
     expect(await screen.findByText('Pan de leche')).toBeVisible();
     expect(screen.queryByText('Pan rustico')).not.toBeInTheDocument();
+  });
+
+  it('opens search filters from an icon button instead of showing a select', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/product-categories')) return Promise.resolve(Response.json({ categories: [
+        { id: 'favorites', name: 'Favoritos', normalizedName: 'favoritos', parentId: null, iconKey: 'star', source: 'user', sourceCategoryId: null, createdAt: '', updatedAt: '', isFavorite: true },
+      ] }));
+      if (url.endsWith('/product-catalog/snapshot')) return Promise.resolve(Response.json({ version: 'v1', productCount: 0, products: [] }));
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+
+    render(<QueryClientProvider client={createWebQueryClient()}><CatalogPage /></QueryClientProvider>);
+
+    await screen.findByRole('button', { name: /Favoritos/ });
+    expect(screen.queryByLabelText('Filtro de búsqueda')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir filtros de búsqueda' }));
+
+    expect(screen.getByRole('dialog', { name: 'Filtro de búsqueda' })).toBeVisible();
+    expect(screen.getByRole('radio', { name: 'Todos los productos' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Favoritos' })).toBeVisible();
+    expect(screen.getByRole('radio', { name: 'Categoría seleccionada' })).toBeVisible();
+  });
+
+  it('opens a combined create dialog and creates a category or product', async () => {
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/product-categories') && (!init?.method || init.method === 'GET')) return Promise.resolve(Response.json({ categories: [
+        { id: 'favorites', name: 'Favoritos', normalizedName: 'favoritos', parentId: null, iconKey: 'star', source: 'user', sourceCategoryId: null, createdAt: '', updatedAt: '', isFavorite: true },
+        { id: 'cat-dairy', name: 'Lacteos', normalizedName: 'lacteos', parentId: null, iconKey: 'milk', source: null, sourceCategoryId: null, createdAt: '', updatedAt: '' },
+      ] }));
+      if (url.endsWith('/product-catalog/snapshot')) return Promise.resolve(Response.json({ version: 'v1', productCount: 0, products: [] }));
+      if (url.endsWith('/product-categories') && init?.method === 'POST') return Promise.resolve(Response.json({ category: { id: 'cat-clean', name: 'Limpieza', normalizedName: 'limpieza', parentId: null, iconKey: 'clean', source: 'user', sourceCategoryId: null, createdAt: '', updatedAt: '' } }, { status: 201 }));
+      if (url.endsWith('/product-catalog') && init?.method === 'POST') return Promise.resolve(Response.json({ product: { id: 'prod-water', name: 'Agua mineral', normalizedName: 'agua mineral', categoryId: 'cat-dairy', categoryName: 'Lacteos', iconKey: 'water', brand: null, packageSize: '1 L', source: 'user', sourceProductId: null, isFavorite: false } }, { status: 201 }));
+      throw new Error(`Solicitud inesperada: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<QueryClientProvider client={createWebQueryClient()}><CatalogPage /></QueryClientProvider>);
+
+    await screen.findByRole('button', { name: /Favoritos/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Crear en catálogo' }));
+    expect(screen.getByRole('dialog', { name: 'Crear' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Categoría' })).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.change(screen.getByLabelText('Nombre de la categoría'), { target: { value: 'Limpieza' } });
+    fireEvent.change(screen.getByLabelText('Icono de la categoría'), { target: { value: 'clean' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input, init]) => String(input).endsWith('/product-categories') && init?.method === 'POST')).toBe(true));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Crear en catálogo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Producto' }));
+    fireEvent.change(screen.getByLabelText('Nombre del producto'), { target: { value: 'Agua mineral' } });
+    fireEvent.change(screen.getByLabelText('Categoría del producto'), { target: { value: 'cat-dairy' } });
+    fireEvent.change(screen.getByLabelText('Icono del producto'), { target: { value: 'water-drink' } });
+    fireEvent.change(screen.getByLabelText('Tamaño del producto'), { target: { value: '1 L' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input, init]) => String(input).endsWith('/product-catalog') && init?.method === 'POST')).toBe(true));
+  });
+
+  it('opens category and product action menus for editing or deleting entries', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/product-categories')) return Promise.resolve(Response.json({ categories: [
+        { id: 'favorites', name: 'Favoritos', normalizedName: 'favoritos', parentId: null, iconKey: 'star', source: 'user', sourceCategoryId: null, createdAt: '', updatedAt: '', isFavorite: true },
+        { id: 'cat-dairy', name: 'Lacteos', normalizedName: 'lacteos', parentId: null, iconKey: 'milk', source: null, sourceCategoryId: null, createdAt: '', updatedAt: '' },
+      ] }));
+      if (url.endsWith('/product-catalog/snapshot')) return Promise.resolve(Response.json({ version: 'v1', productCount: 1, products: [
+        { id: 'prod-milk', name: 'Leche entera', normalizedName: 'leche entera', categoryId: 'cat-dairy', categoryName: 'Lacteos', iconKey: 'milk', brand: null, packageSize: '1 L', source: null, sourceProductId: null, isFavorite: false },
+      ] }));
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+
+    render(<QueryClientProvider client={createWebQueryClient()}><CatalogPage /></QueryClientProvider>);
+
+    const categoryButton = await screen.findByRole('button', { name: /Lacteos/ });
+    fireEvent.click(categoryButton);
+    expect(screen.queryByRole('button', { name: 'Acciones de categoría' })).not.toBeInTheDocument();
+    fireEvent.click(categoryButton);
+    expect(screen.queryByRole('dialog', { name: 'Acciones de categoría' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Editar categoría' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Eliminar categoría' })).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Acciones de producto Leche entera' }));
+    expect(screen.getByRole('button', { name: 'Editar producto' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Eliminar producto' })).toBeVisible();
   });
 });

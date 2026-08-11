@@ -115,12 +115,59 @@ it('marks user favorites and sorts matching favorite products first', async () =
   expect(await removeResponse.json()).toEqual({ productId: 'prod-tomato', isFavorite: false });
 });
 
-async function dispatch(path: string, method = 'POST', token?: string): Promise<Response> {
+it('creates updates and deletes product categories', async () => {
+  const token = await createAccessToken('user-a', 0, testEnv);
+
+  const createResponse = await dispatch('/v1/product-categories', 'POST', token, { name: 'Bebidas', iconKey: 'drink' });
+  expect(createResponse.status).toBe(201);
+  const created = await createResponse.json() as { category: { id: string; name: string; normalizedName: string; iconKey: string } };
+  expect(created.category).toMatchObject({ name: 'Bebidas', normalizedName: 'bebidas', iconKey: 'drink' });
+
+  const updateResponse = await dispatch(`/v1/product-categories/${created.category.id}`, 'PATCH', token, { name: 'Bebidas frescas', iconKey: 'water' });
+  expect(updateResponse.status).toBe(200);
+  expect(await updateResponse.json()).toMatchObject({ category: { id: created.category.id, name: 'Bebidas frescas', normalizedName: 'bebidas frescas', iconKey: 'water' } });
+
+  const deleteResponse = await dispatch(`/v1/product-categories/${created.category.id}`, 'DELETE', token);
+  expect(deleteResponse.status).toBe(200);
+  expect(await deleteResponse.json()).toEqual({ status: 'deleted' });
+});
+
+it('creates updates and soft deletes product catalog items', async () => {
+  const token = await createAccessToken('user-a', 0, testEnv);
+
+  const createResponse = await dispatch('/v1/product-catalog', 'POST', token, {
+    name: 'Agua mineral',
+    categoryId: 'cat-dairy',
+    iconKey: 'water',
+    brand: 'Bezoya',
+    packageSize: '1.5 L',
+  });
+  expect(createResponse.status).toBe(201);
+  const created = await createResponse.json() as { product: { id: string; name: string; categoryId: string; iconKey: string } };
+  expect(created.product).toMatchObject({ name: 'Agua mineral', categoryId: 'cat-dairy', iconKey: 'water' });
+
+  const updateResponse = await dispatch(`/v1/product-catalog/${created.product.id}`, 'PATCH', token, { name: 'Agua con gas', packageSize: '1 L' });
+  expect(updateResponse.status).toBe(200);
+  expect(await updateResponse.json()).toMatchObject({ product: { id: created.product.id, name: 'Agua con gas', packageSize: '1 L' } });
+
+  const deleteResponse = await dispatch(`/v1/product-catalog/${created.product.id}`, 'DELETE', token);
+  expect(deleteResponse.status).toBe(200);
+  expect(await deleteResponse.json()).toEqual({ status: 'deleted' });
+
+  const searchResponse = await dispatch('/v1/product-catalog?search=agua', 'GET', token);
+  expect(await searchResponse.json()).toEqual({ products: [] });
+});
+
+async function dispatch(path: string, method = 'POST', token?: string, body?: unknown): Promise<Response> {
   const ctx = createExecutionContext();
   const response = await worker.fetch!(
     new Request(`http://local${path}`, {
       method,
-      headers: token ? { authorization: `Bearer ${token}` } : undefined,
+      headers: {
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
     }),
     testEnv,
     ctx,
