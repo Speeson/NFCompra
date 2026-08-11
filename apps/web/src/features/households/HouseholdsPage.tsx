@@ -103,9 +103,15 @@ function HouseholdCard({ household, currentUserId, active, expanded, onToggleExp
     setIsEditing(false);
   }
 
-  return <article className={active ? 'route-card route-card--household is-active' : 'route-card route-card--household'} aria-label={household.name}>
+  function onCardKeyDown(event: KeyboardEvent<HTMLElement>): void {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    onToggleExpanded();
+  }
+
+  return <article className={active ? 'route-card route-card--household is-active' : 'route-card route-card--household'} aria-label={household.name} aria-expanded={expanded} tabIndex={0} onClick={onToggleExpanded} onKeyDown={onCardKeyDown}>
     <div className="household-card-main">
-      {isEditing ? <form className="household-card-edit" onSubmit={save}>
+      {isEditing ? <form className="household-card-edit" onSubmit={save} onClick={(event) => event.stopPropagation()}>
         <label className="sr-only" htmlFor={`household-name-${household.id}`}>Nombre del hogar</label>
         <input id={`household-name-${household.id}`} aria-label="Nombre del hogar" value={draftName} onChange={(event) => setDraftName(event.target.value)} maxLength={100} autoFocus />
         <button className="household-card-action household-card-action--save" type="submit" aria-label={`Guardar hogar ${household.name}`}>✓</button>
@@ -117,22 +123,21 @@ function HouseholdCard({ household, currentUserId, active, expanded, onToggleExp
       {members.isPending ? <p className="route-card__members" role="status">Cargando usuarios...</p> : members.isError ? <p className="route-card__members" role="alert">Usuarios no disponibles</p> : <p className="route-card__members">{memberCount} {memberCount === 1 ? 'usuario activo' : 'usuarios activos'}</p>}
       <div className="household-card-actions" aria-label={`Acciones de ${household.name}`}>
         {isOwner ? <>
-          {!isEditing ? <button className="household-card-action" type="button" aria-label={`Editar ${household.name}`} onClick={() => setIsEditing(true)}>✎</button> : null}
-          <button className="household-card-action household-card-action--danger" type="button" aria-label={`Eliminar ${household.name}`} onClick={onDelete}>×</button>
+          {!isEditing ? <button className="household-card-action" type="button" aria-label={`Editar ${household.name}`} onClick={(event) => { event.stopPropagation(); setIsEditing(true); }}>✎</button> : null}
+          <button className="household-card-action household-card-action--danger" type="button" aria-label={`Eliminar ${household.name}`} onClick={(event) => { event.stopPropagation(); onDelete(); }}>×</button>
         </> : <>
-          <button className="household-card-action" type="button" aria-label={`Solo el dueño puede editar ${household.name}`} disabled>✎</button>
-          <button className="household-card-action household-card-action--danger" type="button" aria-label={`Salir de ${household.name}`} onClick={onLeave}><LogoutIcon /></button>
+          <button className="household-card-action" type="button" aria-label={`Solo el dueño puede editar ${household.name}`} disabled onClick={(event) => event.stopPropagation()}>✎</button>
+          <button className="household-card-action household-card-action--danger" type="button" aria-label={`Salir de ${household.name}`} onClick={(event) => { event.stopPropagation(); onLeave(); }}><LogoutIcon /></button>
         </>}
       </div>
-      <button className="button" type="button" aria-label={`${active ? 'Acceder' : 'Abrir'} ${household.name}`} onClick={onOpen}>{active ? 'Acceder' : 'Abrir'}</button>
-      <button className="household-card-action household-card-action--toggle" type="button" aria-expanded={expanded} aria-label={`${expanded ? 'Compactar' : 'Desplegar'} ${household.name}`} onClick={onToggleExpanded}>{expanded ? '⌃' : '⌄'}</button>
+      <button className="button" type="button" aria-label={`${active ? 'Acceder' : 'Abrir'} ${household.name}`} onClick={(event) => { event.stopPropagation(); onOpen(); }}>{active ? 'Acceder' : 'Abrir'}</button>
     </div>
-    {expanded ? <div className="household-card-expanded">
+    {expanded ? <div className="household-card-expanded" onClick={(event) => event.stopPropagation()}>
       <div className="household-card-expanded__meta">
         <div><strong>{isOwner ? 'Dueño del hogar' : 'Miembro del hogar'}</strong><span>{active ? 'Hogar abierto' : 'Hogar disponible'}</span></div>
       </div>
-      <button className="button household-card-wide-action" type="button" aria-label={`Miembros de ${household.name}`} onClick={() => setShowMembers((current) => !current)}>👤 Miembros</button>
-      <button className="button button--quiet household-card-wide-action" type="button" aria-label={`Codigo NFC de ${household.name}`} onClick={() => setShowNfc(true)}>⧉ Codigo NFC</button>
+      <button className="button household-card-wide-action" type="button" aria-label={`Miembros de ${household.name}`} onClick={(event) => { event.stopPropagation(); setShowMembers((current) => !current); }}>👤 Miembros</button>
+      <button className="button button--quiet household-card-wide-action" type="button" aria-label={`Codigo NFC de ${household.name}`} onClick={(event) => { event.stopPropagation(); setShowNfc(true); }}>⧉ Codigo NFC</button>
       {showMembers ? <div className="household-card-panel"><MembersPanel householdId={household.id} currentUserId={currentUserId} /></div> : null}
     </div> : null}
     {showNfc ? <NfcCodeDialog household={household} onClose={() => setShowNfc(false)} /> : null}
@@ -146,7 +151,7 @@ function NfcCodeDialog({ household, onClose }: { household: Household; onClose()
     await navigator.clipboard?.writeText(nfcUrl);
     setCopied(true);
   }
-  return <div className="modal-backdrop" role="presentation">
+  return <div className="modal-backdrop" role="presentation" onClick={(event) => event.stopPropagation()}>
     <div className="nfc-code-dialog" role="dialog" aria-modal="true" aria-labelledby={`nfc-code-title-${household.id}`}>
       <h2 id={`nfc-code-title-${household.id}`}>Codigo NFC</h2>
       <p>{household.name}</p>

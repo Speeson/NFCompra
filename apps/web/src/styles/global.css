@@ -1151,13 +1151,15 @@ h2 { font-size: 1rem; }
 
 /* Final route overrides for Android-like household cards and stable catalog cards. */
 .catalog-products {
-  grid-template-columns: repeat(auto-fill, minmax(13.5rem, 13.5rem));
+  grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr));
+  grid-auto-rows: 1fr;
   align-items: stretch;
 }
 
 .catalog-products .product-result-card {
-  width: 13.5rem;
-  min-height: 8.75rem;
+  width: 100%;
+  min-height: 9rem;
+  height: 100%;
 }
 
 .route-card--household {
@@ -1165,6 +1167,7 @@ h2 { font-size: 1rem; }
   grid-template-columns: 1fr;
   gap: var(--space-3);
   padding: var(--space-4);
+  cursor: pointer;
 }
 
 .route-card--household.is-active {
@@ -1174,21 +1177,35 @@ h2 { font-size: 1rem; }
 
 .household-card-main {
   display: grid;
-  grid-template-columns: minmax(10rem, 1fr) auto auto auto auto;
+  grid-template-columns: minmax(18rem, 1fr) auto auto auto;
   align-items: center;
   gap: var(--space-3);
 }
 
 .household-card-title {
   display: grid;
+  grid-template-columns: minmax(10rem, 1fr) auto;
+  align-items: center;
   min-width: 0;
-  gap: .15rem;
+  gap: var(--space-4);
 }
 
 .household-card-title h2,
 .household-card-title p,
 .route-card--household .route-card__members {
   margin: 0;
+}
+
+.route-card--household .route-card__name {
+  align-self: center;
+  font-size: 1.18rem;
+  line-height: 1.2;
+}
+
+.route-card--household .route-card__metric,
+.route-card--household .route-card__members {
+  align-self: center;
+  white-space: nowrap;
 }
 
 .household-card-expanded {
@@ -1241,6 +1258,99 @@ h2 { font-size: 1rem; }
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-page);
+  cursor: default;
+}
+
+.members-panel {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.members-panel h2,
+.members-panel h3,
+.members-panel p {
+  margin: 0;
+}
+
+.members-panel__section {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.members-panel__section h3 {
+  color: var(--color-primary);
+  font-size: .82rem;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.members-panel__section ul {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.members-panel__person {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.members-panel__identity {
+  display: grid;
+  min-width: 0;
+  gap: .15rem;
+}
+
+.members-panel__identity strong,
+.members-panel__identity small {
+  overflow-wrap: anywhere;
+}
+
+.members-panel__identity small,
+.members-panel__person > span:last-child,
+.members-panel__empty {
+  color: var(--color-muted);
+  font-size: .86rem;
+  font-weight: 700;
+}
+
+.members-panel__invite {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) auto;
+  align-items: end;
+  gap: var(--space-3);
+}
+
+.members-panel__invite label {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--color-primary);
+  font-size: .78rem;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.members-panel__invite input {
+  width: 100%;
+  min-height: 2.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 0 var(--space-3);
+  font: inherit;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .nfc-code-dialog {
@@ -1303,11 +1413,17 @@ h2 { font-size: 1rem; }
   .catalog-products .product-result-card {
     width: 100%;
     min-height: 0;
+    height: auto;
   }
 
   .household-card-main {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: var(--space-2);
+  }
+
+  .household-card-title {
+    grid-template-columns: 1fr;
+    gap: .15rem;
   }
 
   .household-card-main > .household-card-actions {
@@ -1338,5 +1454,10 @@ h2 { font-size: 1rem; }
 
   .household-card-expanded__meta .household-card-action {
     width: 100%;
+  }
+
+  .members-panel__person,
+  .members-panel__invite {
+    grid-template-columns: 1fr;
   }
 }

@@ -105,7 +105,7 @@ describe('household route views', () => {
     renderPage(<HouseholdsPage currentUserId="user-2" onNavigate={vi.fn()} />);
 
     const card = await screen.findByRole('article', { name: 'Casa' });
-    fireEvent.click(within(card).getByRole('button', { name: 'Desplegar Casa' }));
+    fireEvent.click(card);
 
     expect(within(card).queryByRole('button', { name: 'Eliminar Casa' })).not.toBeInTheDocument();
     fireEvent.click(within(card).getByRole('button', { name: 'Salir de Casa' }));
@@ -128,16 +128,20 @@ describe('household route views', () => {
 
     const casa = await screen.findByRole('article', { name: 'Casa' });
     const piso = await screen.findByRole('article', { name: 'Piso' });
-    fireEvent.click(within(casa).getByRole('button', { name: 'Desplegar Casa' }));
+    expect(within(casa).queryByRole('button', { name: /Desplegar|Compactar/ })).not.toBeInTheDocument();
+    fireEvent.click(casa);
 
     expect(within(casa).getByRole('button', { name: 'Miembros de Casa' })).toBeVisible();
     expect(within(casa).getByRole('button', { name: 'Codigo NFC de Casa' })).toBeVisible();
     expect(within(piso).queryByRole('button', { name: 'Miembros de Piso' })).not.toBeInTheDocument();
 
-    fireEvent.click(within(piso).getByRole('button', { name: 'Desplegar Piso' }));
+    fireEvent.click(piso);
 
     expect(within(casa).queryByRole('button', { name: 'Miembros de Casa' })).not.toBeInTheDocument();
     expect(within(piso).getByRole('button', { name: 'Miembros de Piso' })).toBeVisible();
+
+    fireEvent.click(piso);
+    expect(within(piso).queryByRole('button', { name: 'Miembros de Piso' })).not.toBeInTheDocument();
   });
 
   it('keeps list and member workflows in separate household detail tabs', async () => {
@@ -147,7 +151,7 @@ describe('household route views', () => {
     expect(await screen.findByRole('heading', { name: 'Casa' })).toBeVisible();
     expect(screen.getByText('Compra')).toBeVisible();
     fireEvent.click(screen.getByRole('tab', { name: 'Miembros' }));
-    expect(await screen.findByRole('heading', { name: 'Miembros' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Miembros', level: 2 })).toBeVisible();
   });
 
   it('connects tabs to their panels and supports roving keyboard navigation', async () => {

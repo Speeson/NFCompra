@@ -25,18 +25,33 @@ export function MembersPanel({ householdId, currentUserId }: { householdId: stri
 
   if (membersQuery.isPending) return <section aria-label="Miembros"><p role="status">Cargando miembros…</p></section>;
   if (membersQuery.isError) return <section aria-label="Miembros"><p role="alert">{errorMessage(membersQuery.error)}</p></section>;
-  return <section aria-label="Miembros">
+  const owners = membersQuery.data?.filter((member) => member.role === 'owner') ?? [];
+  const members = membersQuery.data?.filter((member) => member.role === 'member') ?? [];
+  return <section className="members-panel" aria-label="Gestion de miembros">
     <h2>Miembros</h2>
-    <ul>{membersQuery.data?.map((member) => <li key={member.userId}>{member.name} ({member.email}) {member.role === 'owner' ? 'Propietaria' : 'Miembro'}
-      {isOwner && member.role === 'member' ? <button type="button" onClick={() => remove.mutate(member.userId)}>Eliminar a {member.name}</button> : null}
-    </li>)}</ul>
+    <section className="members-panel__section" aria-label="Dueno">
+      <h3>Dueño</h3>
+      <ul>{owners.map((member) => <li key={member.userId} className="members-panel__person"><MemberIdentity name={member.name} email={member.email} /><span>Propietario</span></li>)}</ul>
+    </section>
+    <section className="members-panel__section" aria-label="Miembros">
+      <h3>Miembros</h3>
+      {members.length ? <ul>{members.map((member) => <li key={member.userId} className="members-panel__person"><MemberIdentity name={member.name} email={member.email} />
+        {isOwner ? <button className="button button--danger" type="button" onClick={() => remove.mutate(member.userId)}>Eliminar a {member.name}</button> : <span>Miembro</span>}
+      </li>)}</ul> : <p className="members-panel__empty">Todavia no hay miembros invitados.</p>}
+    </section>
     {message ? <p role="alert">{message}</p> : null}
     {isOwner ? <>
-      <form onSubmit={submit}><label>Correo para invitar<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><button type="submit" disabled={invite.isPending}>Enviar invitación</button></form>
-      <h3>Invitaciones pendientes</h3>
-      {invitationsQuery.isError ? <p role="alert">{errorMessage(invitationsQuery.error)}</p> : <ul>{invitationsQuery.data?.filter((invitation) => invitation.status === 'pending').map((invitation) => <li key={invitation.id}>{invitation.email}<button type="button" onClick={() => revoke.mutate(invitation.id)}>Revocar invitación de {invitation.email}</button></li>)}</ul>}
+      <form className="members-panel__invite" onSubmit={submit}><label>Correo para invitar<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><button className="button" type="submit" disabled={invite.isPending}>Enviar invitación</button></form>
+      <section className="members-panel__section" aria-label="Invitaciones pendientes">
+        <h3>Invitaciones pendientes</h3>
+        {invitationsQuery.isError ? <p role="alert">{errorMessage(invitationsQuery.error)}</p> : <ul>{invitationsQuery.data?.filter((invitation) => invitation.status === 'pending').map((invitation) => <li key={invitation.id} className="members-panel__person"><MemberIdentity name={invitation.email} email="Pendiente" /><button className="button button--quiet" type="button" onClick={() => revoke.mutate(invitation.id)}>Revocar invitación de {invitation.email}</button></li>)}</ul>}
+      </section>
     </> : null}
   </section>;
+}
+
+function MemberIdentity({ name, email }: { name: string; email: string }): JSX.Element {
+  return <span className="members-panel__identity"><strong>{name}</strong><small>{email}</small></span>;
 }
 
 function errorMessage(error: unknown): string { return error instanceof ApiError ? error.message : 'No se pudo completar la solicitud.'; }
