@@ -10,10 +10,12 @@ import { PublicLanding } from '../features/landing/PublicLanding';
 import { AuthModal, type AuthMode } from '../features/auth/AuthModal';
 import { AppShell } from '../features/app-shell/AppShell';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
-import { HouseholdDetailPage, HouseholdsPage } from '../features/households/HouseholdsPage';
+import { HouseholdsPage } from '../features/households/HouseholdsPage';
 import { ListsPage } from '../features/shopping-list/ListsPage';
 import { NfcPage } from '../features/nfc/NfcPage';
 import { CatalogPage } from '../features/catalog/CatalogPage';
+import { ProfilePage } from '../features/profile/ProfilePage';
+import type { User } from '../api/session';
 
 export function App(): JSX.Element {
   const { user } = useSession();
@@ -102,7 +104,7 @@ function AppRoute(): JSX.Element {
 
   return <AppShell user={user!} pathname={location.pathname} onNavigate={navigate} onLogout={handleLogout} onNotificationActionError={setNotificationActionError}>
     {notificationActionAlert}
-    <AuthenticatedRoute pathname={location.pathname} search={location.searchParams} userId={user?.id ?? ''} userName={user?.name ?? ''} onNavigate={navigate} />
+    <AuthenticatedRoute pathname={location.pathname} search={location.searchParams} user={user!} onNavigate={navigate} />
   </AppShell>;
 }
 
@@ -113,19 +115,20 @@ export function androidIntentUrlForHouseholdLink(pathname: string, href: string,
   return `intent://household/${householdListsMatch[1]}/lists#Intent;scheme=nfcompra;package=dev.esgarpe.nfcompra;S.browser_fallback_url=${encodeURIComponent(href)};end`;
 }
 
-export function AuthenticatedRoute({ pathname, search, userId, userName, onNavigate }: { pathname: string; search: URLSearchParams; userId: string; userName: string; onNavigate(path: string): void }): JSX.Element {
+export function AuthenticatedRoute({ pathname, search, user, onNavigate }: { pathname: string; search: URLSearchParams; user: User; onNavigate(path: string): void }): JSX.Element {
+  const userId = user.id;
   const householdMatch = pathname.match(/^\/households\/([^/]+)$/);
   const householdListsMatch = pathname.match(/^\/household\/([^/]+)\/lists$/);
   const listMatch = pathname.match(/^\/lists\/([^/]+)$/);
-  if (pathname === '/' && !search.has('household') && !search.has('list')) return <DashboardPage userName={userName} onNavigate={onNavigate} />;
+  if (pathname === '/' && !search.has('household') && !search.has('list')) return <DashboardPage userName={user.name} onNavigate={onNavigate} />;
   if (pathname === '/households') return <HouseholdsPage currentUserId={userId} onNavigate={onNavigate} startCreating={search.get('create') === '1'} />;
-  if (householdMatch) return <HouseholdDetailPage householdId={decodeURIComponent(householdMatch[1])} currentUserId={userId} onNavigate={onNavigate} />;
-  if (householdListsMatch) return <ShoppingListRoute currentUserId={userId} requestedHouseholdId={decodeURIComponent(householdListsMatch[1])} onNavigate={onNavigate} />;
+  if (householdMatch) return <ListsPage onNavigate={onNavigate} selectedHouseholdId={decodeURIComponent(householdMatch[1])} />;
+  if (householdListsMatch) return <ListsPage onNavigate={onNavigate} selectedHouseholdId={decodeURIComponent(householdListsMatch[1])} />;
   if (pathname === '/lists') return <ListsPage onNavigate={onNavigate} startCreating={search.get('create') === '1'} selectedHouseholdId={search.get('household')} />;
   if (listMatch) return <ShoppingListRoute currentUserId={userId} requestedListId={decodeURIComponent(listMatch[1])} onNavigate={onNavigate} />;
   if (pathname === '/catalog') return <CatalogPage />;
   if (pathname === '/nfc') return <NfcPage />;
-  if (pathname === '/profile') return <PlaceholderPage title="Perfil" text="Tu perfil se mostrará aquí cuando haya ajustes guardados disponibles." />;
+  if (pathname === '/profile') return <ProfilePage user={user} onNavigate={onNavigate} />;
   if (pathname === '/settings') return <PlaceholderPage title="Ajustes" text="Los ajustes de la cuenta estarán disponibles aquí próximamente." />;
   return <ShoppingListRoute currentUserId={userId} requestedHouseholdId={search.get('household')} requestedListId={search.get('list')} onNavigate={onNavigate} />;
 }

@@ -75,6 +75,69 @@ it('sends a verifiable email and creates a web session for a verified user', asy
   expect(await updateResponse.json()).toMatchObject({ user: { name: 'Beatriz' } });
 });
 
+it('updates authenticated profile fields partially', async () => {
+  const email = `profile-update-${crypto.randomUUID()}@example.test`;
+  await registerAndVerify(email);
+  const loginResponse = await dispatch('/v1/auth/login', { email, password: 'a secure password', clientType: 'web' });
+  const { accessToken } = await loginResponse.json<{ accessToken: string }>();
+
+  const firstNameResponse = await dispatch('/v1/me', { firstName: 'Esteban' }, { authorization: `Bearer ${accessToken}` }, 'PATCH');
+  expect(firstNameResponse.status).toBe(200);
+  expect(await firstNameResponse.json()).toMatchObject({ user: { firstName: 'Esteban', name: 'Esteban', email } });
+
+  const usernameResponse = await dispatch('/v1/me', { username: 'esteban.gp' }, { authorization: `Bearer ${accessToken}` }, 'PATCH');
+  expect(usernameResponse.status).toBe(200);
+  expect(await usernameResponse.json()).toMatchObject({ user: { username: 'esteban.gp', firstName: 'Esteban' } });
+});
+
+it('rejects profile username conflicts and invalid input', async () => {
+  const firstEmail = `profile-first-${crypto.randomUUID()}@example.test`;
+  const secondEmail = `profile-second-${crypto.randomUUID()}@example.test`;
+  await registerAndVerify(firstEmail);
+  await dispatch('/v1/me', { username: 'taken-user' }, await authHeaders(firstEmail), 'PATCH');
+  await registerAndVerify(secondEmail);
+  const headers = await authHeaders(secondEmail);
+
+  const conflict = await dispatch('/v1/me', { username: 'TAKEN-user' }, headers, 'PATCH');
+  expect(conflict.status).toBe(409);
+  expect(await conflict.json()).toMatchObject({ error: { code: 'USERNAME_ALREADY_REGISTERED', message: 'Ese nombre de usuario ya esta en uso.' } });
+
+  const invalidName = await dispatch('/v1/me', { firstName: '' }, headers, 'PATCH');
+  expect(invalidName.status).toBe(422);
+  const invalidUsername = await dispatch('/v1/me', { username: 'no vale' }, headers, 'PATCH');
+  expect(invalidUsername.status).toBe(422);
+});
+
+it('changes password for the authenticated user without invalidating the current access token', async () => {
+  const email = `change-password-${crypto.randomUUID()}@example.test`;
+  await registerAndVerify(email);
+  const loginResponse = await dispatch('/v1/auth/login', { email, password: 'a secure password', clientType: 'android' });
+  const login = await loginResponse.json<{ accessToken: string; refreshToken: string }>();
+
+  const wrongCurrent = await dispatch('/v1/me/change-password', { currentPassword: 'wrong password', newPassword: 'a better password' }, { authorization: `Bearer ${login.accessToken}` });
+  expect(wrongCurrent.status).toBe(401);
+  expect(await wrongCurrent.json()).toMatchObject({ error: { code: 'INVALID_CURRENT_PASSWORD' } });
+
+  const invalidNew = await dispatch('/v1/me/change-password', { currentPassword: 'a secure password', newPassword: 'short' }, { authorization: `Bearer ${login.accessToken}` });
+  expect(invalidNew.status).toBe(422);
+
+  const changed = await dispatch('/v1/me/change-password', { currentPassword: 'a secure password', newPassword: 'a better password' }, { authorization: `Bearer ${login.accessToken}` });
+  expect(changed.status).toBe(200);
+  expect(await changed.json()).toEqual({ status: 'password_changed' });
+
+  const oldLogin = await dispatch('/v1/auth/login', { email, password: 'a secure password', clientType: 'android' });
+  expect(oldLogin.status).toBe(401);
+  const newLogin = await dispatch('/v1/auth/login', { email, password: 'a better password', clientType: 'android' });
+  expect(newLogin.status).toBe(200);
+  const stillAuthenticated = await dispatch('/v1/me', undefined, { authorization: `Bearer ${login.accessToken}` }, 'GET');
+  expect(stillAuthenticated.status).toBe(200);
+});
+
+it('rejects unauthenticated password change', async () => {
+  const response = await dispatch('/v1/me/change-password', { currentPassword: 'a secure password', newPassword: 'a better password' });
+  expect(response.status).toBe(401);
+});
+
 it('registers the extended profile fields used by the web form', async () => {
   const email = `profile-${crypto.randomUUID()}@example.test`;
 
@@ -341,8 +404,15 @@ it('rejects an oversized device name when issuing an Android session', async () 
 async function registerAndVerify(email: string): Promise<void> {
   const response = await dispatch('/v1/auth/register', { name: 'Cris', email, password: 'a secure password' });
   expect(response.status).toBe(201);
-  const verifyResponse = await dispatch('/v1/auth/verify-email', { token: tokenFrom(fakeEmailSender.messages[0]) });
+  const verifyResponse = await dispatch('/v1/auth/verify-email', { token: tokenFrom(fakeEmailSender.messages.at(-1)!) });
   expect(verifyResponse.status).toBe(200);
+}
+
+async function authHeaders(email: string): Promise<Record<string, string>> {
+  const response = await dispatch('/v1/auth/login', { email, password: 'a secure password', clientType: 'web' });
+  expect(response.status).toBe(200);
+  const { accessToken } = await response.json<{ accessToken: string }>();
+  return { authorization: `Bearer ${accessToken}` };
 }
 
 function tokenFrom(message: EmailMessage): string {

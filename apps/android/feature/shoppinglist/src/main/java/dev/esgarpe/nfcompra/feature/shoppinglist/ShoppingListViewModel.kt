@@ -104,6 +104,31 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
     suspend fun deleteProductCatalogItem(productId: String): Boolean =
         catalogMutation("No se pudo eliminar el producto.") { repository.deleteProductCatalogItem(productId); true } == true
 
+    suspend fun updateProfile(firstName: String?, lastName: String?, username: String?): ProfileUiModel? =
+        catalogMutation("No se pudo actualizar el perfil.") {
+            repository.updateProfile(firstName, lastName, username)?.also { profile ->
+                val current = mutableState.value as? ShoppingListViewState.Data ?: return@also
+                mutableState.value = current.copy(profile = profile, displayName = profile.displayName, message = "Perfil actualizado.")
+            }
+        }
+
+    suspend fun changePassword(currentPassword: String, newPassword: String): Boolean =
+        catalogMutation("No se pudo cambiar la contrasena.") {
+            repository.changePassword(currentPassword, newPassword)
+            val current = mutableState.value as? ShoppingListViewState.Data ?: return@catalogMutation true
+            mutableState.value = current.copy(message = "Contrasena actualizada.")
+            true
+        } == true
+
+    fun refreshProfile() {
+        viewModelScope.launch {
+            loadProfile()?.let { profile ->
+                val current = mutableState.value as? ShoppingListViewState.Data ?: return@launch
+                mutableState.value = current.copy(profile = profile, displayName = profile.displayName)
+            }
+        }
+    }
+
     fun openContext(householdId: String, listId: String? = null) {
         pendingContext = ShoppingContext(householdId, listId)
         loadForCurrentIntent()
@@ -360,8 +385,9 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         } else {
             selectedListMetrics + loadHouseholdMetrics(missingMetrics)
         }
-        val categories = currentCategories().ifEmpty { loadCategories() }
-        val displayName = currentDisplayName() ?: loadDisplayName()
+        val categories = currentCategories()
+        val profile = currentProfile()
+        val displayName = profile?.displayName ?: currentDisplayName()
         mutableState.value = ShoppingListViewState.Data(
             content = ShoppingListUiState(
                 title = selected.name,
@@ -375,9 +401,9 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
             selectedListId = listId,
             listMetrics = metrics,
             productCategories = categories,
+            profile = profile,
             displayName = displayName,
         )
-        warmCatalogInBackground()
         observeSelectedList(listId)
     }
 
@@ -389,8 +415,9 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
     ) {
         if (expectedGeneration != null && expectedGeneration != loadGeneration) return
         itemObservation?.cancel()
-        val categories = currentCategories().ifEmpty { loadCategories() }
-        val displayName = currentDisplayName() ?: loadDisplayName()
+        val categories = currentCategories()
+        val profile = currentProfile()
+        val displayName = profile?.displayName ?: currentDisplayName()
         val householdLists = lists.filter { it.householdId == householdId }
         val metrics = currentMetrics().takeIf { it.isNotEmpty() } ?: loadHouseholdMetrics(householdLists)
         mutableState.value = ShoppingListViewState.Data(
@@ -406,9 +433,9 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
             selectedListId = null,
             listMetrics = metrics,
             productCategories = categories,
+            profile = profile,
             displayName = displayName,
         )
-        warmCatalogInBackground()
     }
 
     private suspend fun loadHouseholdMetrics(lists: List<ShoppingListSummaryUiModel>): Map<String, ShoppingListMetricsUiModel> {
@@ -456,6 +483,9 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
     private fun currentDisplayName(): String? =
         (mutableState.value as? ShoppingListViewState.Data)?.displayName
 
+    private fun currentProfile(): ProfileUiModel? =
+        (mutableState.value as? ShoppingListViewState.Data)?.profile
+
     private suspend fun loadCategories(): List<ProductCategoryUiModel> =
         runCatching { repository.productCategories() }.getOrElse { emptyList() }
 
@@ -464,14 +494,8 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         mutableState.value = current.copy(productCategories = loadCategories())
     }
 
-    private suspend fun loadDisplayName(): String? =
-        runCatching { repository.profileDisplayName() }.getOrNull()
-
-    private fun warmCatalogInBackground() {
-        viewModelScope.launch {
-            runCatching { repository.warmProductCatalog() }
-        }
-    }
+    private suspend fun loadProfile(): ProfileUiModel? =
+        runCatching { repository.profile() }.getOrNull()
 
     private fun publishTransientMessage(message: String) {
         val current = mutableState.value as? ShoppingListViewState.Data ?: return

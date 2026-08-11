@@ -54,6 +54,19 @@ data class ProductCategoryUiModel(
     val iconKey: String,
     val isFavorite: Boolean = false,
 )
+data class ProfileUiModel(
+    val id: String,
+    val email: String,
+    val name: String,
+    val firstName: String?,
+    val lastName: String?,
+    val username: String?,
+) {
+    val displayName: String = name.takeIf { it.isNotBlank() }
+        ?: listOfNotNull(firstName, lastName).joinToString(" ").takeIf { it.isNotBlank() }
+        ?: username?.takeIf { it.isNotBlank() }
+        ?: email.substringBefore("@")
+}
 
 class ShoppingListApiException(
     val status: Int,
@@ -92,6 +105,9 @@ interface ShoppingRepository {
     suspend fun createProductCatalogItem(name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel? = null
     suspend fun updateProductCatalogItem(productId: String, name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel? = null
     suspend fun deleteProductCatalogItem(productId: String) = Unit
+    suspend fun profile(): ProfileUiModel? = null
+    suspend fun updateProfile(firstName: String?, lastName: String?, username: String?): ProfileUiModel? = null
+    suspend fun changePassword(currentPassword: String, newPassword: String) = Unit
     suspend fun profileDisplayName(): String? = null
     suspend fun resolveConflict(resolution: ResolveConflict) = Unit
 }
@@ -214,10 +230,21 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
         invalidateCatalogSnapshot()
     }
 
+    override suspend fun profile(): ProfileUiModel =
+        api.me().bodyOrThrow().user.toUiModel()
+
+    override suspend fun updateProfile(firstName: String?, lastName: String?, username: String?): ProfileUiModel =
+        api.updateProfile(UpdateProfileRequest(firstName, lastName, username)).bodyOrThrow().user.toUiModel()
+
+    override suspend fun changePassword(currentPassword: String, newPassword: String) {
+        api.changePassword(ChangePasswordRequest(currentPassword, newPassword)).bodyOrThrow()
+    }
+
     override suspend fun profileDisplayName(): String? =
-        api.me().bodyOrThrow().user.name.takeIf { it.isNotBlank() }
+        profile().displayName
 
     private fun ShoppingListDto.toUiModel() = ShoppingListSummaryUiModel(id, householdId, name, version)
+    private fun MeUserDto.toUiModel() = ProfileUiModel(id, email, name, firstName, lastName, username)
 
     private fun invalidateCatalogSnapshot() {
         catalogSnapshot = null
@@ -595,8 +622,21 @@ class OfflineShoppingRepository(
 
     override suspend fun profileDisplayName(): String? = accountOperation {
         runCatching {
-            api.me().also { isOffline = false }.bodyOrThrow().user.name.takeIf { it.isNotBlank() }
+            profile()?.displayName
         }.getOrNull()
+    }
+
+    override suspend fun profile(): ProfileUiModel = accountOperation {
+        api.me().also { isOffline = false }.bodyOrThrow().user.toProfileUiModel()
+    }
+
+    override suspend fun updateProfile(firstName: String?, lastName: String?, username: String?): ProfileUiModel = accountOperation {
+        api.updateProfile(UpdateProfileRequest(firstName, lastName, username)).also { isOffline = false }.bodyOrThrow().user.toProfileUiModel()
+    }
+
+    override suspend fun changePassword(currentPassword: String, newPassword: String) = accountOperation {
+        api.changePassword(ChangePasswordRequest(currentPassword, newPassword)).also { isOffline = false }.bodyOrThrow()
+        Unit
     }
 
     private suspend fun loadCatalogSnapshotOrNull(): List<ProductCatalogUiModel>? = catalogMutex.withLock {
@@ -849,6 +889,8 @@ private fun PendingOperation.expectedVersion(): Int? = runCatching {
         else -> null
     }
 }.getOrNull()
+
+private fun MeUserDto.toProfileUiModel() = ProfileUiModel(id, email, name, firstName, lastName, username)
 
 private fun <T> Response<T>.bodyOrThrow(): T {
     body()?.let { return it }

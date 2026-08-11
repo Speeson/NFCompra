@@ -223,11 +223,13 @@ fun WelcomeScreen(
         Text("Organiza la compra de casa con listas compartidas y acceso rápido por NFC.", color = AuthMuted, lineHeight = 22.sp)
         AuthStateMessage(state)
         PrimaryAuthButton("Iniciar sesión", onClick = onLogin)
-        SecondaryAuthButton(
-            "Acceder con biometría",
-            enabled = canUseBiometricAccess && !state.isSubmitting,
-            onClick = onBiometricAccess,
-        )
+        if (canUseBiometricAccess) {
+            SecondaryAuthButton(
+                "Acceder con biometría",
+                enabled = !state.isSubmitting,
+                onClick = onBiometricAccess,
+            )
+        }
         CenterLink(
             normal = "¿No tienes una cuenta? ",
             action = "Crear cuenta",

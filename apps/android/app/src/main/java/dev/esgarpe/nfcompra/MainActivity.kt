@@ -1,6 +1,7 @@
 package dev.esgarpe.nfcompra
 
 import android.content.Intent
+import android.content.SharedPreferences
 import android.graphics.Color as AndroidColor
 import android.net.Uri
 import android.nfc.NfcAdapter
@@ -13,9 +14,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
@@ -92,13 +98,16 @@ class MainActivity : FragmentActivity() {
         }
         val sharingRepository = SharingRepository(NetworkClient.authenticatedApi(BuildConfig.AUTH_BASE_URL, tokenStore, SharingApi::class.java))
         val appUpdateService = AppUpdateService(applicationContext)
+        val updatePreferences = getSharedPreferences("nfcompra.updates", MODE_PRIVATE)
         setContent {
             val session by tokenStore.session.collectAsState()
             val authViewModel = remember { AuthViewModel(authRepository) }
             val coroutineScope = rememberCoroutineScope()
             var availableUpdate by remember { mutableStateOf<AppUpdateInfo?>(null) }
             var isDownloadingUpdate by remember { mutableStateOf(false) }
+            var updateDownloadProgress by remember { mutableStateOf<AppUpdateDownloadProgress?>(null) }
             var updateMessage by remember { mutableStateOf<String?>(null) }
+            var installedChangelog by remember { mutableStateOf(updatePreferences.pendingInstalledChangelog(BuildConfig.VERSION_NAME)) }
             var biometricPreferenceVersion by remember { mutableStateOf(0) }
             var sessionAccessGrantedAccountId by remember { mutableStateOf<String?>(null) }
             var biometricPromptRunning by remember { mutableStateOf(false) }
@@ -344,15 +353,23 @@ class MainActivity : FragmentActivity() {
                         onDismiss = {
                             availableUpdate = null
                             updateMessage = null
+                            updateDownloadProgress = null
                         },
                         onUpdate = {
                             if (isDownloadingUpdate) return@AppUpdateDialog
                             coroutineScope.launch {
                                 isDownloadingUpdate = true
+                                updateDownloadProgress = null
                                 updateMessage = null
                                 runCatching {
-                                    val apk = appUpdateService.downloadApk(update)
-                                    appUpdateService.startInstall(apk)
+                                    val apk = appUpdateService.downloadApk(update) { progress ->
+                                        updateDownloadProgress = progress
+                                    }
+                                    appUpdateService.startInstall(apk).also { installerOpened ->
+                                        if (installerOpened) {
+                                            updatePreferences.storePendingChangelog(update)
+                                        }
+                                    }
                                 }.onSuccess { installerOpened ->
                                     if (!installerOpened) {
                                         updateMessage = "Activa el permiso para instalar apps desde NFCompra y vuelve a pulsar Actualizar."
@@ -362,6 +379,16 @@ class MainActivity : FragmentActivity() {
                                 }
                                 isDownloadingUpdate = false
                             }
+                        },
+                        progress = updateDownloadProgress,
+                    )
+                }
+                installedChangelog?.let { changelog ->
+                    InstalledUpdateChangelogDialog(
+                        changelog = changelog,
+                        onDismiss = {
+                            updatePreferences.markChangelogShown(changelog.versionName)
+                            installedChangelog = null
                         },
                     )
                 }
@@ -466,11 +493,12 @@ private fun AppUpdateDialog(
     currentVersionName: String,
     message: String?,
     isDownloading: Boolean,
+    progress: AppUpdateDownloadProgress?,
     onDismiss: () -> Unit,
     onUpdate: () -> Unit,
 ) {
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isDownloading) onDismiss() },
         title = {
             Text("Actualizacion disponible", color = Color(0xFF1C7144), fontWeight = FontWeight.Bold)
         },
@@ -478,7 +506,24 @@ private fun AppUpdateDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Version actual: $currentVersionName")
                 Text("Nueva version: ${update.versionName}")
+                Text("Tamano: ${formatBytes(update.sizeBytes)}")
                 Text("Se descargara el APK desde GitHub Releases y Android te pedira confirmar la instalacion.")
+                if (isDownloading || progress != null) {
+                    val currentProgress = progress
+                    LinearProgressIndicator(
+                        progress = { (currentProgress?.percent ?: 0) / 100f },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFF1C7144),
+                        trackColor = Color(0xFFE3E8E4),
+                    )
+                    Text(
+                        if (currentProgress == null) {
+                            "Preparando descarga..."
+                        } else {
+                            "${currentProgress.percent}% - ${formatBytes(currentProgress.downloadedBytes)} de ${formatBytes(currentProgress.totalBytes)} - ${formatSpeed(currentProgress.bytesPerSecond)}"
+                        },
+                    )
+                }
                 message?.let { Text(it, color = Color(0xFFB42318)) }
             }
         },
@@ -506,6 +551,45 @@ private fun AppUpdateDialog(
     )
 }
 
+private data class InstalledUpdateChangelog(
+    val versionName: String,
+    val title: String,
+    val body: String,
+)
+
+@Composable
+private fun InstalledUpdateChangelogDialog(
+    changelog: InstalledUpdateChangelog,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Novedades de NFCompra ${changelog.versionName}", color = Color(0xFF1C7144), fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column(
+                modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (changelog.title.isNotBlank()) Text(changelog.title, fontWeight = FontWeight.Bold)
+                Text(changelog.body.ifBlank { "Actualizacion instalada correctamente." })
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFDCFF72),
+                    contentColor = Color(0xFF10271E),
+                ),
+            ) {
+                Text("Entendido", fontWeight = FontWeight.Bold)
+            }
+        },
+    )
+}
+
 private sealed interface HouseholdDeepLinkDestination {
     data class HouseholdLists(val householdId: String) : HouseholdDeepLinkDestination
     data object Invalid : HouseholdDeepLinkDestination
@@ -524,8 +608,41 @@ private fun Uri.toHouseholdDeepLinkDestination(): HouseholdDeepLinkDestination? 
     else HouseholdDeepLinkDestination.HouseholdLists(householdId)
 }
 
+private fun SharedPreferences.storePendingChangelog(update: AppUpdateInfo) {
+    edit()
+        .putString(PENDING_CHANGELOG_VERSION, update.versionName)
+        .putString(PENDING_CHANGELOG_TITLE, update.releaseName)
+        .putString(PENDING_CHANGELOG_BODY, update.changelog)
+        .apply()
+}
+
+private fun SharedPreferences.pendingInstalledChangelog(currentVersionName: String): InstalledUpdateChangelog? {
+    val pendingVersion = getString(PENDING_CHANGELOG_VERSION, null) ?: return null
+    if (pendingVersion != currentVersionName) return null
+    if (getString(SHOWN_CHANGELOG_VERSION, null) == currentVersionName) return null
+    return InstalledUpdateChangelog(
+        versionName = pendingVersion,
+        title = getString(PENDING_CHANGELOG_TITLE, null).orEmpty(),
+        body = getString(PENDING_CHANGELOG_BODY, null).orEmpty(),
+    )
+}
+
+private fun SharedPreferences.markChangelogShown(versionName: String) {
+    edit()
+        .putString(SHOWN_CHANGELOG_VERSION, versionName)
+        .remove(PENDING_CHANGELOG_VERSION)
+        .remove(PENDING_CHANGELOG_TITLE)
+        .remove(PENDING_CHANGELOG_BODY)
+        .apply()
+}
+
 private fun userIdFromJwt(token: String): String? = runCatching {
     val payload = token.split('.')[1].replace('-', '+').replace('_', '/')
     val decoded = android.util.Base64.decode(payload, android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP)
     Regex("\\\"sub\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"").find(decoded.decodeToString())?.groupValues?.get(1)
 }.getOrNull()
+
+private const val PENDING_CHANGELOG_VERSION = "pending_changelog_version"
+private const val PENDING_CHANGELOG_TITLE = "pending_changelog_title"
+private const val PENDING_CHANGELOG_BODY = "pending_changelog_body"
+private const val SHOWN_CHANGELOG_VERSION = "shown_changelog_version"

@@ -21,6 +21,7 @@ type ShoppingListScreenProps = {
   onRenameList?: (name: string) => void;
   onClearChecked?: () => void;
   onDeleteList?: () => void;
+  mobileSimpleActions?: boolean;
   onToggle?: (item: ShoppingItem) => void;
   onUpdate?: (item: ShoppingItem, input: ProductInput) => void;
   onDelete?: (item: ShoppingItem) => void;
@@ -28,7 +29,7 @@ type ShoppingListScreenProps = {
 
 const pickerModeStorageKey = 'nfcompra.product-picker-mode';
 
-export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameList, onClearChecked, onDeleteList, onToggle, onUpdate, onDelete }: ShoppingListScreenProps): JSX.Element {
+export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameList, onClearChecked, onDeleteList, mobileSimpleActions = false, onToggle, onUpdate, onDelete }: ShoppingListScreenProps): JSX.Element {
   const pendingItems = items.filter((item) => !item.isChecked);
   const checkedItems = items.filter((item) => item.isChecked);
   const [name, setName] = useState('');
@@ -43,6 +44,7 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
   const [isRenamingList, setIsRenamingList] = useState(false);
   const [listNameDraft, setListNameDraft] = useState(title);
   const productSearchRef = useRef<HTMLDivElement>(null);
+  const recentlyAddedTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!isRenamingList) setListNameDraft(title);
@@ -55,7 +57,10 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
     }
 
     document.addEventListener('pointerdown', closeProductSearchOnOutsidePointer);
-    return () => document.removeEventListener('pointerdown', closeProductSearchOnOutsidePointer);
+    return () => {
+      document.removeEventListener('pointerdown', closeProductSearchOnOutsidePointer);
+      if (recentlyAddedTimeoutRef.current !== null) window.clearTimeout(recentlyAddedTimeoutRef.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -149,8 +154,19 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
       }];
     });
     setRecentlyAddedId(suggestion.id);
-    window.setTimeout(() => setRecentlyAddedId((current) => current === suggestion.id ? null : current), 450);
+    if (recentlyAddedTimeoutRef.current !== null) window.clearTimeout(recentlyAddedTimeoutRef.current);
+    recentlyAddedTimeoutRef.current = window.setTimeout(() => {
+      setRecentlyAddedId((current) => current === suggestion.id ? null : current);
+      recentlyAddedTimeoutRef.current = null;
+    }, 450);
     setCardQuantities((current) => ({ ...current, [suggestion.id]: 0 }));
+    setName('');
+    setSuggestions([]);
+    setIsProductSearchOpen(false);
+  }
+
+  function blurProductSearch(): void {
+    if (document.activeElement instanceof HTMLElement && productSearchRef.current?.contains(document.activeElement)) document.activeElement.blur();
   }
 
   function removeFromWaitlist(productId: string): void {
@@ -165,7 +181,7 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
     setIsRenamingList(false);
   }
 
-  return <main className="shopping-list">
+  return <main className={mobileSimpleActions ? 'shopping-list shopping-list--mobile-simple' : 'shopping-list'}>
     <header className="shopping-list__header">
       <div className="shopping-list__title">
         <div className="shopping-list__title-actions">
@@ -188,12 +204,12 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
           <form className={`product-form product-form--${pickerMode}`} onSubmit={addItem}>
             <label htmlFor="new-product-name">Producto</label>
             <div className="product-autocomplete"><input id="new-product-name" disabled={isOffline} value={name} onFocus={() => setIsProductSearchOpen(true)} onChange={(event) => { setName(event.target.value); setIsProductSearchOpen(true); }} required maxLength={200} autoComplete="off" />
-              {pickerMode === 'list' && isProductSearchOpen && suggestions.length ? <div className="product-suggestions" role="listbox" aria-label="Sugerencias de productos">{suggestions.map((suggestion) => <ProductCatalogListItem key={suggestion.id} product={suggestion} onSelect={selectSuggestion} onFavoriteChange={(product, favorite) => void changeFavorite(product, favorite)} />)}</div> : null}
+              {pickerMode === 'list' && isProductSearchOpen && suggestions.length ? <div className="product-suggestions" role="listbox" aria-label="Sugerencias de productos" onScroll={blurProductSearch}>{suggestions.map((suggestion) => <ProductCatalogListItem key={suggestion.id} product={suggestion} onSelect={selectSuggestion} onFavoriteChange={(product, favorite) => void changeFavorite(product, favorite)} />)}</div> : null}
             </div>
             <ManualQuantityStepper quantity={quantity} disabled={isOffline} onChange={updateManualQuantity} />
             <button type="submit" disabled={isOffline}>Añadir</button>
           </form>
-          {pickerMode === 'cards' && isProductSearchOpen && suggestions.length ? <ProductCardResults suggestions={suggestions} quantities={cardQuantities} recentlyAddedId={recentlyAddedId} onQuantityChange={updateCardQuantity} onSelect={addSuggestionToWaitlist} onFavoriteChange={(product, favorite) => void changeFavorite(product, favorite)} /> : null}
+          {pickerMode === 'cards' && isProductSearchOpen && suggestions.length ? <ProductCardResults suggestions={suggestions} quantities={cardQuantities} recentlyAddedId={recentlyAddedId} onQuantityChange={updateCardQuantity} onSelect={addSuggestionToWaitlist} onFavoriteChange={(product, favorite) => void changeFavorite(product, favorite)} onScroll={blurProductSearch} /> : null}
           {pickerMode === 'cards' && waitlist.length ? <PendingProductWaitlist products={waitlist} onRemove={removeFromWaitlist} onCommit={addWaitlist} /> : null}
         </div>
       </> : null}
@@ -219,8 +235,8 @@ function ManualQuantityStepper({ quantity, disabled, onChange }: { quantity: str
   </div>;
 }
 
-function ProductCardResults({ suggestions, quantities, recentlyAddedId, onQuantityChange, onSelect, onFavoriteChange }: { suggestions: ProductCatalogItem[]; quantities: Record<string, number>; recentlyAddedId: string | null; onQuantityChange(productId: string, delta: number): void; onSelect(suggestion: ProductCatalogItem): void; onFavoriteChange(product: ProductCatalogItem, favorite: boolean): void }): JSX.Element {
-  return <section className="product-card-results" aria-label="Resultados de productos">
+function ProductCardResults({ suggestions, quantities, recentlyAddedId, onQuantityChange, onSelect, onFavoriteChange, onScroll }: { suggestions: ProductCatalogItem[]; quantities: Record<string, number>; recentlyAddedId: string | null; onQuantityChange(productId: string, delta: number): void; onSelect(suggestion: ProductCatalogItem): void; onFavoriteChange(product: ProductCatalogItem, favorite: boolean): void; onScroll(): void }): JSX.Element {
+  return <section className="product-card-results" aria-label="Resultados de productos" onScroll={onScroll}>
     {suggestions.map((suggestion) => <ProductCatalogCard key={suggestion.id} product={suggestion} quantity={quantities[suggestion.id] ?? 0} recentlyAdded={recentlyAddedId === suggestion.id} onQuantityChange={onQuantityChange} onAdd={onSelect} onFavoriteChange={onFavoriteChange} />)}
   </section>;
 }

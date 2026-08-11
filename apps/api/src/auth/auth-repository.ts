@@ -47,6 +47,11 @@ export async function findUserByUsername(env: Env, username: string): Promise<Us
   return row ? mapUser(row) : null;
 }
 
+export async function findUserWithPasswordById(env: Env, id: string): Promise<UserWithPassword | null> {
+  const row = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<UserRow>();
+  return row ? mapUser(row) : null;
+}
+
 export async function findUserById(env: Env, id: string): Promise<AuthUser | null> {
   return (await findUserSessionById(env, id))?.user ?? null;
 }
@@ -79,6 +84,23 @@ export async function verifyEmail(env: Env, id: string): Promise<void> {
 export async function updateUserName(env: Env, id: string, name: string): Promise<AuthUser | null> {
   const now = new Date().toISOString();
   await env.DB.prepare('UPDATE users SET name = ?, updated_at = ? WHERE id = ?').bind(name, now, id).run();
+  return findUserById(env, id);
+}
+
+export async function updateUserProfile(
+  env: Env,
+  id: string,
+  input: { firstName?: string | null; lastName?: string | null; username?: string | null },
+): Promise<AuthUser | null> {
+  const current = await findUserById(env, id);
+  if (!current) return null;
+  const firstName = input.firstName !== undefined ? input.firstName : current.firstName;
+  const lastName = input.lastName !== undefined ? input.lastName : current.lastName;
+  const username = input.username !== undefined ? input.username : current.username;
+  const name = firstName ? [firstName, lastName].filter(Boolean).join(' ') : current.name;
+  const now = new Date().toISOString();
+  await env.DB.prepare('UPDATE users SET name = ?, first_name = ?, last_name = ?, username = ?, updated_at = ? WHERE id = ?')
+    .bind(name, firstName, lastName, username, now, id).run();
   return findUserById(env, id);
 }
 

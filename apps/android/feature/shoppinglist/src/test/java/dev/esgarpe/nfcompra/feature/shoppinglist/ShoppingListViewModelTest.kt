@@ -81,6 +81,31 @@ class ShoppingListViewModelTest {
         assertEquals(0, data.listMetrics["list-2"]?.checkedCount)
     }
 
+    @Test fun `updates authenticated profile through me endpoint`() = runTest {
+        server.enqueue(json("{\"user\":{\"id\":\"user-1\",\"email\":\"ana@example.test\",\"name\":\"Ana Garcia\",\"firstName\":\"Ana\",\"lastName\":\"Garcia\",\"username\":\"ana\"}}"))
+        val repository = ShoppingListRepository(NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java))
+
+        val profile = repository.updateProfile("Ana", "Garcia", "ana")
+
+        assertEquals("Ana Garcia", profile?.displayName)
+        val request = server.takeRequest(1, TimeUnit.SECONDS)!!
+        assertEquals("PATCH", request.method)
+        assertEquals("/v1/me", request.path)
+        assertEquals("""{"firstName":"Ana","lastName":"Garcia","username":"ana"}""", request.body.readUtf8())
+    }
+
+    @Test fun `changes authenticated password through profile endpoint`() = runTest {
+        server.enqueue(json("{\"status\":\"password_changed\"}"))
+        val repository = ShoppingListRepository(NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java))
+
+        repository.changePassword("old-password", "new-password")
+
+        val request = server.takeRequest(1, TimeUnit.SECONDS)!!
+        assertEquals("POST", request.method)
+        assertEquals("/v1/me/change-password", request.path)
+        assertEquals("""{"currentPassword":"old-password","newPassword":"new-password"}""", request.body.readUtf8())
+    }
+
     @Test fun `retries an item conflict with the server version`() = runTest {
         enqueueInitialList()
         server.enqueue(json("{\"error\":{\"code\":\"ITEM_VERSION_CONFLICT\",\"message\":\"El producto ha cambiado.\",\"details\":{\"current\":{\"id\":\"item-1\",\"listId\":\"list-1\",\"name\":\"Leche entera\",\"normalizedName\":\"leche entera\",\"quantity\":1,\"unit\":\"litro\",\"category\":null,\"note\":null,\"isChecked\":false,\"position\":0,\"version\":2,\"createdBy\":\"user-1\",\"updatedBy\":\"user-2\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:01:00Z\"}}}}", 409))

@@ -16,12 +16,14 @@ import java.net.URL
 internal data class GitHubReleaseAsset(
     val name: String,
     val browserDownloadUrl: String,
+    val sizeBytes: Long,
 )
 
 internal data class GitHubRelease(
     val tagName: String,
     val name: String,
     val htmlUrl: String,
+    val body: String,
     val assets: List<GitHubReleaseAsset>,
 )
 
@@ -31,7 +33,27 @@ internal data class AppUpdateInfo(
     val assetName: String,
     val downloadUrl: String,
     val releaseUrl: String,
+    val changelog: String,
+    val sizeBytes: Long,
 )
+
+internal data class AppUpdateDownloadProgress(
+    val downloadedBytes: Long,
+    val totalBytes: Long,
+    val bytesPerSecond: Long,
+)
+
+internal val AppUpdateDownloadProgress.percent: Int
+    get() = if (totalBytes <= 0L) 0 else ((downloadedBytes * 100) / totalBytes).coerceIn(0, 100).toInt()
+
+internal fun formatBytes(bytes: Long): String {
+    if (bytes <= 0L) return "0 MB"
+    val megabytes = bytes / (1024.0 * 1024.0)
+    return "%.1f MB".format(java.util.Locale.US, megabytes)
+}
+
+internal fun formatSpeed(bytesPerSecond: Long): String =
+    "${formatBytes(bytesPerSecond)}/s"
 
 internal fun findAppUpdate(
     currentVersionName: String,
@@ -49,6 +71,8 @@ internal fun findAppUpdate(
         assetName = apkAsset.name,
         downloadUrl = apkAsset.browserDownloadUrl,
         releaseUrl = release.htmlUrl,
+        changelog = release.body.trim(),
+        sizeBytes = apkAsset.sizeBytes,
     )
 }
 
@@ -75,12 +99,36 @@ internal class AppUpdateService(
         )
     }
 
-    suspend fun downloadApk(update: AppUpdateInfo): File = withContext(Dispatchers.IO) {
+    suspend fun downloadApk(
+        update: AppUpdateInfo,
+        onProgress: suspend (AppUpdateDownloadProgress) -> Unit = {},
+    ): File = withContext(Dispatchers.IO) {
         val updatesDir = File(context.cacheDir, "updates").apply { mkdirs() }
         val destination = File(updatesDir, "NFCompra-${update.versionName}.apk")
-        openConnection(update.downloadUrl).inputStream.use { input ->
-            destination.outputStream().use { output -> input.copyTo(output) }
+        val connection = openConnection(update.downloadUrl)
+        val totalBytes = connection.contentLengthLong.takeIf { it > 0L } ?: update.sizeBytes
+        var downloadedBytes = 0L
+        val startedAt = System.nanoTime()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        connection.inputStream.use { input ->
+            destination.outputStream().use { output ->
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read == -1) break
+                    output.write(buffer, 0, read)
+                    downloadedBytes += read
+                    val elapsedSeconds = ((System.nanoTime() - startedAt) / 1_000_000_000.0).coerceAtLeast(0.1)
+                    withContext(Dispatchers.Main) {
+                        onProgress(AppUpdateDownloadProgress(
+                            downloadedBytes = downloadedBytes,
+                            totalBytes = totalBytes,
+                            bytesPerSecond = (downloadedBytes / elapsedSeconds).toLong(),
+                        ))
+                    }
+                }
+            }
         }
+        withContext(Dispatchers.Main) { onProgress(AppUpdateDownloadProgress(downloadedBytes, totalBytes, 0L)) }
         destination
     }
 
@@ -118,6 +166,7 @@ internal class AppUpdateService(
                     GitHubReleaseAsset(
                         name = asset.getString("name"),
                         browserDownloadUrl = asset.getString("browser_download_url"),
+                        sizeBytes = asset.optLong("size", 0L),
                     ),
                 )
             }
@@ -126,6 +175,7 @@ internal class AppUpdateService(
             tagName = json.getString("tag_name"),
             name = json.optString("name"),
             htmlUrl = json.optString("html_url"),
+            body = json.optString("body"),
             assets = assets,
         )
     }

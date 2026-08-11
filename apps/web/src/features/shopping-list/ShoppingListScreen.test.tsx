@@ -35,6 +35,20 @@ it('keeps the compact list autocomplete mode with the header quantity stepper', 
   await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Leche entera', quantity: 3, unit: null }));
 });
 
+it('shows list suggestions with the favorite action integrated before the product text', async () => {
+  stubCatalogSnapshot();
+  localStorage.setItem('nfcompra.product-picker-mode', 'list');
+
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'lech' } });
+
+  const row = await screen.findByRole('option');
+  const rowButtons = within(row).getAllByRole('button');
+
+  expect(rowButtons[0]).toHaveAccessibleName('Añadir Leche entera de favoritos');
+  expect(rowButtons[1]).toHaveAccessibleName('Leche entera · Lacteos · 1 L');
+});
+
 it('adds product cards to a removable waitlist before committing them to pending items', async () => {
   const onAdd = vi.fn();
   stubCatalogSnapshot();
@@ -54,6 +68,7 @@ it('adds product cards to a removable waitlist before committing them to pending
   fireEvent.click(card);
 
   expect(await screen.findByText('Pendientes de añadir')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Seleccionar Atun claro al natural Hacendado/i })).not.toBeInTheDocument();
   const pendingTray = await screen.findByLabelText('Productos pendientes de añadir');
   expect(within(pendingTray).getByText('Atun claro al natural Hacendado')).toBeInTheDocument();
   expect(within(pendingTray).getByText('x2')).toBeInTheDocument();
@@ -61,11 +76,29 @@ it('adds product cards to a removable waitlist before committing them to pending
   fireEvent.click(screen.getByRole('button', { name: 'Quitar Atun claro al natural Hacendado de pendientes de añadir' }));
   expect(screen.queryByText('Pendientes de añadir')).not.toBeInTheDocument();
 
+  fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'atun' } });
+  const reopenedCard = await screen.findByRole('button', { name: /Seleccionar Atun claro al natural Hacendado/i });
   fireEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad de Atun claro al natural Hacendado' }));
-  fireEvent.click(card);
+  fireEvent.click(reopenedCard);
   fireEvent.click(screen.getByRole('button', { name: 'Añadir 1 producto' }));
 
   await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Atun claro al natural Hacendado', quantity: 1, unit: null }));
+});
+
+it('blurs the product field when scrolling search results', async () => {
+  stubCatalogSnapshot();
+  localStorage.setItem('nfcompra.product-picker-mode', 'cards');
+
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={vi.fn()} />);
+  const productInput = screen.getByLabelText('Producto');
+  productInput.focus();
+  fireEvent.change(productInput, { target: { value: 'atun' } });
+
+  const results = await screen.findByLabelText('Resultados de productos');
+  expect(productInput).toHaveFocus();
+  fireEvent.scroll(results);
+
+  expect(productInput).not.toHaveFocus();
 });
 
 it('closes and reopens product search results when focus leaves and returns to the product field', async () => {

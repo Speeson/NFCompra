@@ -73,6 +73,7 @@ sealed interface ShoppingListViewState {
         val selectedListId: String?,
         val listMetrics: Map<String, ShoppingListMetricsUiModel> = emptyMap(),
         val productCategories: List<ProductCategoryUiModel> = emptyList(),
+        val profile: ProfileUiModel? = null,
         val displayName: String? = null,
         val message: String? = null,
         val conflict: ShoppingListItemUiModel? = null,

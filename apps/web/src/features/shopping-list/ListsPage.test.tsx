@@ -17,7 +17,7 @@ describe('ListsPage', () => {
       if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'home-1', name: 'Casa' }, { id: 'home-2', name: 'Piso' }] }));
       if (url.endsWith('/households/home-1/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-7', householdId: 'home-1', name: 'Compra semanal', isDefault: true, version: 1, createdAt: '', updatedAt: '' }] }));
       if (url.endsWith('/households/home-2/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-8', householdId: 'home-2', name: 'Mercadona', isDefault: false, version: 1, createdAt: '', updatedAt: '' }] }));
-      if (url.endsWith('/lists/list-7/items')) return Promise.resolve(Response.json({ items: [{ id: 'item-1', listId: 'list-7', name: 'Pan', isChecked: false }] }));
+      if (url.endsWith('/lists/list-7/items')) return Promise.resolve(Response.json({ items: [{ id: 'item-1', listId: 'list-7', name: 'Pan', isChecked: false }, { id: 'item-2', listId: 'list-7', name: 'Leche', isChecked: true }] }));
       if (url.endsWith('/lists/list-8/items')) return Promise.resolve(Response.json({ items: [] }));
       throw new Error(`Ruta inesperada: ${url}`);
     }));
@@ -26,6 +26,7 @@ describe('ListsPage', () => {
     const casaGroup = await screen.findByRole('region', { name: 'Casa' });
     const pisoGroup = await screen.findByRole('region', { name: 'Piso' });
     expect(within(casaGroup).getByText('Compra semanal')).toBeVisible();
+    expect(within(casaGroup).getByText('1 pendiente de 2 apuntados')).toBeVisible();
     expect(within(pisoGroup).getByText('Mercadona')).toBeVisible();
     fireEvent.click(within(casaGroup).getByRole('button', { name: 'Abrir Compra semanal' }));
 

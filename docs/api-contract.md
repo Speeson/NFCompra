@@ -14,6 +14,41 @@ Los errores siguen esta envoltura:
 }
 ```
 
+## Perfil
+
+`GET /v1/me` devuelve la cuenta autenticada:
+
+```json
+{
+  "user": {
+    "id": "user-123",
+    "name": "Ana Garcia",
+    "firstName": "Ana",
+    "lastName": "Garcia",
+    "birthDate": "1995-04-23",
+    "username": "ana",
+    "email": "ana@example.test",
+    "emailVerifiedAt": "2026-07-27T12:00:00.000Z",
+    "createdAt": "2026-07-27T12:00:00.000Z",
+    "updatedAt": "2026-07-27T12:00:00.000Z"
+  }
+}
+```
+
+`PATCH /v1/me` actualiza parcialmente `firstName`, `lastName` y `username`. `email` es de solo lectura. `firstName` no puede quedar vacio; `username` puede ser `null` o una cadena unica de 3 a 30 caracteres (`a-z`, `A-Z`, `0-9`, `.`, `_`, `-`). Un username ocupado responde `409 USERNAME_ALREADY_REGISTERED`.
+
+```json
+{ "firstName": "Ana", "lastName": "Garcia", "username": "ana" }
+```
+
+`POST /v1/me/change-password` cambia la contrasena de la cuenta autenticada:
+
+```json
+{ "currentPassword": "actual", "newPassword": "nueva-segura" }
+```
+
+La contrasena nueva debe tener al menos 8 caracteres. Si la contrasena actual no coincide responde `401 INVALID_CURRENT_PASSWORD`. El cambio no cierra la sesion actual ni invalida sesiones existentes.
+
 ## Invitaciones
 
 ### Crear o renovar

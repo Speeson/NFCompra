@@ -1,4 +1,4 @@
-import { createAuthToken, createRefreshToken, createUser, consumeAuthToken, consumePasswordResetOtp, consumeRefreshToken, findUserByEmail, findUserByUsername, invalidateSessions, revokeRefreshToken, updatePassword, updateUserName, verifyEmail, verifyPasswordResetOtp, type AuthUser } from './auth-repository';
+import { createAuthToken, createRefreshToken, createUser, consumeAuthToken, consumePasswordResetOtp, consumeRefreshToken, findUserByEmail, findUserByUsername, findUserWithPasswordById, invalidateSessions, revokeRefreshToken, updatePassword, updateUserName, updateUserProfile, verifyEmail, verifyPasswordResetOtp, type AuthUser } from './auth-repository';
 import { hashPassword, verifyPassword } from './password-hasher';
 import { createAccessToken, createRandomToken, hashToken } from './token-service';
 import type { EmailSender } from '../email/email-sender';
@@ -54,6 +54,11 @@ function parseUsername(value: unknown): string | null | undefined {
   if (value === undefined || value === null || value === '') return null;
   const normalized = text(value);
   return normalized && normalized.length <= USERNAME_MAX_LENGTH && USERNAME_PATTERN.test(normalized) ? normalized : undefined;
+}
+
+function parseProfileText(value: unknown): string | null | undefined {
+  if (value === undefined || value === null || value === '') return null;
+  return boundedText(value, NAME_MAX_LENGTH) ?? undefined;
 }
 
 function deviceName(value: unknown): string | null | undefined {
@@ -266,12 +271,52 @@ export async function handleAuthRoute(request: Request, env: Env, emailSender: E
 
 export async function handleMeRoute(request: Request, env: Env, user: AuthUser): Promise<Response | null> {
   const path = new URL(request.url).pathname;
-  if (path !== '/v1/me') return null;
-  if (request.method === 'GET') return Response.json({ user });
-  if (request.method !== 'PATCH') return null;
+  if (path === '/v1/me') {
+    if (request.method === 'GET') return Response.json({ user });
+    if (request.method !== 'PATCH') return null;
+    const body = await json(request);
+    if (!body) return invalidInput();
+    if ('name' in body && !('firstName' in body) && !('lastName' in body) && !('username' in body)) {
+      const name = boundedText(body.name, NAME_MAX_LENGTH);
+      if (!name) return invalidInput();
+      const updated = await updateUserName(env, user.id, name);
+      return Response.json({ user: updated });
+    }
+    const firstName = parseProfileText(body.firstName);
+    const lastName = parseProfileText(body.lastName);
+    const username = parseUsername(body.username);
+    if (firstName === undefined || lastName === undefined || username === undefined) return invalidInput();
+    if (firstName === null && 'firstName' in body) return invalidInput();
+    if (!('firstName' in body) && !('lastName' in body) && !('username' in body)) return invalidInput();
+    if (username) {
+      const existing = await findUserByUsername(env, username);
+      if (existing && existing.id !== user.id) {
+        return errorResponse('USERNAME_ALREADY_REGISTERED', 'Ese nombre de usuario ya esta en uso.', 409);
+      }
+    }
+    let updated: AuthUser | null;
+    try {
+      updated = await updateUserProfile(env, user.id, {
+        ...('firstName' in body ? { firstName } : {}),
+        ...('lastName' in body ? { lastName } : {}),
+        ...('username' in body ? { username } : {}),
+      });
+    } catch {
+      if ('username' in body) return errorResponse('USERNAME_ALREADY_REGISTERED', 'Ese nombre de usuario ya esta en uso.', 409);
+      return errorResponse('PROFILE_UPDATE_FAILED', 'No se pudo actualizar el perfil.', 500);
+    }
+    return Response.json({ user: updated });
+  }
+  if (path !== '/v1/me/change-password') return null;
+  if (request.method !== 'POST') return null;
   const body = await json(request);
-  const name = body ? boundedText(body.name, NAME_MAX_LENGTH) : null;
-  if (!name) return invalidInput();
-  const updated = await updateUserName(env, user.id, name);
-  return Response.json({ user: updated });
+  const currentPassword = body ? text(body.currentPassword) : null;
+  const newPassword = body ? text(body.newPassword) : null;
+  if (!currentPassword || !newPassword || newPassword.length < 8) return invalidInput();
+  const current = await findUserWithPasswordById(env, user.id);
+  if (!current || !(await verifyPassword(currentPassword, current.passwordHash))) {
+    return errorResponse('INVALID_CURRENT_PASSWORD', 'La contrasena actual no es correcta.', 401);
+  }
+  await updatePassword(env, user.id, await hashPassword(newPassword));
+  return Response.json({ status: 'password_changed' });
 }

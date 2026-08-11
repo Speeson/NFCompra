@@ -28,6 +28,7 @@ interface AuthContextValue {
   forgotPassword(email: string): Promise<void>;
   resetPassword(token: string, password: string): Promise<void>;
   resetPasswordWithOtp(email: string, otp: string, password: string): Promise<void>;
+  refreshUser(): Promise<User>;
   logout(): Promise<boolean>;
 }
 
@@ -42,6 +43,14 @@ export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
     activateOfflineLists(response.user.id);
     setUser(response.user);
     setStatus('authenticated');
+  }, []);
+
+  const refreshUser = useCallback(async (): Promise<User> => {
+    const response = await apiClient.request<{ user: User }>('/me');
+    activateOfflineLists(response.user.id);
+    setUser(response.user);
+    setStatus('authenticated');
+    return response.user;
   }, []);
 
   useEffect(() => {
@@ -91,6 +100,7 @@ export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
     async resetPasswordWithOtp(email, otp, password) {
       await apiClient.request('/auth/reset-password', { method: 'POST', body: { email, otp, password }, retryOnUnauthorized: false });
     },
+    refreshUser,
     async logout() {
       const userId = user?.id;
       try {
@@ -105,7 +115,7 @@ export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
         setStatus('anonymous');
       }
     },
-  }), [loadUser, status, user]);
+  }), [loadUser, refreshUser, status, user]);
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

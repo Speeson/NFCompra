@@ -76,8 +76,18 @@ data class ProductCategoryMutationRequest(
     val iconKey: String? = null,
     val parentId: String? = null,
 )
-data class MeUserDto(val id: String, val email: String, val name: String, val username: String?)
+data class MeUserDto(
+    val id: String,
+    val email: String,
+    val name: String,
+    val firstName: String? = null,
+    val lastName: String? = null,
+    val username: String? = null,
+)
 data class MeResponse(val user: MeUserDto)
+data class UpdateProfileRequest(val firstName: String? = null, val lastName: String? = null, val username: String? = null)
+data class ChangePasswordRequest(val currentPassword: String, val newPassword: String)
+data class PasswordChangedResponse(val status: String)
 
 interface ShoppingListApi {
     @GET("v1/households") suspend fun households(): Response<HouseholdsResponse>
@@ -112,6 +122,8 @@ interface ShoppingListApi {
     @HTTP(method = "DELETE", path = "v1/product-catalog/{productId}/favorite")
     suspend fun removeProductFavorite(@Path("productId") productId: String): Response<ProductFavoriteResponse>
     @GET("v1/me") suspend fun me(): Response<MeResponse>
+    @PATCH("v1/me") suspend fun updateProfile(@Body request: UpdateProfileRequest): Response<MeResponse>
+    @POST("v1/me/change-password") suspend fun changePassword(@Body request: ChangePasswordRequest): Response<PasswordChangedResponse>
     @HTTP(method = "DELETE", path = "v1/households/{householdId}/leave")
     suspend fun leaveHousehold(@Path("householdId") householdId: String): Response<Unit>
 }

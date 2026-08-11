@@ -6,17 +6,39 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { demoShoppingItems } from '../features/shopping-list/fixtures';
 import { ShoppingListScreen } from '../features/shopping-list/ShoppingListScreen';
 import { AuthenticatedRoute, androidIntentUrlForHouseholdLink } from './App';
+import type { User } from '../api/session';
 
 vi.mock('../features/shopping-list/ShoppingListRoute', () => ({
   createWebQueryClient: () => ({ clear: vi.fn() }),
   ShoppingListRoute: ({ requestedHouseholdId }: { requestedHouseholdId?: string | null }) => <div data-testid="shopping-route">{requestedHouseholdId}</div>,
 }));
 
+vi.mock('../features/shopping-list/ListsPage', () => ({
+  ListsPage: ({ selectedHouseholdId }: { selectedHouseholdId?: string | null }) => <div data-testid="lists-page">{selectedHouseholdId}</div>,
+}));
+
 vi.mock('../features/catalog/CatalogPage', () => ({
   CatalogPage: () => <h1>Catálogo</h1>,
 }));
 
+vi.mock('../features/profile/ProfilePage', () => ({
+  ProfilePage: () => <h1>Perfil</h1>,
+}));
+
 afterEach(cleanup);
+
+const routeUser: User = {
+  id: 'user-1',
+  name: 'Ana',
+  firstName: 'Ana',
+  lastName: null,
+  birthDate: null,
+  username: 'ana',
+  email: 'ana@example.test',
+  emailVerifiedAt: '2026-07-27T00:00:00.000Z',
+  createdAt: '2026-07-27T00:00:00.000Z',
+  updatedAt: '2026-07-27T00:00:00.000Z',
+};
 
 describe('ShoppingListScreen', () => {
   it('separates pending and checked items', () => {
@@ -34,7 +56,7 @@ describe('ShoppingListScreen', () => {
   });
 
   it('renders the presentational profile and settings routes', () => {
-    const props = { search: new URLSearchParams(), userId: 'user-1', userName: 'Ana', onNavigate: () => undefined };
+    const props = { search: new URLSearchParams(), user: routeUser, onNavigate: () => undefined };
     const { rerender } = render(<AuthenticatedRoute {...props} pathname="/profile" />);
     expect(screen.getByRole('heading', { name: 'Perfil' })).toBeVisible();
     rerender(<AuthenticatedRoute {...props} pathname="/settings" />);
@@ -42,17 +64,25 @@ describe('ShoppingListScreen', () => {
   });
 
   it('routes the authenticated catalog page', () => {
-    const props = { search: new URLSearchParams(), userId: 'user-1', userName: 'Ana', onNavigate: () => undefined };
+    const props = { search: new URLSearchParams(), user: routeUser, onNavigate: () => undefined };
     render(<AuthenticatedRoute {...props} pathname="/catalog" />);
     expect(screen.getByRole('heading', { name: 'Catálogo' })).toBeVisible();
   });
 
-  it('routes HTTPS NFC household links to the shopping list household context', () => {
-    const props = { search: new URLSearchParams(), userId: 'user-1', userName: 'Ana', onNavigate: () => undefined };
+  it('routes HTTPS NFC household links to the opened household list overview', () => {
+    const props = { search: new URLSearchParams(), user: routeUser, onNavigate: () => undefined };
 
     render(<AuthenticatedRoute {...props} pathname="/household/home-1/lists" />);
 
-    expect(screen.getByTestId('shopping-route')).toHaveTextContent('home-1');
+    expect(screen.getByTestId('lists-page')).toHaveTextContent('home-1');
+  });
+
+  it('routes legacy household detail links to the opened household list overview', () => {
+    const props = { search: new URLSearchParams(), user: routeUser, onNavigate: () => undefined };
+
+    render(<AuthenticatedRoute {...props} pathname="/households/home-1" />);
+
+    expect(screen.getByTestId('lists-page')).toHaveTextContent('home-1');
   });
 
   it('builds an Android intent URL for HTTPS NFC household links', () => {

@@ -286,8 +286,12 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
   const currentHousehold = householdsQuery.data.find((household) => household.id === householdId);
   const currentList = listsQuery.data?.find((list) => list.id === listId);
   const hasLists = Boolean(listsQuery.data?.length);
+  const householdListsPath = currentHousehold ? `/lists?household=${encodeURIComponent(currentHousehold.id)}` : '/lists';
+  function navigateBackToHouseholdLists(): void {
+    onNavigate?.(householdListsPath);
+  }
   if (!hasLists || !listId) return <>
-    {onNavigate ? <button className="back-link back-link--route" type="button" onClick={() => currentHousehold ? onNavigate(`/households/${encodeURIComponent(currentHousehold.id)}`) : onNavigate('/lists')}>← Volver a {currentHousehold?.name ?? 'listas'}</button> : null}
+    {onNavigate ? <button className="back-link back-link--route" type="button" onClick={navigateBackToHouseholdLists}>← Volver a {currentHousehold?.name ?? 'listas'}</button> : null}
     <section className="list-selectors" aria-label="Seleccionar hogar y lista">
       <label>Hogar<select value={householdId} onChange={(event) => { setHouseholdId(event.target.value); setListId(undefined); }}>{householdsQuery.data.map((household) => <option key={household.id} value={household.id}>{household.name}</option>)}</select></label>
       <NewListForm disabled={false} onCreate={(name) => listMutation.mutate({ targetHouseholdId: householdId, name })} />
@@ -297,8 +301,8 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
   </>;
   if (itemsQuery.isPending) return <main><p role="status">Cargando lista…</p></main>;
   if (itemsQuery.isError) return <main><p role="alert">No se pudo cargar la lista.</p></main>;
-  return <>
-    {onNavigate ? <button className="back-link back-link--route" type="button" onClick={() => currentHousehold ? onNavigate(`/households/${encodeURIComponent(currentHousehold.id)}`) : onNavigate('/lists')}>← Volver a {currentHousehold?.name ?? 'listas'}</button> : null}
+  return <div className="shopping-list-route shopping-list-route--detail">
+    {onNavigate ? <button className="back-link back-link--route" type="button" onClick={navigateBackToHouseholdLists}>← Volver a {currentHousehold?.name ?? 'listas'}</button> : null}
     <section className="list-selectors" aria-label="Seleccionar hogar y lista">
       <label>Hogar<select disabled={isOffline} value={householdId} onChange={(event) => { setHouseholdId(event.target.value); setListId(undefined); }}>{householdsQuery.data.map((household) => <option key={household.id} value={household.id}>{household.name}</option>)}</select></label>
       <label>Lista<select disabled={isOffline} value={listId} onChange={(event) => setListId(event.target.value)}>{listsQuery.data?.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}</select></label>
@@ -307,6 +311,7 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
     {message ? <p role="alert">{message}</p> : null}
     {conflict ? <aside role="alert">El producto ha cambiado en el servidor: {conflict.current.name} (versión {conflict.current.version}). <button type="button" disabled={isOffline} onClick={() => { if (!isOffline) conflict.retry(); }}>Reintentar</button></aside> : null}
     <ShoppingListScreen title={currentList?.name ?? 'Lista'} items={(itemsQuery.data ?? []).map((item) => ({ ...item, unit: item.unit ?? undefined }))} isOffline={isOffline}
+      mobileSimpleActions
       onAdd={(input) => { if (!isOffline) createItemMutation.mutate({ listId, ...input }); }}
       onRenameList={(name) => { if (!isOffline && currentList) renameListMutation.mutate({ list: currentList, name }); }}
       onClearChecked={() => { if (!isOffline && window.confirm('Se eliminarán los productos comprados de esta lista.')) clearCheckedMutation.mutate(listId); }}
@@ -314,7 +319,7 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
       onToggle={(item) => { if (!isOffline) updateMutation.mutate({ item: item as ApiShoppingItem, patch: { isChecked: !item.isChecked } }); }}
       onUpdate={(item, input) => { if (!isOffline) updateMutation.mutate({ item: item as ApiShoppingItem, patch: input }); }}
       onDelete={(item) => { if (!isOffline) deleteMutation.mutate(item as ApiShoppingItem); }} />
-  </>;
+  </div>;
 }
 
 function NewListForm({ disabled, onCreate }: { disabled: boolean; onCreate(name: string): void }): JSX.Element {

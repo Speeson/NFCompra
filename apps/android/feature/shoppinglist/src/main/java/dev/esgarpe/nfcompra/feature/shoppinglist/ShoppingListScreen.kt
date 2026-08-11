@@ -263,6 +263,9 @@ fun ShoppingListApp(
             viewModel::createProductCatalogItem,
             viewModel::updateProductCatalogItem,
             viewModel::deleteProductCatalogItem,
+            viewModel::updateProfile,
+            viewModel::changePassword,
+            viewModel::refreshProfile,
             onLogout,
             onMembers,
             onOpenNotifications = onOpenNotifications,
@@ -287,6 +290,9 @@ internal fun ShoppingListContent(
     onCreateProduct: suspend (String, String?, String, String?, String?) -> ProductCatalogUiModel? = { _, _, _, _, _ -> null },
     onUpdateProduct: suspend (String, String, String?, String, String?, String?) -> ProductCatalogUiModel? = { _, _, _, _, _, _ -> null },
     onDeleteProduct: suspend (String) -> Boolean = { false },
+    onUpdateProfile: suspend (String?, String?, String?) -> ProfileUiModel? = { _, _, _ -> null },
+    onChangePassword: suspend (String, String) -> Boolean = { _, _ -> false },
+    onRefreshProfile: () -> Unit = {},
     onLogout: () -> Unit,
     onMembers: (String) -> Unit,
     onOpenNotifications: (() -> Unit)? = null,
@@ -461,8 +467,12 @@ internal fun ShoppingListContent(
                                 onDeleteProduct = onDeleteProduct,
                             )
                             DashboardTab.Profile -> ProfilePanel(
-                                displayName,
-                                onLogout,
+                                profile = data.profile,
+                                displayName = displayName,
+                                onUpdateProfile = onUpdateProfile,
+                                onChangePassword = onChangePassword,
+                                onRefreshProfile = onRefreshProfile,
+                                onLogout = onLogout,
                                 biometricAccessEnabled = biometricAccessEnabled,
                                 biometricAccessMessage = biometricAccessMessage,
                                 onBiometricAccessChange = onBiometricAccessChange,
@@ -2000,15 +2010,22 @@ private fun categoryEmoji(category: ProductCategoryUiModel): String {
 
 @Composable
 private fun ProfilePanel(
+    profile: ProfileUiModel?,
     displayName: String,
+    onUpdateProfile: suspend (String?, String?, String?) -> ProfileUiModel?,
+    onChangePassword: suspend (String, String) -> Boolean,
+    onRefreshProfile: () -> Unit,
     onLogout: () -> Unit,
     biometricAccessEnabled: Boolean = false,
     biometricAccessMessage: String? = null,
     onBiometricAccessChange: ((Boolean) -> Unit)? = null,
 ) {
-    var showProfile by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showLogoutConfirm by remember { mutableStateOf(false) }
+    var editingField by remember { mutableStateOf<ProfileField?>(null) }
+    var changingPassword by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { onRefreshProfile() }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -2034,27 +2051,27 @@ private fun ProfilePanel(
                         .background(Brush.linearGradient(GroceryPrimaryGradient)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(
-                        Icons.Outlined.Person,
-                        contentDescription = "Avatar",
-                        tint = Color.White,
-                        modifier = Modifier.size(36.dp),
-                    )
+                    Icon(Icons.Outlined.Person, contentDescription = "Avatar", tint = Color.White, modifier = Modifier.size(36.dp))
                 }
                 Text(displayName, style = MaterialTheme.typography.titleLarge, color = WebText, fontWeight = FontWeight.Bold)
+                Text(profile?.email.orEmpty(), color = WebMuted, fontSize = 13.sp, textAlign = TextAlign.Center)
             }
         }
 
-        Button(
-            onClick = { showProfile = true },
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            shape = MaterialTheme.shapes.medium,
-            colors = webPrimaryButtonColors(),
+        Card(
+            colors = CardDefaults.cardColors(containerColor = WebSurface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+            shape = RoundedCornerShape(18.dp),
         ) {
-            Icon(Icons.Outlined.Person, contentDescription = null, modifier = Modifier.size(20.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Perfil", fontWeight = FontWeight.Bold)
+            Column(modifier = Modifier.fillMaxWidth()) {
+                ProfileRow("Email", profile?.email.orEmpty(), readOnly = true)
+                ProfileRow("Nombre", profile?.firstName.orEmpty(), emptyText = "Sin nombre") { editingField = ProfileField.FirstName }
+                ProfileRow("Apellidos", profile?.lastName.orEmpty(), emptyText = "Sin apellidos") { editingField = ProfileField.LastName }
+                ProfileRow("Usuario", profile?.username.orEmpty(), emptyText = "Sin username") { editingField = ProfileField.Username }
+                ProfileRow("Contrase\u00f1a", "********", actionText = "Cambiar") { changingPassword = true }
+            }
         }
+
         Button(
             onClick = { showSettings = true },
             modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -2073,11 +2090,34 @@ private fun ProfilePanel(
         ) {
             Icon(Icons.Outlined.Logout, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Cerrar sesión", fontWeight = FontWeight.Bold)
+            Text("Cerrar sesi\u00f3n", fontWeight = FontWeight.Bold)
         }
     }
 
-    if (showProfile) ProfileDialog(displayName, { showProfile = false })
+    editingField?.let { field ->
+        ProfileFieldDialog(
+            field = field,
+            profile = profile,
+            onDismiss = { editingField = null },
+            onSave = { firstName, lastName, username, done ->
+                scope.launch {
+                    val saved = onUpdateProfile(firstName, lastName, username)
+                    done(saved != null)
+                    if (saved != null) editingField = null
+                }
+            },
+        )
+    }
+    if (changingPassword) PasswordChangeDialog(
+        onDismiss = { changingPassword = false },
+        onSave = { currentPassword, newPassword, done ->
+            scope.launch {
+                val saved = onChangePassword(currentPassword, newPassword)
+                done(saved)
+                if (saved) changingPassword = false
+            }
+        },
+    )
     if (showSettings) SettingsDialog(
         onDismiss = { showSettings = false },
         biometricAccessEnabled = biometricAccessEnabled,
@@ -2086,14 +2126,14 @@ private fun ProfilePanel(
     )
     if (showLogoutConfirm) AlertDialog(
         onDismissRequest = { showLogoutConfirm = false },
-        title = { Text("Cerrar sesión", fontWeight = FontWeight.Bold, color = WebText) },
-        text = { Text("¿Estás seguro de que quieres cerrar sesión? Deberás iniciar sesión de nuevo para acceder a tu cuenta.", color = WebMuted) },
+        title = { Text("Cerrar sesi\u00f3n", fontWeight = FontWeight.Bold, color = WebText) },
+        text = { Text("\u00bfEst\u00e1s seguro de que quieres cerrar sesi\u00f3n? Deber\u00e1s iniciar sesi\u00f3n de nuevo para acceder a tu cuenta.", color = WebMuted) },
         confirmButton = {
             Button(
                 onClick = { showLogoutConfirm = false; onLogout() },
                 colors = ButtonDefaults.buttonColors(containerColor = CheckedAccent, contentColor = Color.White),
                 shape = RoundedCornerShape(8.dp),
-            ) { Text("Cerrar sesión", fontWeight = FontWeight.Bold) }
+            ) { Text("Cerrar sesi\u00f3n", fontWeight = FontWeight.Bold) }
         },
         dismissButton = {
             Button(
@@ -2106,45 +2146,154 @@ private fun ProfilePanel(
 }
 
 @Composable
-private fun ProfileDialog(displayName: String, onDismiss: () -> Unit) {
+private fun ProfileRow(
+    label: String,
+    value: String,
+    emptyText: String = "Sin datos",
+    actionText: String = "Editar",
+    readOnly: Boolean = false,
+    onClick: (() -> Unit)? = null,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(label.uppercase(), color = WebPrimary, fontSize = 11.sp, fontWeight = FontWeight.Black)
+            Text(
+                value.ifBlank { emptyText },
+                color = if (value.isBlank()) WebMuted else WebText,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (readOnly) Text("Solo lectura", color = WebMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        else Button(
+            onClick = { onClick?.invoke() },
+            colors = ButtonDefaults.buttonColors(containerColor = WebLime, contentColor = WebText),
+            shape = RoundedCornerShape(10.dp),
+        ) {
+            Text(actionText, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+private enum class ProfileField(val title: String) {
+    FirstName("Nombre"),
+    LastName("Apellidos"),
+    Username("Usuario"),
+}
+
+@Composable
+private fun ProfileFieldDialog(
+    field: ProfileField,
+    profile: ProfileUiModel?,
+    onDismiss: () -> Unit,
+    onSave: (String?, String?, String?, (Boolean) -> Unit) -> Unit,
+) {
+    val initialValue = when (field) {
+        ProfileField.FirstName -> profile?.firstName
+        ProfileField.LastName -> profile?.lastName
+        ProfileField.Username -> profile?.username
+    }.orEmpty()
+    var value by remember(field, profile) { mutableStateOf(initialValue) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text("Perfil", color = WebPrimary, fontWeight = FontWeight.Bold)
-        },
+        title = { Text("Editar ${field.title}", color = WebPrimary, fontWeight = FontWeight.Bold) },
         text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                SectionTitle("Datos personales")
-                Text("Nombre: $displayName", color = WebText, fontWeight = FontWeight.SemiBold)
-                Text(
-                    "La edición de datos personales requiere acceso a la API de perfil.",
-                    color = WebMuted,
-                    fontSize = 12.sp,
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { value = it },
+                    label = { Text(field.title) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
                 )
-
-                Spacer(modifier = Modifier.height(4.dp))
-                SectionTitle("Cambiar contraseña")
-                Text(
-                    "El cambio de contraseña autenticado no está disponible en esta versión.",
-                    color = WebMuted,
-                    fontSize = 12.sp,
-                )
+                error?.let { Text(it, color = CheckedAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
             }
         },
         confirmButton = {
             Button(
-                onClick = onDismiss,
+                enabled = !saving,
+                onClick = {
+                    val trimmed = value.trim()
+                    if (field == ProfileField.FirstName && trimmed.isBlank()) {
+                        error = "El nombre no puede estar vac\u00edo."
+                        return@Button
+                    }
+                    if (field == ProfileField.Username && trimmed.isNotBlank() && !Regex("^[a-zA-Z0-9._-]{3,30}$").matches(trimmed)) {
+                        error = "Usa entre 3 y 30 caracteres."
+                        return@Button
+                    }
+                    saving = true
+                    val nextValue = trimmed.ifBlank { null }
+                    onSave(
+                        if (field == ProfileField.FirstName) nextValue else profile?.firstName,
+                        if (field == ProfileField.LastName) nextValue else profile?.lastName,
+                        if (field == ProfileField.Username) nextValue else profile?.username,
+                    ) { ok ->
+                        saving = false
+                        if (!ok) error = "No se pudo guardar."
+                    }
+                },
                 colors = ButtonDefaults.buttonColors(containerColor = WebLime, contentColor = WebText),
-            ) {
-                Text("Cerrar", fontWeight = FontWeight.Bold)
-            }
+                shape = RoundedCornerShape(8.dp),
+            ) { Text(if (saving) "Guardando..." else "Guardar", fontWeight = FontWeight.Bold) }
         },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
     )
 }
 
+@Composable
+private fun PasswordChangeDialog(
+    onDismiss: () -> Unit,
+    onSave: (String, String, (Boolean) -> Unit) -> Unit,
+) {
+    var currentPassword by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf("") }
+    var repeatPassword by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Cambiar contrase\u00f1a", color = WebPrimary, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(currentPassword, { currentPassword = it }, label = { Text("Contrase\u00f1a actual") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(newPassword, { newPassword = it }, label = { Text("Nueva contrase\u00f1a") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(repeatPassword, { repeatPassword = it }, label = { Text("Repetir contrase\u00f1a") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                error?.let { Text(it, color = CheckedAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = !saving,
+                onClick = {
+                    if (newPassword.length < 8) {
+                        error = "La nueva contrase\u00f1a debe tener al menos 8 caracteres."
+                        return@Button
+                    }
+                    if (newPassword != repeatPassword) {
+                        error = "Las contrase\u00f1as no coinciden."
+                        return@Button
+                    }
+                    saving = true
+                    onSave(currentPassword, newPassword) { ok ->
+                        saving = false
+                        if (!ok) error = "No se pudo cambiar la contrase\u00f1a."
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = WebLime, contentColor = WebText),
+                shape = RoundedCornerShape(8.dp),
+            ) { Text(if (saving) "Guardando..." else "Cambiar", fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
+}
 @Composable
 private fun SettingsDialog(
     onDismiss: () -> Unit,
@@ -3815,4 +3964,6 @@ private val EmptyListState = ShoppingListUiState("Compra semanal", emptyList(), 
 @Preview
 @Composable
 private fun ShoppingListPreview() = NFCompraTheme { ShoppingListScreen(EmptyListState, {}) }
+
+
 

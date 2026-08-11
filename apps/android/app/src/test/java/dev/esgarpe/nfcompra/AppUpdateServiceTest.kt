@@ -11,10 +11,12 @@ class AppUpdateServiceTest {
             tagName = "v0.1.2",
             name = "NFCompra 0.1.2",
             htmlUrl = "https://github.com/Speeson/NFCompra/releases/tag/v0.1.2",
+            body = "Cambios de prueba",
             assets = listOf(
                 GitHubReleaseAsset(
                     name = "NFCompra-release.apk",
                     browserDownloadUrl = "https://github.com/Speeson/NFCompra/releases/download/v0.1.2/NFCompra-release.apk",
+                    sizeBytes = 25_165_824L,
                 ),
             ),
         )
@@ -27,6 +29,8 @@ class AppUpdateServiceTest {
 
         assertEquals("0.1.2", update?.versionName)
         assertEquals("NFCompra-release.apk", update?.assetName)
+        assertEquals("Cambios de prueba", update?.changelog)
+        assertEquals(25_165_824L, update?.sizeBytes)
     }
 
     @Test
@@ -35,7 +39,8 @@ class AppUpdateServiceTest {
             tagName = "v0.1.1",
             name = "NFCompra 0.1.1",
             htmlUrl = "https://github.com/Speeson/NFCompra/releases/tag/v0.1.1",
-            assets = listOf(GitHubReleaseAsset("NFCompra-release.apk", "https://example.test/app.apk")),
+            body = "",
+            assets = listOf(GitHubReleaseAsset("NFCompra-release.apk", "https://example.test/app.apk", 1L)),
         )
 
         assertNull(findAppUpdate("0.1.1", release, "NFCompra-release.apk"))
@@ -47,9 +52,23 @@ class AppUpdateServiceTest {
             tagName = "v0.1.2",
             name = "NFCompra 0.1.2",
             htmlUrl = "https://github.com/Speeson/NFCompra/releases/tag/v0.1.2",
-            assets = listOf(GitHubReleaseAsset("notes.txt", "https://example.test/notes.txt")),
+            body = "",
+            assets = listOf(GitHubReleaseAsset("notes.txt", "https://example.test/notes.txt", 1L)),
         )
 
         assertNull(findAppUpdate("0.1.1", release, "NFCompra-release.apk"))
+    }
+
+    @Test
+    fun `formats download progress values`() {
+        val progress = AppUpdateDownloadProgress(
+            downloadedBytes = 5L * 1024L * 1024L,
+            totalBytes = 10L * 1024L * 1024L,
+            bytesPerSecond = 2L * 1024L * 1024L,
+        )
+
+        assertEquals(50, progress.percent)
+        assertEquals("10.0 MB", formatBytes(progress.totalBytes))
+        assertEquals("2.0 MB/s", formatSpeed(progress.bytesPerSecond))
     }
 }

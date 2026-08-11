@@ -22,7 +22,7 @@ export function createWorker(emailSender?: EmailSender): ExportedHandler<Env> {
         const authResponse = catalogResponse ? null : await handleAuthRoute(request, env, emailSender ?? new ResendEmailSender(env));
         if (catalogResponse) response = catalogResponse;
         else if (authResponse) response = authResponse;
-        else if (new URL(request.url).pathname === '/v1/me') {
+        else if (new URL(request.url).pathname === '/v1/me' || new URL(request.url).pathname === '/v1/me/change-password') {
           try {
             const user = await requireUser(request, env);
             response = (await handleMeRoute(request, env, user)) ?? notFound();

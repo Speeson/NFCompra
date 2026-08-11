@@ -468,4 +468,5 @@ describe('ShoppingListRoute', () => {
     fireEvent.change(screen.getByLabelText('Hogar'), { target: { value: 'home-2' } });
     expect(await screen.findByRole('heading', { name: 'Piso' })).toBeVisible();
   });
+
 });

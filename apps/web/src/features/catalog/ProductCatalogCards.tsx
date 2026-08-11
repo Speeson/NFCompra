@@ -69,25 +69,24 @@ export function ProductCatalogListItem({
   onFavoriteChange?(product: ProductCatalogItem, favorite: boolean): void;
 }): JSX.Element {
   const details = productDetails(product);
-  const accessibleName = details ? `${product.name} · ${details}` : product.name;
+  const accessibleName = details ? `${product.name} \u00b7 ${details}` : product.name;
   return <div className="product-suggestion-row" role="option" aria-selected="false">
+    <button
+      type="button"
+      className={product.isFavorite ? 'product-favorite-button product-favorite-button--compact is-favorite' : 'product-favorite-button product-favorite-button--compact'}
+      aria-label={`${product.isFavorite ? 'Quitar' : 'A\u00f1adir'} ${product.name} de favoritos`}
+      aria-pressed={Boolean(product.isFavorite)}
+      disabled={disabled}
+      onClick={() => onFavoriteChange?.(product, !product.isFavorite)}
+    >{product.isFavorite ? '\u2605' : '\u2606'}</button>
     <button type="button" className="product-suggestion product-suggestion--with-favorite" aria-label={accessibleName} disabled={disabled} onClick={() => onSelect(product)}>
       <span>{product.name}</span>
       <small>{details}</small>
     </button>
-    <button
-      type="button"
-      className={product.isFavorite ? 'product-favorite-button product-favorite-button--compact is-favorite' : 'product-favorite-button product-favorite-button--compact'}
-      aria-label={`${product.isFavorite ? 'Quitar' : 'Añadir'} ${product.name} de favoritos`}
-      aria-pressed={Boolean(product.isFavorite)}
-      disabled={disabled}
-      onClick={() => onFavoriteChange?.(product, !product.isFavorite)}
-    >{product.isFavorite ? '★' : '☆'}</button>
   </div>;
 }
-
 export function productDetails(product: ProductCatalogItem): string {
-  return [product.categoryName, product.packageSize].filter(Boolean).join(' · ');
+  return [product.categoryName, product.packageSize].filter(Boolean).join(' \u00b7 ');
 }
 
 export function productIcon(product: ProductCatalogItem): string {

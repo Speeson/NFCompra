@@ -83,7 +83,7 @@ export function ListsPage({ onNavigate, startCreating = false, selectedHousehold
           return <article key={list.id} className="route-list-card">
             <div className="route-list-card__list">
               <strong>{list.name}</strong>
-              {!itemQuery || itemQuery.isPending ? <span role="status">Cargando productos…</span> : itemQuery.isError ? <span role="alert">No se pudieron cargar los productos.</span> : <span>{itemQuery.data.filter((item) => !item.isChecked).length} pendientes</span>}
+              {!itemQuery || itemQuery.isPending ? <span role="status">Cargando productos…</span> : itemQuery.isError ? <span role="alert">No se pudieron cargar los productos.</span> : <ListItemCount pending={itemQuery.data.filter((item) => !item.isChecked).length} total={itemQuery.data.length} />}
             </div>
             <button className="button" type="button" aria-label={`Abrir ${list.name}`} onClick={() => onNavigate(`/lists/${encodeURIComponent(list.id)}`)}>Abrir lista</button>
           </article>;
@@ -98,4 +98,8 @@ function householdGlowStyle(householdId: string): CSSProperties {
   let hash = 0;
   for (const character of householdId) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
   return { '--household-glow': palette[hash % palette.length] } as CSSProperties;
+}
+
+function ListItemCount({ pending, total }: { pending: number; total: number }): JSX.Element {
+  return <span>{pending} {pending === 1 ? 'pendiente' : 'pendientes'} de {total} {total === 1 ? 'apuntado' : 'apuntados'}</span>;
 }
