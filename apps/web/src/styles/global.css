@@ -1152,7 +1152,7 @@ h2 { font-size: 1rem; }
 /* Final route overrides for Android-like household cards and stable catalog cards. */
 .catalog-products {
   grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr));
-  grid-auto-rows: 8.4rem;
+  grid-auto-rows: 12.6rem;
   align-items: stretch;
 }
 
@@ -1489,5 +1489,9 @@ h2 { font-size: 1rem; }
   .members-panel__person,
   .members-panel__invite {
     grid-template-columns: 1fr;
+  }
+
+  .members-panel__person--removable {
+    grid-template-columns: 2.2rem minmax(0, 1fr);
   }
 }
