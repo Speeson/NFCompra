@@ -77,4 +77,54 @@ describe('CatalogPage', () => {
     const card = await screen.findByRole('article', { name: 'Leche entera' });
     expect(within(card).getByRole('button', { name: 'Quitar Leche entera de favoritos' }).parentElement).toHaveClass('product-result-card__rail');
   });
+
+  it('searches across all products instead of only the selected category', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/product-categories')) return Promise.resolve(Response.json({ categories: [
+        { id: 'favorites', name: 'Favoritos', normalizedName: 'favoritos', parentId: null, iconKey: 'star', source: 'user', sourceCategoryId: null, createdAt: '', updatedAt: '', isFavorite: true },
+        { id: 'cat-dairy', name: 'Lacteos', normalizedName: 'lacteos', parentId: null, iconKey: 'milk', source: null, sourceCategoryId: null, createdAt: '', updatedAt: '' },
+        { id: 'cat-bakery', name: 'Panaderia', normalizedName: 'panaderia', parentId: null, iconKey: 'bread', source: null, sourceCategoryId: null, createdAt: '', updatedAt: '' },
+      ] }));
+      if (url.endsWith('/product-catalog/snapshot')) return Promise.resolve(Response.json({ version: 'v1', productCount: 3, products: [
+        { id: 'prod-milk', name: 'Leche entera', normalizedName: 'leche entera', categoryId: 'cat-dairy', categoryName: 'Lacteos', iconKey: 'milk', brand: null, packageSize: '1 L', source: null, sourceProductId: null, isFavorite: true },
+        { id: 'prod-bread', name: 'Pan rustico', normalizedName: 'pan rustico', categoryId: 'cat-bakery', categoryName: 'Panaderia', iconKey: 'bread', brand: null, packageSize: 'barra', source: null, sourceProductId: null, isFavorite: false },
+        { id: 'prod-yogurt', name: 'Yogur natural', normalizedName: 'yogur natural', categoryId: 'cat-dairy', categoryName: 'Lacteos', iconKey: 'milk', brand: null, packageSize: 'pack', source: null, sourceProductId: null, isFavorite: false },
+      ] }));
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+
+    render(<QueryClientProvider client={createWebQueryClient()}><CatalogPage /></QueryClientProvider>);
+
+    await screen.findByText('Leche entera');
+    fireEvent.change(screen.getByLabelText('Buscar productos'), { target: { value: 'pan' } });
+
+    expect(await screen.findByText('Pan rustico')).toBeVisible();
+    expect(screen.queryByText('Leche entera')).not.toBeInTheDocument();
+  });
+
+  it('can filter search results by the selected category', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/product-categories')) return Promise.resolve(Response.json({ categories: [
+        { id: 'favorites', name: 'Favoritos', normalizedName: 'favoritos', parentId: null, iconKey: 'star', source: 'user', sourceCategoryId: null, createdAt: '', updatedAt: '', isFavorite: true },
+        { id: 'cat-dairy', name: 'Lacteos', normalizedName: 'lacteos', parentId: null, iconKey: 'milk', source: null, sourceCategoryId: null, createdAt: '', updatedAt: '' },
+        { id: 'cat-bakery', name: 'Panaderia', normalizedName: 'panaderia', parentId: null, iconKey: 'bread', source: null, sourceCategoryId: null, createdAt: '', updatedAt: '' },
+      ] }));
+      if (url.endsWith('/product-catalog/snapshot')) return Promise.resolve(Response.json({ version: 'v1', productCount: 2, products: [
+        { id: 'prod-dairy-bread', name: 'Pan de leche', normalizedName: 'pan de leche', categoryId: 'cat-dairy', categoryName: 'Lacteos', iconKey: 'milk', brand: null, packageSize: 'pack', source: null, sourceProductId: null, isFavorite: false },
+        { id: 'prod-bread', name: 'Pan rustico', normalizedName: 'pan rustico', categoryId: 'cat-bakery', categoryName: 'Panaderia', iconKey: 'bread', brand: null, packageSize: 'barra', source: null, sourceProductId: null, isFavorite: false },
+      ] }));
+      throw new Error(`Solicitud inesperada: ${url}`);
+    }));
+
+    render(<QueryClientProvider client={createWebQueryClient()}><CatalogPage /></QueryClientProvider>);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Lacteos/ }));
+    fireEvent.change(screen.getByLabelText('Buscar productos'), { target: { value: 'pan' } });
+    fireEvent.change(screen.getByLabelText('Filtro de búsqueda'), { target: { value: 'category' } });
+
+    expect(await screen.findByText('Pan de leche')).toBeVisible();
+    expect(screen.queryByText('Pan rustico')).not.toBeInTheDocument();
+  });
 });

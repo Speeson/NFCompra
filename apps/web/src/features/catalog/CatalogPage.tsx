@@ -6,11 +6,13 @@ import { fetchProductCategories, loadProductCatalogSnapshot, setProductFavorite,
 
 const catalogProductsQueryKey = ['product-catalog', 'snapshot'] as const;
 const catalogCategoriesQueryKey = ['product-categories'] as const;
+type CatalogSearchFilter = 'all' | 'favorites' | 'category';
 
 export function CatalogPage(): JSX.Element {
   const queryClient = useQueryClient();
   const [selectedCategoryId, setSelectedCategoryId] = useState('favorites');
   const [search, setSearch] = useState('');
+  const [searchFilter, setSearchFilter] = useState<CatalogSearchFilter>('all');
   const categories = useQuery({ queryKey: catalogCategoriesQueryKey, queryFn: fetchProductCategories });
   const products = useQuery({ queryKey: catalogProductsQueryKey, queryFn: loadProductCatalogSnapshot });
   const favoriteMutation = useMutation({
@@ -33,16 +35,26 @@ export function CatalogPage(): JSX.Element {
     const query = normalize(search);
     return productList.filter((product) => {
       const matchesCategory = selectedCategoryId === 'favorites' ? product.isFavorite : product.categoryId === selectedCategoryId;
-      if (!matchesCategory) return false;
-      if (!query) return true;
-      return normalize(`${product.name} ${product.categoryName ?? ''} ${product.packageSize ?? ''}`).includes(query);
+      if (!query) return matchesCategory;
+      const matchesQuery = normalize(`${product.name} ${product.categoryName ?? ''} ${product.packageSize ?? ''}`).includes(query);
+      if (!matchesQuery) return false;
+      if (searchFilter === 'favorites') return product.isFavorite;
+      if (searchFilter === 'category') return matchesCategory;
+      return true;
     }).slice(0, 80);
-  }, [productList, search, selectedCategoryId]);
+  }, [productList, search, searchFilter, selectedCategoryId]);
 
   return <section className="catalog-page">
     <header className="catalog-page__header">
       <div><p className="eyebrow">Catálogo</p><h1>Productos y favoritos</h1></div>
-      <label className="catalog-search">Buscar productos<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Leche, pan, tomate..." autoComplete="off" /></label>
+      <div className="catalog-search-group">
+        <label className="catalog-search">Buscar productos<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Leche, pan, tomate..." autoComplete="off" /></label>
+        <label className="catalog-filter">Filtro de búsqueda<select value={searchFilter} onChange={(event) => setSearchFilter(event.target.value as CatalogSearchFilter)}>
+          <option value="all">Todos</option>
+          <option value="favorites">Favoritos</option>
+          <option value="category">Categoría seleccionada</option>
+        </select></label>
+      </div>
     </header>
     {categories.isPending || products.isPending ? <p role="status">Cargando catálogo...</p> : null}
     {categories.isError || products.isError ? <p role="alert">No se pudo cargar el catálogo.</p> : null}
