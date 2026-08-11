@@ -60,7 +60,7 @@ adb shell am start -a android.intent.action.VIEW -d "https://nfcompra.esgarpe.de
 - PWA does not queue offline mutations. Android offline queue limited to product mutations only.
 - NFC App Link verification requires deploying `apps/web/public/.well-known/assetlinks.json` to `https://nfcompra.esgarpe.dev/.well-known/assetlinks.json`. The file contains both debug and release APK signing fingerprints.
 - No WebSockets or push notifications.
-- PWA production deploy is handled by Vercel and redeploys automatically after pushing to GitHub `main`. API deploys are separate and still require Wrangler/Cloudflare deployment.
+- PWA production deploy is handled by Vercel and redeploys automatically after pushing to GitHub `main`. API deploys are separate and use Wrangler/Cloudflare OAuth login; do not rely on `CLOUDFLARE_API_TOKEN` for deploys.
 
 ## Docs
 
