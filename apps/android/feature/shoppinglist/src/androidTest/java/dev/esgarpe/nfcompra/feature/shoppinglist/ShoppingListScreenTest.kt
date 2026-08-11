@@ -91,6 +91,34 @@ class ShoppingListScreenTest {
     }
 
     @Test
+    fun catalogFilterButtonOpensFilterDialog() {
+        composeTestRule.setContent {
+            NFCompraTheme {
+                ShoppingListContent(
+                    data = ShoppingListViewState.Data(
+                        content = ShoppingListUiState("Compra semanal", emptyList(), emptyList(), isOffline = false),
+                        households = listOf(HouseholdUiModel("home-1", "Casa")),
+                        lists = emptyList(),
+                        selectedHouseholdId = "home-1",
+                        selectedListId = null,
+                    ),
+                    onAction = {},
+                    onLogout = {},
+                    onMembers = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("CatÃ¡logo").performClick()
+        composeTestRule.onNodeWithContentDescription("Abrir filtros de búsqueda").performClick()
+
+        composeTestRule.onNodeWithText("Filtro de búsqueda").assertExists()
+        composeTestRule.onNodeWithText("Todos los productos").assertExists()
+        composeTestRule.onNodeWithText("Favoritos").assertExists()
+        composeTestRule.onNodeWithText("Categoría seleccionada").assertExists()
+    }
+
+    @Test
     fun bannerBackButtonReturnsFromSecondaryTabsToHome() {
         composeTestRule.setContent {
             NFCompraTheme {
@@ -137,6 +165,71 @@ class ShoppingListScreenTest {
 
         composeTestRule.onNodeWithText("No hay listas asociadas a este hogar.").assertExists()
         composeTestRule.onNodeWithText("Crear lista").assertExists()
+    }
+
+    @Test
+    fun listCardsExposeDeleteButOpenedListDoesNot() {
+        composeTestRule.setContent {
+            NFCompraTheme {
+                ShoppingListContent(
+                    data = ShoppingListViewState.Data(
+                        content = ShoppingListUiState(
+                            title = "Compra semanal",
+                            pending = emptyList(),
+                            checked = listOf(ShoppingListItemUiModel("milk", "Leche", "1 litro", checked = true)),
+                            isOffline = false,
+                        ),
+                        households = listOf(HouseholdUiModel("home-1", "Casa")),
+                        lists = listOf(ShoppingListSummaryUiModel("list-1", "home-1", "Compra semanal")),
+                        selectedHouseholdId = "home-1",
+                        selectedListId = "list-1",
+                    ),
+                    onAction = {},
+                    onLogout = {},
+                    onMembers = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Listas").performClick()
+        composeTestRule.onNodeWithContentDescription("Eliminar lista").assertExists()
+        composeTestRule.onNodeWithContentDescription("Ver lista").performClick()
+
+        composeTestRule.onNodeWithContentDescription("Eliminar lista").assertDoesNotExist()
+        composeTestRule.onNodeWithText("Vaciar").assertExists()
+    }
+
+    @Test
+    fun catalogCategoryShowsProductsAndCanReturnToCategories() {
+        composeTestRule.setContent {
+            NFCompraTheme {
+                ShoppingListContent(
+                    data = ShoppingListViewState.Data(
+                        content = ShoppingListUiState("Compra semanal", emptyList(), emptyList(), isOffline = false),
+                        households = listOf(HouseholdUiModel("home-1", "Casa")),
+                        lists = emptyList(),
+                        selectedHouseholdId = "home-1",
+                        selectedListId = null,
+                        productCategories = listOf(ProductCategoryUiModel("cat-dairy", "Lacteos", "lacteos", "milk")),
+                    ),
+                    onAction = {},
+                    onSearchProducts = { _, _ ->
+                        listOf(ProductCatalogUiModel("prod-milk", "Leche entera", "leche entera", "Lacteos", "milk", "1 L", true))
+                    },
+                    onLogout = {},
+                    onMembers = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("CatÃ¡logo").performClick()
+        composeTestRule.onNodeWithText("Lacteos").performClick()
+
+        composeTestRule.onNodeWithText("Volver al catÃ¡logo").assertExists()
+        composeTestRule.onNodeWithText("Leche entera").assertExists()
+
+        composeTestRule.onNodeWithText("Volver al catÃ¡logo").performClick()
+        composeTestRule.onNodeWithText("Lacteos").assertExists()
     }
 
     @Test

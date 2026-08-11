@@ -44,6 +44,8 @@ data class ProductCatalogUiModel(
     val iconKey: String,
     val packageSize: String?,
     val isFavorite: Boolean = false,
+    val categoryId: String? = null,
+    val brand: String? = null,
 )
 data class ProductCategoryUiModel(
     val id: String,
@@ -84,6 +86,12 @@ interface ShoppingRepository {
     suspend fun warmProductCatalog() = Unit
     suspend fun productCategories(): List<ProductCategoryUiModel> = emptyList()
     suspend fun setProductFavorite(productId: String, favorite: Boolean): ProductCatalogUiModel? = null
+    suspend fun createProductCategory(name: String, iconKey: String): ProductCategoryUiModel? = null
+    suspend fun updateProductCategory(categoryId: String, name: String, iconKey: String): ProductCategoryUiModel? = null
+    suspend fun deleteProductCategory(categoryId: String) = Unit
+    suspend fun createProductCatalogItem(name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel? = null
+    suspend fun updateProductCatalogItem(productId: String, name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel? = null
+    suspend fun deleteProductCatalogItem(productId: String) = Unit
     suspend fun profileDisplayName(): String? = null
     suspend fun resolveConflict(resolution: ResolveConflict) = Unit
 }
@@ -148,6 +156,7 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
 
     override suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> {
         val query = search.normalizedSearch()
+        if (query.isBlank()) return loadCatalogSnapshotOrNull()?.take(limit.coerceAtLeast(1)) ?: emptyList()
         if (query.length < 2) return emptyList()
         val snapshot = catalogSnapshot
         if (snapshot != null) return snapshot.searchCatalog(query, limit)
@@ -174,10 +183,45 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
             ?: ProductCatalogUiModel(productId, "", "", null, "star", null, favorite)
     }
 
+    override suspend fun createProductCategory(name: String, iconKey: String): ProductCategoryUiModel {
+        invalidateCatalogSnapshot()
+        return api.createProductCategory(ProductCategoryMutationRequest(name = name, iconKey = iconKey)).bodyOrThrow().category.toUiModel()
+    }
+
+    override suspend fun updateProductCategory(categoryId: String, name: String, iconKey: String): ProductCategoryUiModel {
+        invalidateCatalogSnapshot()
+        return api.updateProductCategory(categoryId, ProductCategoryMutationRequest(name = name, iconKey = iconKey)).bodyOrThrow().category.toUiModel()
+    }
+
+    override suspend fun deleteProductCategory(categoryId: String) {
+        api.deleteProductCategory(categoryId).bodyOrThrow()
+        invalidateCatalogSnapshot()
+    }
+
+    override suspend fun createProductCatalogItem(name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel {
+        invalidateCatalogSnapshot()
+        return api.createProductCatalogItem(ProductCatalogMutationRequest(name, categoryId, iconKey, brand, packageSize)).bodyOrThrow().product.toUiModel()
+    }
+
+    override suspend fun updateProductCatalogItem(productId: String, name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel {
+        invalidateCatalogSnapshot()
+        return api.updateProductCatalogItem(productId, ProductCatalogMutationRequest(name, categoryId, iconKey, brand, packageSize)).bodyOrThrow().product.toUiModel()
+    }
+
+    override suspend fun deleteProductCatalogItem(productId: String) {
+        api.deleteProductCatalogItem(productId).bodyOrThrow()
+        favoriteProductIds = favoriteProductIds - productId
+        invalidateCatalogSnapshot()
+    }
+
     override suspend fun profileDisplayName(): String? =
         api.me().bodyOrThrow().user.name.takeIf { it.isNotBlank() }
 
     private fun ShoppingListDto.toUiModel() = ShoppingListSummaryUiModel(id, householdId, name, version)
+
+    private fun invalidateCatalogSnapshot() {
+        catalogSnapshot = null
+    }
 
     private suspend fun loadCatalogSnapshotOrNull(): List<ProductCatalogUiModel>? = catalogMutex.withLock {
         catalogSnapshot?.let { return@withLock it }
@@ -480,6 +524,7 @@ class OfflineShoppingRepository(
 
     override suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> = accountOperation {
         val query = search.normalizedSearch()
+        if (query.isBlank()) return@accountOperation loadCatalogSnapshotOrNull()?.take(limit.coerceAtLeast(1)) ?: emptyList()
         if (query.length < 2) return@accountOperation emptyList()
         val snapshot = catalogSnapshot ?: loadCachedCatalogSnapshotOrNull()
         if (snapshot != null) return@accountOperation snapshot.searchCatalog(query, limit)
@@ -511,6 +556,43 @@ class OfflineShoppingRepository(
             ?: ProductCatalogUiModel(productId, "", "", null, "star", null, favorite)
     }
 
+    override suspend fun createProductCategory(name: String, iconKey: String): ProductCategoryUiModel = accountOperation {
+        val category = api.createProductCategory(ProductCategoryMutationRequest(name = name, iconKey = iconKey)).also { isOffline = false }.bodyOrThrow().category.toUiModel()
+        invalidateCatalogSnapshot()
+        category
+    }
+
+    override suspend fun updateProductCategory(categoryId: String, name: String, iconKey: String): ProductCategoryUiModel = accountOperation {
+        val category = api.updateProductCategory(categoryId, ProductCategoryMutationRequest(name = name, iconKey = iconKey)).also { isOffline = false }.bodyOrThrow().category.toUiModel()
+        invalidateCatalogSnapshot()
+        category
+    }
+
+    override suspend fun deleteProductCategory(categoryId: String) = accountOperation {
+        api.deleteProductCategory(categoryId).also { isOffline = false }.bodyOrThrow()
+        invalidateCatalogSnapshot()
+        Unit
+    }
+
+    override suspend fun createProductCatalogItem(name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel = accountOperation {
+        val product = api.createProductCatalogItem(ProductCatalogMutationRequest(name, categoryId, iconKey, brand, packageSize)).also { isOffline = false }.bodyOrThrow().product.toUiModel()
+        invalidateCatalogSnapshot()
+        product
+    }
+
+    override suspend fun updateProductCatalogItem(productId: String, name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel = accountOperation {
+        val product = api.updateProductCatalogItem(productId, ProductCatalogMutationRequest(name, categoryId, iconKey, brand, packageSize)).also { isOffline = false }.bodyOrThrow().product.toUiModel()
+        invalidateCatalogSnapshot()
+        product
+    }
+
+    override suspend fun deleteProductCatalogItem(productId: String) = accountOperation {
+        api.deleteProductCatalogItem(productId).also { isOffline = false }.bodyOrThrow()
+        favoriteProductIds = favoriteProductIds - productId
+        invalidateCatalogSnapshot()
+        Unit
+    }
+
     override suspend fun profileDisplayName(): String? = accountOperation {
         runCatching {
             api.me().also { isOffline = false }.bodyOrThrow().user.name.takeIf { it.isNotBlank() }
@@ -536,6 +618,11 @@ class OfflineShoppingRepository(
             favoriteProductIds = cached.favoriteIds() + favoriteProductIds
             cached.applyFavoriteOverlay(favoriteProductIds).also { catalogSnapshot = it }
         }
+
+    private fun invalidateCatalogSnapshot() {
+        catalogSnapshot = null
+        catalogCache?.clear()
+    }
 
     override suspend fun deleteItem(item: ShoppingListItemUiModel) = accountOperation {
         databaseMutex.withLock {
@@ -814,6 +901,10 @@ class ProductCatalogCache(
             cacheFile.writeText(adapter.toJson(ProductCatalogCachePayload(products = products)))
         }
     }
+
+    fun clear() {
+        runCatching { cacheFile.delete() }
+    }
 }
 
 private data class ProductCatalogCachePayload(
@@ -828,6 +919,8 @@ private fun ProductCatalogItemDto.toUiModel() = ProductCatalogUiModel(
     iconKey = iconKey,
     packageSize = packageSize,
     isFavorite = isFavorite,
+    categoryId = categoryId,
+    brand = brand,
 )
 
 private fun ProductCategoryDto.toUiModel() = ProductCategoryUiModel(

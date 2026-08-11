@@ -59,6 +59,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -75,6 +76,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -254,6 +257,12 @@ fun ShoppingListApp(
             viewModel::onAction,
             viewModel::searchProductCatalog,
             viewModel::setProductFavorite,
+            viewModel::createProductCategory,
+            viewModel::updateProductCategory,
+            viewModel::deleteProductCategory,
+            viewModel::createProductCatalogItem,
+            viewModel::updateProductCatalogItem,
+            viewModel::deleteProductCatalogItem,
             onLogout,
             onMembers,
             onOpenNotifications = onOpenNotifications,
@@ -272,6 +281,12 @@ internal fun ShoppingListContent(
     onAction: (ShoppingListAction) -> Unit,
     onSearchProducts: suspend (String, Int) -> List<ProductCatalogUiModel> = { _, _ -> emptyList() },
     onSetProductFavorite: suspend (String, Boolean) -> ProductCatalogUiModel? = { _, _ -> null },
+    onCreateProductCategory: suspend (String, String) -> ProductCategoryUiModel? = { _, _ -> null },
+    onUpdateProductCategory: suspend (String, String, String) -> ProductCategoryUiModel? = { _, _, _ -> null },
+    onDeleteProductCategory: suspend (String) -> Boolean = { false },
+    onCreateProduct: suspend (String, String?, String, String?, String?) -> ProductCatalogUiModel? = { _, _, _, _, _ -> null },
+    onUpdateProduct: suspend (String, String, String?, String, String?, String?) -> ProductCatalogUiModel? = { _, _, _, _, _, _ -> null },
+    onDeleteProduct: suspend (String) -> Boolean = { false },
     onLogout: () -> Unit,
     onMembers: (String) -> Unit,
     onOpenNotifications: (() -> Unit)? = null,
@@ -427,10 +442,24 @@ internal fun ShoppingListContent(
                                     openedListMode = ListOpenMode.View
                                     openedListId = listId
                                 },
+                                onDeleteList = { listId ->
+                                    onAction(ShoppingListAction.SelectList(listId))
+                                    deletingList = true
+                                },
                                 pinnedListId = pinnedListId,
                                 onTogglePinned = togglePinnedList,
                             )
-                            DashboardTab.Catalog -> CatalogPanel(data.productCategories)
+                            DashboardTab.Catalog -> CatalogPanel(
+                                categories = data.productCategories,
+                                onSearchProducts = onSearchProducts,
+                                onSetProductFavorite = onSetProductFavorite,
+                                onCreateProductCategory = onCreateProductCategory,
+                                onUpdateProductCategory = onUpdateProductCategory,
+                                onDeleteProductCategory = onDeleteProductCategory,
+                                onCreateProduct = onCreateProduct,
+                                onUpdateProduct = onUpdateProduct,
+                                onDeleteProduct = onDeleteProduct,
+                            )
                             DashboardTab.Profile -> ProfilePanel(
                                 displayName,
                                 onLogout,
@@ -917,6 +946,7 @@ private fun ListsPanel(
     onCreateList: () -> Unit,
     onEditList: (String) -> Unit,
     onViewList: (String) -> Unit,
+    onDeleteList: (String) -> Unit,
     pinnedListId: String?,
     onTogglePinned: (String) -> Unit,
 ) {
@@ -976,6 +1006,7 @@ private fun ListsPanel(
                                 onAction(ShoppingListAction.SelectList(list.id))
                                 onViewList(list.id)
                             },
+                            onDelete = { onDeleteList(list.id) },
                         )
                     }
                     if (rowLists.size == 1) Box(modifier = Modifier.weight(1f))
@@ -986,45 +1017,652 @@ private fun ListsPanel(
 }
 
 @Composable
-private fun CatalogPanel(categories: List<ProductCategoryUiModel>) {
+private fun CatalogPanel(
+    categories: List<ProductCategoryUiModel>,
+    onSearchProducts: suspend (String, Int) -> List<ProductCatalogUiModel>,
+    onSetProductFavorite: suspend (String, Boolean) -> ProductCatalogUiModel?,
+    onCreateProductCategory: suspend (String, String) -> ProductCategoryUiModel?,
+    onUpdateProductCategory: suspend (String, String, String) -> ProductCategoryUiModel?,
+    onDeleteProductCategory: suspend (String) -> Boolean,
+    onCreateProduct: suspend (String, String?, String, String?, String?) -> ProductCatalogUiModel?,
+    onUpdateProduct: suspend (String, String, String?, String, String?, String?) -> ProductCatalogUiModel?,
+    onDeleteProduct: suspend (String) -> Boolean,
+) {
+    var search by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf<ProductCategoryUiModel?>(null) }
+    var selectedFilter by remember { mutableStateOf(CatalogSearchFilter.All) }
+    var filterDialogOpen by remember { mutableStateOf(false) }
+    var createDialogOpen by remember { mutableStateOf(false) }
+    var editingCategory by remember { mutableStateOf<ProductCategoryUiModel?>(null) }
+    var editingProduct by remember { mutableStateOf<ProductCatalogUiModel?>(null) }
+    var categoryActionsOpen by remember { mutableStateOf(false) }
+    var deleteCategory by remember { mutableStateOf<ProductCategoryUiModel?>(null) }
+    var deleteProduct by remember { mutableStateOf<ProductCatalogUiModel?>(null) }
+    var products by remember { mutableStateOf(emptyList<ProductCatalogUiModel>()) }
+    var loading by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    fun applyFilters(
+        source: List<ProductCatalogUiModel>,
+        category: ProductCategoryUiModel? = selectedCategory,
+        filter: CatalogSearchFilter = selectedFilter,
+    ): List<ProductCatalogUiModel> {
+        val categoryName = category?.name?.normalizedUiSearch()
+        return source.filter { product ->
+            val productCategory = product.categoryName?.normalizedUiSearch()
+            val matchesSelectedCategory = when {
+                category == null -> true
+                category.isFavorite -> product.isFavorite
+                else -> productCategory == categoryName
+            }
+            val matchesSelectedFilter = when (filter) {
+                CatalogSearchFilter.All -> true
+                CatalogSearchFilter.Favorites -> product.isFavorite
+                CatalogSearchFilter.Category -> category == null || productCategory == categoryName
+            }
+            matchesSelectedCategory && matchesSelectedFilter
+        }
+    }
+
+    fun loadProducts(query: String = search, category: ProductCategoryUiModel? = selectedCategory) {
+        val cleanQuery = query.trim()
+        if (cleanQuery.length < 2 && category == null) {
+            products = emptyList()
+            message = null
+            return
+        }
+        scope.launch {
+            loading = true
+            message = null
+            runCatching {
+                val lookup = cleanQuery.ifBlank { if (category?.isFavorite == true) "" else category?.name.orEmpty() }
+                onSearchProducts(lookup, 30)
+            }.onSuccess { result ->
+                products = applyFilters(result, category)
+                message = if (products.isEmpty()) "No hay productos para mostrar." else null
+            }.onFailure {
+                products = emptyList()
+                message = "No se pudo cargar el catálogo."
+            }
+            loading = false
+        }
+    }
+
+    fun resetToCatalog() {
+        selectedCategory = null
+        selectedFilter = CatalogSearchFilter.All
+        search = ""
+        products = emptyList()
+        message = null
+    }
+
+    fun refreshVisibleProducts() {
+        loadProducts()
+    }
+
+    LaunchedEffect(search, selectedFilter) {
+        delay(180)
+        loadProducts()
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(WebPage)
-            .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp)
             .padding(top = screenTopPadding(), bottom = screenBottomPadding()),
         verticalArrangement = Arrangement.spacedBy(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        CatalogSearchBar()
-        CatalogCategoriesGrid(categories)
+        CatalogSearchBar(
+            search = search,
+            onSearchChange = { search = it },
+            onOpenFilters = { filterDialogOpen = true },
+            trailingAction = {
+                if (selectedCategory == null) {
+                    CatalogHeaderButton(
+                        contentDescription = "Crear en catalogo",
+                        onClick = { createDialogOpen = true },
+                    ) {
+                        Icon(Icons.Outlined.Add, contentDescription = null, tint = WebPrimary, modifier = Modifier.size(25.dp))
+                    }
+                } else {
+                    Box {
+                        CatalogHeaderButton(
+                            contentDescription = "Opciones de categoria",
+                            onClick = { categoryActionsOpen = true },
+                        ) {
+                            Text("...", color = WebPrimary, fontSize = 24.sp, lineHeight = 18.sp, fontWeight = FontWeight.Black)
+                        }
+                        CatalogActionsMenu(
+                            expanded = categoryActionsOpen,
+                            editLabel = "Editar categoria",
+                            deleteLabel = "Eliminar categoria",
+                            onEdit = {
+                                categoryActionsOpen = false
+                                selectedCategory?.takeUnless { it.isFavorite }?.let { editingCategory = it }
+                            },
+                            onDelete = {
+                                categoryActionsOpen = false
+                                selectedCategory?.takeUnless { it.isFavorite }?.let { deleteCategory = it }
+                            },
+                            onDismiss = { categoryActionsOpen = false },
+                        )
+                    }
+                }
+            },
+        )
+        if (selectedCategory == null && search.trim().length < 2) {
+            Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                CatalogCategoriesGrid(
+                    categories = categories,
+                    onCategorySelected = { category ->
+                        selectedCategory = category
+                        selectedFilter = if (category.isFavorite) CatalogSearchFilter.Favorites else CatalogSearchFilter.Category
+                        loadProducts(category = category)
+                    },
+                )
+            }
+        } else {
+            CatalogProductsView(
+                title = selectedCategory?.name ?: "Resultados",
+                products = products,
+                loading = loading,
+                message = message,
+                onToggleFavorite = { product ->
+                    val nextFavorite = !product.isFavorite
+                    products = applyFilters(products.map { if (it.id == product.id) it.copy(isFavorite = nextFavorite) else it })
+                    scope.launch {
+                        val updated = onSetProductFavorite(product.id, nextFavorite)
+                        if (updated != null) {
+                            val visibleProduct = if (updated.name.isBlank()) product.copy(isFavorite = updated.isFavorite) else updated
+                            products = applyFilters(products.map { if (it.id == visibleProduct.id) visibleProduct else it })
+                        } else {
+                            products = applyFilters(products.map { if (it.id == product.id) product else it })
+                        }
+                    }
+                },
+                onEditProduct = { editingProduct = it },
+                onDeleteProduct = { deleteProduct = it },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+    if (filterDialogOpen) {
+        CatalogFilterDialog(
+            selected = selectedFilter,
+            onSelected = {
+                selectedFilter = it
+                filterDialogOpen = false
+            },
+            onDismiss = { filterDialogOpen = false },
+        )
+    }
+    if (createDialogOpen) {
+        CatalogMutationDialog(
+            categories = categories,
+            selectedCategory = selectedCategory,
+            onDismiss = { createDialogOpen = false },
+            onSubmitCategory = { name, icon ->
+                scope.launch {
+                    val created = onCreateProductCategory(name, icon)
+                    if (created != null) {
+                        createDialogOpen = false
+                        resetToCatalog()
+                    }
+                }
+            },
+            onSubmitProduct = { name, categoryId, icon, brand, packageSize ->
+                scope.launch {
+                    val created = onCreateProduct(name, categoryId, icon, brand, packageSize)
+                    if (created != null) {
+                        createDialogOpen = false
+                        refreshVisibleProducts()
+                    }
+                }
+            },
+        )
+    }
+    editingCategory?.let { category ->
+        CatalogMutationDialog(
+            categories = categories,
+            editingCategory = category,
+            selectedCategory = category,
+            onDismiss = { editingCategory = null },
+            onSubmitCategory = { name, icon ->
+                scope.launch {
+                    val updated = onUpdateProductCategory(category.id, name, icon)
+                    if (updated != null) {
+                        editingCategory = null
+                        selectedCategory = updated
+                        refreshVisibleProducts()
+                    }
+                }
+            },
+            onSubmitProduct = { _, _, _, _, _ -> },
+        )
+    }
+    editingProduct?.let { product ->
+        CatalogMutationDialog(
+            categories = categories,
+            editingProduct = product,
+            selectedCategory = selectedCategory,
+            onDismiss = { editingProduct = null },
+            onSubmitCategory = { _, _ -> },
+            onSubmitProduct = { name, categoryId, icon, brand, packageSize ->
+                scope.launch {
+                    val updated = onUpdateProduct(product.id, name, categoryId, icon, brand, packageSize)
+                    if (updated != null) {
+                        editingProduct = null
+                        products = applyFilters(products.map { if (it.id == updated.id) updated else it })
+                    }
+                }
+            },
+        )
+    }
+    deleteCategory?.let { category ->
+        ConfirmDialog("Eliminar categoria", "Se eliminara esta categoria del catalogo.", {
+            scope.launch {
+                if (onDeleteProductCategory(category.id)) {
+                    deleteCategory = null
+                    resetToCatalog()
+                }
+            }
+        }, { deleteCategory = null })
+    }
+    deleteProduct?.let { product ->
+        ConfirmDialog("Eliminar producto", "Se eliminara este producto del catalogo.", {
+            scope.launch {
+                if (onDeleteProduct(product.id)) {
+                    deleteProduct = null
+                    products = products.filterNot { it.id == product.id }
+                }
+            }
+        }, { deleteProduct = null })
     }
 }
 
 @Composable
-private fun CatalogSearchBar() {
+private fun CatalogSearchBar(
+    search: String,
+    onSearchChange: (String) -> Unit,
+    onOpenFilters: () -> Unit,
+    trailingAction: @Composable () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(52.dp)
-            .clip(MaterialTheme.shapes.large)
-            .background(Color(0xFFF2F3F2))
-            .padding(horizontal = 16.dp),
+            .height(54.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Icon(
-            imageVector = Icons.Outlined.Search,
-            contentDescription = null,
-            tint = WebPrimary,
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .height(52.dp)
+                .padding(horizontal = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Search,
+                contentDescription = null,
+                tint = WebPrimary,
+            )
+            OutlinedTextField(
+                value = search,
+                onValueChange = onSearchChange,
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("Buscar en catálogo", color = WebMuted, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = WebText),
+            )
+        }
+        IconButton(
+            onClick = onOpenFilters,
+            modifier = Modifier
+                .size(52.dp)
+                .clip(MaterialTheme.shapes.large)
+                .background(WebLime.copy(alpha = 0.95f)),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Tune,
+                contentDescription = "Abrir filtros de búsqueda",
+                tint = WebPrimary,
+            )
+        }
+        trailingAction()
+    }
+}
+
+@Composable
+private fun CatalogHeaderButton(
+    contentDescription: String,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(52.dp)
+            .clip(MaterialTheme.shapes.large)
+            .background(WebLime.copy(alpha = 0.95f))
+            .semantics { this.contentDescription = contentDescription },
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun CatalogActionsMenu(
+    expanded: Boolean,
+    editLabel: String,
+    deleteLabel: String,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        DropdownMenuItem(
+            text = { Text(editLabel, color = WebText, fontWeight = FontWeight.SemiBold) },
+            leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null, tint = WebPrimary) },
+            onClick = onEdit,
         )
-        Text(
-            text = "Buscar en catálogo",
-            style = MaterialTheme.typography.bodyMedium,
-            color = WebMuted,
+        DropdownMenuItem(
+            text = { Text(deleteLabel, color = Color(0xFFB42318), fontWeight = FontWeight.SemiBold) },
+            leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null, tint = Color(0xFFB42318)) },
+            onClick = onDelete,
         )
     }
+}
+
+private enum class CatalogMutationType { Category, Product }
+
+private data class CatalogIconOption(val key: String, val label: String, val glyph: String)
+
+private val CatalogIconOptions = listOf(
+    CatalogIconOption("star", "Favorito", "★"),
+    CatalogIconOption("fruit", "Fruta", "🍎"),
+    CatalogIconOption("vegetable", "Verdura", "🥬"),
+    CatalogIconOption("meat", "Carne", "🥩"),
+    CatalogIconOption("fish", "Pescado", "🐟"),
+    CatalogIconOption("milk", "Lacteos", "🥛"),
+    CatalogIconOption("egg", "Huevos", "🥚"),
+    CatalogIconOption("bread", "Pan", "🥖"),
+    CatalogIconOption("rice", "Arroz", "🍚"),
+    CatalogIconOption("pasta", "Pasta", "🍝"),
+    CatalogIconOption("legume", "Legumbres", "🫘"),
+    CatalogIconOption("coffee", "Cafe", "☕"),
+    CatalogIconOption("cocoa", "Cacao", "🍫"),
+    CatalogIconOption("water", "Agua", "💧"),
+    CatalogIconOption("snack", "Aperitivos", "🥨"),
+    CatalogIconOption("can", "Conservas", "🥫"),
+    CatalogIconOption("clean", "Limpieza", "🧽"),
+    CatalogIconOption("care", "Cuidado", "🧴"),
+    CatalogIconOption("pet", "Mascotas", "🐾"),
+    CatalogIconOption("cart", "General", "🛒"),
+)
+
+@Composable
+private fun CatalogMutationDialog(
+    categories: List<ProductCategoryUiModel>,
+    selectedCategory: ProductCategoryUiModel? = null,
+    editingCategory: ProductCategoryUiModel? = null,
+    editingProduct: ProductCatalogUiModel? = null,
+    onDismiss: () -> Unit,
+    onSubmitCategory: (String, String) -> Unit,
+    onSubmitProduct: (String, String?, String, String?, String?) -> Unit,
+) {
+    val editableCategories = categories.filterNot { it.isFavorite }
+    var type by remember(editingCategory, editingProduct) {
+        mutableStateOf(if (editingProduct != null) CatalogMutationType.Product else CatalogMutationType.Category)
+    }
+    val effectiveType = when {
+        editingCategory != null -> CatalogMutationType.Category
+        editingProduct != null -> CatalogMutationType.Product
+        else -> type
+    }
+    var categoryName by remember(editingCategory) { mutableStateOf(editingCategory?.name.orEmpty()) }
+    var categoryIcon by remember(editingCategory) { mutableStateOf(editingCategory?.iconKey ?: selectedCategory?.iconKey ?: "cart") }
+    var productName by remember(editingProduct) { mutableStateOf(editingProduct?.name.orEmpty()) }
+    var productCategoryId by remember(editingProduct, selectedCategory) {
+        mutableStateOf(editingProduct?.categoryId ?: selectedCategory?.takeUnless { it.isFavorite }?.id ?: editableCategories.firstOrNull()?.id.orEmpty())
+    }
+    var productIcon by remember(editingProduct) { mutableStateOf(editingProduct?.iconKey ?: "cart") }
+    var productBrand by remember(editingProduct) { mutableStateOf(editingProduct?.brand.orEmpty()) }
+    var productPackage by remember(editingProduct) { mutableStateOf(editingProduct?.packageSize.orEmpty()) }
+    val isEditing = editingCategory != null || editingProduct != null
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = WebSurface,
+        shape = RoundedCornerShape(26.dp),
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(if (isEditing) "Editar" else "Crear", color = WebText, fontWeight = FontWeight.Bold)
+                if (!isEditing) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.large)
+                            .background(Color(0xFFF2F8F4))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        CatalogTypeChip("Categoria", type == CatalogMutationType.Category, Modifier.weight(1f)) { type = CatalogMutationType.Category }
+                        CatalogTypeChip("Producto", type == CatalogMutationType.Product, Modifier.weight(1f)) { type = CatalogMutationType.Product }
+                    }
+                }
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (effectiveType == CatalogMutationType.Category) {
+                    OutlinedTextField(
+                        value = categoryName,
+                        onValueChange = { categoryName = it },
+                        label = { Text("Nombre de categoria") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    CatalogIconPicker("Icono", categoryIcon, onSelected = { categoryIcon = it })
+                } else {
+                    OutlinedTextField(
+                        value = productName,
+                        onValueChange = { productName = it },
+                        label = { Text("Nombre del producto") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    CatalogCategoryPicker(
+                        categories = editableCategories,
+                        selectedCategoryId = productCategoryId,
+                        onSelected = { productCategoryId = it },
+                    )
+                    CatalogIconPicker("Icono", productIcon, onSelected = { productIcon = it })
+                    OutlinedTextField(
+                        value = productBrand,
+                        onValueChange = { productBrand = it },
+                        label = { Text("Marca") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = productPackage,
+                        onValueChange = { productPackage = it },
+                        label = { Text("Tamano") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (effectiveType == CatalogMutationType.Category) {
+                        onSubmitCategory(categoryName.trim(), categoryIcon)
+                    } else {
+                        onSubmitProduct(
+                            productName.trim(),
+                            productCategoryId.ifBlank { null },
+                            productIcon,
+                            productBrand.trim().ifBlank { null },
+                            productPackage.trim().ifBlank { null },
+                        )
+                    }
+                },
+                enabled = if (effectiveType == CatalogMutationType.Category) categoryName.isNotBlank() else productName.isNotBlank(),
+                colors = webPrimaryButtonColors(),
+            ) {
+                Text(if (isEditing) "Guardar" else "Crear")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar", color = WebPrimary, fontWeight = FontWeight.Bold) }
+        },
+    )
+}
+
+@Composable
+private fun CatalogTypeChip(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier = modifier
+            .height(40.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(if (selected) WebLime else Color.Transparent)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, color = WebPrimary, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun CatalogIconPicker(label: String, selectedIconKey: String, onSelected: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val selected = CatalogIconOptions.firstOrNull { it.key == selectedIconKey } ?: CatalogIconOptions.last()
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, color = WebText, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        Box {
+            Button(
+                onClick = { expanded = true },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = MaterialTheme.shapes.medium,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F8F4), contentColor = WebText),
+            ) {
+                Text("${selected.glyph}  ${selected.label}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                CatalogIconOptions.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text("${option.glyph}  ${option.label}") },
+                        onClick = {
+                            onSelected(option.key)
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CatalogCategoryPicker(
+    categories: List<ProductCategoryUiModel>,
+    selectedCategoryId: String,
+    onSelected: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selected = categories.firstOrNull { it.id == selectedCategoryId }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Categoria", color = WebText, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        Box {
+            Button(
+                onClick = { expanded = true },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = MaterialTheme.shapes.medium,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F8F4), contentColor = WebText),
+            ) {
+                Text(selected?.let { "${categoryEmoji(it)}  ${it.name}" } ?: "Sin categoria", maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                DropdownMenuItem(
+                    text = { Text("Sin categoria") },
+                    onClick = {
+                        onSelected("")
+                        expanded = false
+                    },
+                )
+                categories.forEach { category ->
+                    DropdownMenuItem(
+                        text = { Text("${categoryEmoji(category)}  ${category.name}") },
+                        onClick = {
+                            onSelected(category.id)
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+private enum class CatalogSearchFilter(val label: String, val description: String) {
+    All("Todos los productos", "Busca en todo el catálogo."),
+    Favorites("Favoritos", "Muestra solo tus productos guardados."),
+    Category("Categoría seleccionada", "Limita la búsqueda a la categoría abierta."),
+}
+
+@Composable
+private fun CatalogFilterDialog(
+    selected: CatalogSearchFilter,
+    onSelected: (CatalogSearchFilter) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = WebSurface,
+        shape = RoundedCornerShape(26.dp),
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Filtro", color = WebPrimary, fontSize = 12.sp, fontWeight = FontWeight.Black)
+                Text("Filtro de búsqueda", color = WebText, fontWeight = FontWeight.Bold, lineHeight = 25.sp)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                CatalogSearchFilter.entries.forEach { option ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(if (selected == option) WebLime.copy(alpha = 0.4f) else WebPage)
+                            .border(1.dp, if (selected == option) WebPrimary.copy(alpha = 0.35f) else Color(0xFFE3E8E4), RoundedCornerShape(18.dp))
+                            .clickable { onSelected(option) }
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        RadioButton(
+                            selected = selected == option,
+                            onClick = { onSelected(option) },
+                            colors = RadioButtonDefaults.colors(selectedColor = WebPrimary),
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(option.label, color = WebText, fontWeight = FontWeight.Bold)
+                            Text(option.description, color = WebMuted, fontSize = 12.sp, lineHeight = 15.sp)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cerrar", color = WebPrimary, fontWeight = FontWeight.Bold) }
+        },
+    )
 }
 
 @Composable
@@ -1040,6 +1678,135 @@ private fun EmptyCatalogCategories() {
     }
 }
 
+@Composable
+private fun CatalogProductsView(
+    title: String,
+    products: List<ProductCatalogUiModel>,
+    loading: Boolean,
+    message: String?,
+    onToggleFavorite: (ProductCatalogUiModel) -> Unit,
+    onEditProduct: (ProductCatalogUiModel) -> Unit,
+    onDeleteProduct: (ProductCatalogUiModel) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text(title, color = WebText, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        when {
+            loading -> Text("Cargando productos...", color = WebMuted, fontWeight = FontWeight.SemiBold)
+            message != null -> Text(message, color = WebMuted, fontWeight = FontWeight.SemiBold)
+            else -> CatalogProductGrid(
+                products = products,
+                onToggleFavorite = onToggleFavorite,
+                onEditProduct = onEditProduct,
+                onDeleteProduct = onDeleteProduct,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CatalogProductGrid(
+    products: List<ProductCatalogUiModel>,
+    onToggleFavorite: (ProductCatalogUiModel) -> Unit,
+    onEditProduct: (ProductCatalogUiModel) -> Unit,
+    onDeleteProduct: (ProductCatalogUiModel) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        products.chunked(2).forEach { rowProducts ->
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                rowProducts.forEach { product ->
+                    CatalogProductCard(
+                        product = product,
+                        onToggleFavorite = { onToggleFavorite(product) },
+                        onEditProduct = { onEditProduct(product) },
+                        onDeleteProduct = { onDeleteProduct(product) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                if (rowProducts.size == 1) Box(modifier = Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CatalogProductCard(
+    product: ProductCatalogUiModel,
+    onToggleFavorite: () -> Unit,
+    onEditProduct: () -> Unit,
+    onDeleteProduct: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var actionsOpen by remember { mutableStateOf(false) }
+    Card(
+        modifier = modifier
+            .height(150.dp)
+            .border(1.dp, Color(0xFFCFE4D7), MaterialTheme.shapes.large),
+        colors = CardDefaults.cardColors(containerColor = WebSurface),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(Color(0xFFF2F8F4)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(productIcon(product), fontSize = 23.sp, lineHeight = 23.sp)
+                }
+                CompactFavoriteButton(favorite = product.isFavorite, onClick = onToggleFavorite)
+                Box {
+                    CatalogMiniActionButton(contentDescription = "Opciones de producto", onClick = { actionsOpen = true }) {
+                        Text("...", color = WebPrimary, fontSize = 18.sp, lineHeight = 12.sp, fontWeight = FontWeight.Black)
+                    }
+                    CatalogActionsMenu(
+                        expanded = actionsOpen,
+                        editLabel = "Editar producto",
+                        deleteLabel = "Eliminar producto",
+                        onEdit = {
+                            actionsOpen = false
+                            onEditProduct()
+                        },
+                        onDelete = {
+                            actionsOpen = false
+                            onDeleteProduct()
+                        },
+                        onDismiss = { actionsOpen = false },
+                    )
+                }
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                Text(
+                    text = product.name,
+                    color = WebText,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyMedium,
+                    lineHeight = 18.sp,
+                )
+                val meta = product.metaLabel()
+                if (meta.isNotBlank()) {
+                    Text(
+                        meta,
+                        color = WebMuted,
+                        fontSize = 11.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 14.sp,
+                    )
+                }
+            }
+        }
+    }
+}
 @Composable
 private fun HouseholdsMiniDashboard(
     householdCount: Int,
@@ -1085,7 +1852,10 @@ private fun MiniDashboardMetric(label: String, value: String, modifier: Modifier
 }
 
 @Composable
-private fun CatalogCategoriesGrid(categories: List<ProductCategoryUiModel>) {
+private fun CatalogCategoriesGrid(
+    categories: List<ProductCategoryUiModel>,
+    onCategorySelected: (ProductCategoryUiModel) -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         val favoriteCategory = categories.firstOrNull { it.isFavorite } ?: ProductCategoryUiModel(
             id = "favorites",
@@ -1095,11 +1865,11 @@ private fun CatalogCategoriesGrid(categories: List<ProductCategoryUiModel>) {
             isFavorite = true,
         )
         val normalCategories = categories.filterNot { it.isFavorite }
-        FavoriteCatalogCategoryCard(favoriteCategory, Modifier.fillMaxWidth())
+        FavoriteCatalogCategoryCard(favoriteCategory, Modifier.fillMaxWidth(), onClick = { onCategorySelected(favoriteCategory) })
         normalCategories.chunked(2).forEach { rowCategories ->
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxWidth()) {
                 rowCategories.forEach { category ->
-                    CatalogCategoryCard(category = category, modifier = Modifier.weight(1f))
+                    CatalogCategoryCard(category = category, modifier = Modifier.weight(1f), onClick = { onCategorySelected(category) })
                 }
                 if (rowCategories.size == 1) {
                     Box(modifier = Modifier.weight(1f))
@@ -1110,14 +1880,14 @@ private fun CatalogCategoriesGrid(categories: List<ProductCategoryUiModel>) {
 }
 
 @Composable
-private fun FavoriteCatalogCategoryCard(category: ProductCategoryUiModel, modifier: Modifier = Modifier) {
+private fun FavoriteCatalogCategoryCard(category: ProductCategoryUiModel, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Row(
         modifier = modifier
             .height(96.dp)
             .clip(MaterialTheme.shapes.large)
             .background(WebLime.copy(alpha = 0.9f))
             .border(1.dp, WebPrimary.copy(alpha = 0.25f), MaterialTheme.shapes.large)
-            .clickable { }
+            .clickable(onClick = onClick)
             .padding(horizontal = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -1139,13 +1909,13 @@ private fun FavoriteCatalogCategoryCard(category: ProductCategoryUiModel, modifi
 }
 
 @Composable
-private fun CatalogCategoryCard(category: ProductCategoryUiModel, modifier: Modifier = Modifier) {
+private fun CatalogCategoryCard(category: ProductCategoryUiModel, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Column(
         modifier = modifier
             .height(190.dp)
             .clip(MaterialTheme.shapes.large)
             .background(categoryBackground(category))
-            .clickable { }
+            .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 18.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween,
@@ -1766,16 +2536,17 @@ private fun ShoppingListGridCard(
     onTogglePinned: () -> Unit,
     onEdit: () -> Unit,
     onView: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     Column(
         modifier = modifier
             .height(190.dp)
             .clip(MaterialTheme.shapes.large)
-            .background(if (selected) WebLime else WebSurface)
-            .padding(14.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
+            .background(if (pinned) WebLime else WebSurface)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.weight(1f, fill = false)) {
             Text(
                 text = list.name,
                 style = MaterialTheme.typography.titleMedium,
@@ -1786,11 +2557,45 @@ private fun ShoppingListGridCard(
             )
             ListCardStat("Pendientes", pendingCount?.toString() ?: "—")
             ListCardStat("Comprados", checkedCount?.toString() ?: "—")
-            PinButton(pinned = pinned, onClick = onTogglePinned)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            WideIconActionButton(Icons.Outlined.Add, "Añadir", Modifier.weight(1f), onEdit)
-            WideIconActionButton(Icons.Outlined.Visibility, "Ver lista", Modifier.weight(1f), onView)
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
+                WideIconActionButton(
+                    icon = Icons.Outlined.PushPin,
+                    contentDescription = if (pinned) "Desfijar lista" else "Fijar lista",
+                    modifier = Modifier.weight(1f),
+                    onClick = onTogglePinned,
+                    containerColor = if (pinned) Color.White else WebPrimary.copy(alpha = 0.72f),
+                    iconTint = if (pinned) Color.Black else Color.White,
+                    height = 34.dp,
+                )
+                WideIconActionButton(
+                    icon = Icons.Outlined.Delete,
+                    contentDescription = "Eliminar lista",
+                    modifier = Modifier.weight(1f),
+                    onClick = onDelete,
+                    containerColor = Color(0xFFB42318).copy(alpha = 0.82f),
+                    height = 34.dp,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.fillMaxWidth()) {
+                WideIconActionButton(
+                    icon = Icons.Outlined.Edit,
+                    contentDescription = "Editar lista",
+                    modifier = Modifier.weight(1f),
+                    onClick = onEdit,
+                    containerColor = WebPrimary.copy(alpha = 0.82f),
+                    height = 34.dp,
+                )
+                WideIconActionButton(
+                    icon = Icons.Outlined.Visibility,
+                    contentDescription = "Ver lista",
+                    modifier = Modifier.weight(1f),
+                    onClick = onView,
+                    containerColor = WebPrimary.copy(alpha = 0.82f),
+                    height = 34.dp,
+                )
+            }
         }
     }
 }
@@ -1832,21 +2637,29 @@ private fun SquareIconActionButton(icon: ImageVector, contentDescription: String
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = contentDescription, tint = Color.White, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = contentDescription, tint = Color.White, modifier = Modifier.size(20.dp))
     }
 }
 
 @Composable
-private fun WideIconActionButton(icon: ImageVector, contentDescription: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun WideIconActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    containerColor: Color = WebPrimary,
+    iconTint: Color = Color.White,
+    height: Dp = 44.dp,
+) {
     Box(
         modifier = modifier
-            .height(44.dp)
+            .height(height)
             .clip(MaterialTheme.shapes.medium)
-            .background(WebPrimary)
+            .background(containerColor)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = contentDescription, tint = Color.White, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = contentDescription, tint = iconTint, modifier = Modifier.size(20.dp))
     }
 }
 
@@ -2117,7 +2930,6 @@ fun ShoppingListScreen(
                         }
                     },
                     onClearChecked = onClearChecked,
-                    onDelete = onDelete,
                 )
             }
         }
@@ -2226,20 +3038,11 @@ private fun ShoppingListWebHeader(
     onCardModeChange: (Boolean) -> Unit,
     onAdd: () -> Unit,
     onClearChecked: () -> Unit,
-    onDelete: () -> Unit,
 ) {
     Card(colors = CardDefaults.cardColors(containerColor = WebSurface)) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                    SquareHeaderButton(
-                        contentDescription = "Eliminar lista",
-                        background = Color(0xFFFFECE8),
-                        contentColor = Color(0xFFB42318),
-                        onClick = onDelete,
-                    ) {
-                        Icon(Icons.Outlined.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-                    }
                     Button(
                         onClick = onClearChecked,
                         modifier = Modifier.height(42.dp),
@@ -2584,6 +3387,26 @@ private fun CompactFavoriteButton(favorite: Boolean, onClick: () -> Unit) {
             fontSize = 16.sp,
             lineHeight = 16.sp,
         )
+    }
+}
+
+@Composable
+private fun CatalogMiniActionButton(
+    contentDescription: String,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(30.dp)
+            .clip(MaterialTheme.shapes.small)
+            .background(Color(0xFFF2F8F4))
+            .border(1.dp, Color(0xFFCFE4D7), MaterialTheme.shapes.small)
+            .clickable(onClick = onClick)
+            .semantics { this.contentDescription = contentDescription },
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
     }
 }
 

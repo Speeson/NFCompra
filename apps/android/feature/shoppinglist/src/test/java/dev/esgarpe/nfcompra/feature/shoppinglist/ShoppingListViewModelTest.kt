@@ -69,6 +69,18 @@ class ShoppingListViewModelTest {
         assertEquals("Bearer access-token", server.takeRequest(1, TimeUnit.SECONDS)?.getHeader("Authorization"))
     }
 
+    @Test fun `loads metrics for every household list on initial load`() = runTest {
+        val viewModel = ShoppingListViewModel(MultiListMetricsRepository())
+        viewModel.load()
+        advanceUntilIdle()
+
+        val data = viewModel.state.value as ShoppingListViewState.Data
+        assertEquals(2, data.listMetrics["list-1"]?.pendingCount)
+        assertEquals(1, data.listMetrics["list-1"]?.checkedCount)
+        assertEquals(1, data.listMetrics["list-2"]?.pendingCount)
+        assertEquals(0, data.listMetrics["list-2"]?.checkedCount)
+    }
+
     @Test fun `retries an item conflict with the server version`() = runTest {
         enqueueInitialList()
         server.enqueue(json("{\"error\":{\"code\":\"ITEM_VERSION_CONFLICT\",\"message\":\"El producto ha cambiado.\",\"details\":{\"current\":{\"id\":\"item-1\",\"listId\":\"list-1\",\"name\":\"Leche entera\",\"normalizedName\":\"leche entera\",\"quantity\":1,\"unit\":\"litro\",\"category\":null,\"note\":null,\"isChecked\":false,\"position\":0,\"version\":2,\"createdBy\":\"user-1\",\"updatedBy\":\"user-2\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:01:00Z\"}}}}", 409))
@@ -445,6 +457,32 @@ private class FlowShoppingRepository(
         error("No se usa en esta prueba.")
     override suspend fun deleteItem(item: ShoppingListItemUiModel) =
         error("No se usa en esta prueba.")
+}
+
+private class MultiListMetricsRepository : ShoppingRepository {
+    private val itemsByList = mapOf(
+        "list-1" to listOf(
+            ShoppingListItemUiModel("item-1", "Leche", "1", checked = false),
+            ShoppingListItemUiModel("item-2", "Pan", "1", checked = false),
+            ShoppingListItemUiModel("item-3", "Huevos", "1", checked = true),
+        ),
+        "list-2" to listOf(
+            ShoppingListItemUiModel("item-4", "Tomate", "1", checked = false),
+        ),
+    )
+
+    override suspend fun households() = listOf(HouseholdUiModel("home-1", "Casa"))
+    override suspend fun lists(householdId: String) = listOf(
+        ShoppingListSummaryUiModel("list-1", householdId, "Compra"),
+        ShoppingListSummaryUiModel("list-2", householdId, "Cena"),
+    )
+    override fun observeItems(listId: String) = MutableStateFlow(itemsByList.getValue(listId))
+    override suspend fun createHousehold(name: String) = error("No se usa en esta prueba.")
+    override suspend fun createList(householdId: String, name: String) = error("No se usa en esta prueba.")
+    override suspend fun createItem(listId: String, name: String, quantity: Double) = error("No se usa en esta prueba.")
+    override suspend fun updateItem(item: ShoppingListItemUiModel, name: String?, checked: Boolean?, quantity: Double?) =
+        error("No se usa en esta prueba.")
+    override suspend fun deleteItem(item: ShoppingListItemUiModel) = error("No se usa en esta prueba.")
 }
 
 private class ConflictShoppingRepository : ShoppingRepository {

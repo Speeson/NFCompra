@@ -8,7 +8,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -87,6 +86,24 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
             null
         }
 
+    suspend fun createProductCategory(name: String, iconKey: String): ProductCategoryUiModel? =
+        catalogMutation("No se pudo crear la categoria.") { repository.createProductCategory(name, iconKey) }
+
+    suspend fun updateProductCategory(categoryId: String, name: String, iconKey: String): ProductCategoryUiModel? =
+        catalogMutation("No se pudo editar la categoria.") { repository.updateProductCategory(categoryId, name, iconKey) }
+
+    suspend fun deleteProductCategory(categoryId: String): Boolean =
+        catalogMutation("No se pudo eliminar la categoria.") { repository.deleteProductCategory(categoryId); true } == true
+
+    suspend fun createProductCatalogItem(name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel? =
+        catalogMutation("No se pudo crear el producto.") { repository.createProductCatalogItem(name, categoryId, iconKey, brand, packageSize) }
+
+    suspend fun updateProductCatalogItem(productId: String, name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel? =
+        catalogMutation("No se pudo editar el producto.") { repository.updateProductCatalogItem(productId, name, categoryId, iconKey, brand, packageSize) }
+
+    suspend fun deleteProductCatalogItem(productId: String): Boolean =
+        catalogMutation("No se pudo eliminar el producto.") { repository.deleteProductCatalogItem(productId); true } == true
+
     fun openContext(householdId: String, listId: String? = null) {
         pendingContext = ShoppingContext(householdId, listId)
         loadForCurrentIntent()
@@ -98,6 +115,21 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         itemObservation?.cancel()
         viewModelScope.cancel()
     }
+
+    private suspend fun <T> catalogMutation(message: String, block: suspend () -> T): T? =
+        try {
+            val result = block()
+            refreshCategoriesAfterCatalogMutation()
+            result
+        } catch (error: ShoppingListApiException) {
+            publishTransientMessage(error.message.ifBlank { message })
+            null
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            publishTransientMessage("$message Comprueba la conexion.")
+            null
+        }
 
     private fun loadForCurrentIntent() {
         val generation = ++loadGeneration
@@ -320,7 +352,14 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         val items = repository.observeItems(listId).first()
         if (expectedGeneration != null && expectedGeneration != loadGeneration) return
         val selected = lists.first { it.id == listId }
-        val metrics = currentMetrics().withListMetrics(listId, items)
+        val householdLists = lists.filter { it.householdId == householdId }
+        val selectedListMetrics = currentMetrics().withListMetrics(listId, items)
+        val missingMetrics = householdLists.filterNot { it.id in selectedListMetrics.keys }
+        val metrics = if (missingMetrics.isEmpty() || !refreshFromServer) {
+            selectedListMetrics
+        } else {
+            selectedListMetrics + loadHouseholdMetrics(missingMetrics)
+        }
         val categories = currentCategories().ifEmpty { loadCategories() }
         val displayName = currentDisplayName() ?: loadDisplayName()
         mutableState.value = ShoppingListViewState.Data(
@@ -419,6 +458,11 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
 
     private suspend fun loadCategories(): List<ProductCategoryUiModel> =
         runCatching { repository.productCategories() }.getOrElse { emptyList() }
+
+    private suspend fun refreshCategoriesAfterCatalogMutation() {
+        val current = mutableState.value as? ShoppingListViewState.Data ?: return
+        mutableState.value = current.copy(productCategories = loadCategories())
+    }
 
     private suspend fun loadDisplayName(): String? =
         runCatching { repository.profileDisplayName() }.getOrNull()
