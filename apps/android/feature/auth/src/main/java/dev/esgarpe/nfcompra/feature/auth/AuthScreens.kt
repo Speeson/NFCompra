@@ -83,6 +83,16 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 private enum class AuthRoute { WELCOME, LOGIN, REGISTER, VERIFY, FORGOT, OTP, RESET }
+internal enum class WelcomeLoginAction { SAVED_SESSION, BIOMETRIC, CREDENTIALS }
+
+internal fun welcomeLoginAction(
+    hasSavedSession: Boolean,
+    canUseBiometricAccess: Boolean,
+): WelcomeLoginAction = when {
+    hasSavedSession -> WelcomeLoginAction.SAVED_SESSION
+    canUseBiometricAccess -> WelcomeLoginAction.BIOMETRIC
+    else -> WelcomeLoginAction.CREDENTIALS
+}
 
 private val AuthGradient = listOf(Color(0xFFAEDC81), Color(0xFF6CC51D))
 private val AuthPage = Color(0xFFF8FCF9)
@@ -149,7 +159,11 @@ fun AuthApp(
         AuthRoute.WELCOME -> WelcomeScreen(
             state = state,
             onLogin = {
-                if (hasSavedSession) onSavedSessionAccess() else route = AuthRoute.LOGIN
+                when (welcomeLoginAction(hasSavedSession, canUseBiometricAccess)) {
+                    WelcomeLoginAction.SAVED_SESSION -> onSavedSessionAccess()
+                    WelcomeLoginAction.BIOMETRIC -> onBiometricAccess()
+                    WelcomeLoginAction.CREDENTIALS -> route = AuthRoute.LOGIN
+                }
             },
             canUseBiometricAccess = canUseBiometricAccess,
             onBiometricAccess = onBiometricAccess,
