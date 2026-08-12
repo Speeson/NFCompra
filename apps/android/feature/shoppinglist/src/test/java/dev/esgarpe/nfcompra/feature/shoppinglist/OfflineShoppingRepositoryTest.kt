@@ -646,6 +646,51 @@ class OfflineShoppingRepositoryTest {
         assertEquals(8, database.shoppingDao().item("item-1")?.version)
     }
 
+    @Test
+    fun `search uses the warmed local catalog snapshot without calling remote search`() = runTest {
+        server.enqueue(catalogSnapshotResponse())
+        repository.warmProductCatalog()
+        assertEquals(1, server.requestCount)
+
+        val results = repository.searchProductCatalog("leche", 30)
+
+        assertEquals(listOf("Leche entera"), results.map { it.name })
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun `remote search is only a fallback when no catalog snapshot is available`() = runTest {
+        server.enqueue(
+            json(
+                """{"products":[{"id":"prod-milk","name":"Leche entera","normalizedName":"leche entera","categoryId":"cat-1","categoryName":"Lacteos","iconKey":"milk","brand":"Hacendado","packageSize":"1 L","source":"spanish-supermarkets","sourceProductId":"milk-1","isFavorite":false}]}""",
+            ),
+        )
+
+        val results = repository.searchProductCatalog("leche", 30)
+
+        assertEquals(listOf("Leche entera"), results.map { it.name })
+        assertEquals(1, server.requestCount)
+        assertEquals("/v1/product-catalog?search=leche&limit=25", server.takeRequest(1, TimeUnit.SECONDS)?.path)
+    }
+
+    @Test
+    fun `search shorter than three characters returns empty without a network request`() = runTest {
+        val results = repository.searchProductCatalog("le", 30)
+
+        assertTrue(results.isEmpty())
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun `warming twice does not re-download the same catalog snapshot`() = runTest {
+        server.enqueue(catalogSnapshotResponse())
+
+        repository.warmProductCatalog()
+        repository.warmProductCatalog()
+
+        assertEquals(1, server.requestCount)
+    }
+
     private suspend fun seedList() {
         database.shoppingDao().replaceServerSnapshot(
             households = listOf(
@@ -748,6 +793,10 @@ class OfflineShoppingRepositoryTest {
             .setResponseCode(200)
             .setHeader("content-type", "application/json")
             .setBody(body)
+
+    private fun catalogSnapshotResponse() = json(
+        """{"version":"v1","productCount":1,"products":[{"id":"prod-milk","name":"Leche entera","normalizedName":"leche entera","categoryId":"cat-1","categoryName":"Lacteos","iconKey":"milk","brand":"Hacendado","packageSize":"1 L","source":"spanish-supermarkets","sourceProductId":"milk-1","isFavorite":false}]}""",
+    )
 
     private fun itemResponse(name: String, version: Int) = json(
         """{"item":${serverItemJson(name, version)}}""",

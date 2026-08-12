@@ -92,6 +92,17 @@ class ShoppingListViewModelTest {
         assertEquals(listOf("Favoritos", "Lacteos"), data.productCategories.map { it.name })
     }
 
+    @Test fun `warmProductCatalog delegates to the repository`() = runTest {
+        val repository = MultiListMetricsRepository()
+        val viewModel = ShoppingListViewModel(repository)
+
+        viewModel.warmProductCatalog()
+        viewModel.warmProductCatalog()
+        advanceUntilIdle()
+
+        assertEquals(2, repository.warmProductCatalogCalls)
+    }
+
     @Test fun `updates authenticated profile through me endpoint`() = runTest {
         server.enqueue(json("{\"user\":{\"id\":\"user-1\",\"email\":\"ana@example.test\",\"name\":\"Ana Garcia\",\"firstName\":\"Ana\",\"lastName\":\"Garcia\",\"username\":\"ana\"}}"))
         val repository = ShoppingListRepository(NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java))
@@ -516,6 +527,10 @@ private class MultiListMetricsRepository : ShoppingRepository {
         ProductCategoryUiModel("favorites", "Favoritos", "favoritos", "star", isFavorite = true),
         ProductCategoryUiModel("cat-dairy", "Lacteos", "lacteos", "milk"),
     )
+    var warmProductCatalogCalls = 0
+    override suspend fun warmProductCatalog() {
+        warmProductCatalogCalls++
+    }
     override fun observeItems(listId: String) = MutableStateFlow(itemsByList.getValue(listId))
     override suspend fun createHousehold(name: String) = error("No se usa en esta prueba.")
     override suspend fun createList(householdId: String, name: String) = error("No se usa en esta prueba.")

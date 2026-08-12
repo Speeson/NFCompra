@@ -126,6 +126,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.esgarpe.nfcompra.core.designsystem.NFCompraTheme
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -267,6 +269,7 @@ fun ShoppingListApp(
             viewModel::changePassword,
             viewModel::refreshProfile,
             viewModel::refreshProductCategories,
+            viewModel::warmProductCatalog,
             onLogout,
             onMembers,
             onOpenNotifications = onOpenNotifications,
@@ -295,6 +298,7 @@ internal fun ShoppingListContent(
     onChangePassword: suspend (String, String) -> Boolean = { _, _ -> false },
     onRefreshProfile: () -> Unit = {},
     onRefreshProductCategories: () -> Unit = {},
+    onWarmProductCatalog: () -> Unit = {},
     onLogout: () -> Unit,
     onMembers: (String) -> Unit,
     onOpenNotifications: (() -> Unit)? = null,
@@ -335,8 +339,9 @@ internal fun ShoppingListContent(
         }
     }
     LaunchedEffect(selectedTab, data.productCategories.isEmpty()) {
-        if (selectedTab == DashboardTab.Catalog && data.productCategories.isEmpty()) {
-            onRefreshProductCategories()
+        if (selectedTab == DashboardTab.Catalog) {
+            if (data.productCategories.isEmpty()) onRefreshProductCategories()
+            onWarmProductCatalog()
         }
     }
     val togglePinnedList: (String) -> Unit = { listId ->
@@ -1058,6 +1063,8 @@ private fun CatalogPanel(
     var products by remember { mutableStateOf(emptyList<ProductCatalogUiModel>()) }
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    var searchGeneration by remember { mutableStateOf(0) }
+    var searchJob by remember { mutableStateOf<Job?>(null) }
     val scope = rememberCoroutineScope()
 
     fun applyFilters(
@@ -1084,34 +1091,50 @@ private fun CatalogPanel(
 
     fun loadProducts(query: String = search, category: ProductCategoryUiModel? = selectedCategory) {
         val cleanQuery = query.trim()
-        if (cleanQuery.length < 2 && category == null) {
+        if (cleanQuery.length < 3 && category == null) {
+            searchJob?.cancel()
+            searchJob = null
+            searchGeneration++
             products = emptyList()
             message = null
+            loading = false
             return
         }
-        scope.launch {
+        val generation = ++searchGeneration
+        searchJob?.cancel()
+        searchJob = scope.launch {
             loading = true
             message = null
-            runCatching {
+            try {
                 val lookup = cleanQuery.ifBlank { if (category?.isFavorite == true) "" else category?.name.orEmpty() }
-                onSearchProducts(lookup, 30)
-            }.onSuccess { result ->
-                products = applyFilters(result, category)
-                message = if (products.isEmpty()) "No hay productos para mostrar." else null
-            }.onFailure {
-                products = emptyList()
-                message = "No se pudo cargar el catálogo."
+                val result = onSearchProducts(lookup, 30)
+                if (generation == searchGeneration) {
+                    products = applyFilters(result, category)
+                    message = if (products.isEmpty()) "No hay productos para mostrar." else null
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Throwable) {
+                if (generation == searchGeneration) {
+                    products = emptyList()
+                    message = "No se pudo cargar el catálogo."
+                }
+            } finally {
+                if (generation == searchGeneration) loading = false
             }
-            loading = false
         }
     }
 
     fun resetToCatalog() {
+        searchJob?.cancel()
+        searchJob = null
+        searchGeneration++
         selectedCategory = null
         selectedFilter = CatalogSearchFilter.All
         search = ""
         products = emptyList()
         message = null
+        loading = false
     }
 
     fun refreshVisibleProducts() {
@@ -1119,7 +1142,7 @@ private fun CatalogPanel(
     }
 
     LaunchedEffect(search, selectedFilter) {
-        delay(180)
+        delay(350)
         loadProducts()
     }
 
@@ -1170,7 +1193,7 @@ private fun CatalogPanel(
                 }
             },
         )
-        if (selectedCategory == null && search.trim().length < 2) {
+        if (selectedCategory == null && search.trim().length < 3) {
             Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                 CatalogCategoriesGrid(
                     categories = categories,

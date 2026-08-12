@@ -173,7 +173,7 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
     override suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> {
         val query = search.normalizedSearch()
         if (query.isBlank()) return loadCatalogSnapshotOrNull()?.take(limit.coerceAtLeast(1)) ?: emptyList()
-        if (query.length < 2) return emptyList()
+        if (query.length < 3) return emptyList()
         val snapshot = catalogSnapshot
         if (snapshot != null) return snapshot.searchCatalog(query, limit)
         return runCatching {
@@ -552,7 +552,7 @@ class OfflineShoppingRepository(
     override suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> = accountOperation {
         val query = search.normalizedSearch()
         if (query.isBlank()) return@accountOperation loadCatalogSnapshotOrNull()?.take(limit.coerceAtLeast(1)) ?: emptyList()
-        if (query.length < 2) return@accountOperation emptyList()
+        if (query.length < 3) return@accountOperation emptyList()
         val snapshot = catalogSnapshot ?: loadCachedCatalogSnapshotOrNull()
         if (snapshot != null) return@accountOperation snapshot.searchCatalog(query, limit)
         runCatching {

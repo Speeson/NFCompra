@@ -73,6 +73,12 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
     suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> =
         repository.searchProductCatalog(search, limit)
 
+    fun warmProductCatalog() {
+        viewModelScope.launch {
+            runCatching { repository.warmProductCatalog() }
+        }
+    }
+
     suspend fun setProductFavorite(productId: String, favorite: Boolean): ProductCatalogUiModel? =
         try {
             repository.setProductFavorite(productId, favorite)
