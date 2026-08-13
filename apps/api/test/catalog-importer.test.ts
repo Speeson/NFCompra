@@ -22,12 +22,12 @@ describe('catalog importer', () => {
     ], { defaultSource: 'manual' });
 
     expect(result.categories).toEqual([
-      expect.objectContaining({ id: 'cat-lacteos', name: 'Lacteos', normalizedName: 'lacteos' }),
-      expect.objectContaining({ id: 'cat-panaderia', name: 'Panaderia', normalizedName: 'panaderia' }),
+      expect.objectContaining({ id: 'cat-huevos-leche-y-mantequilla', name: 'Huevos, leche y mantequilla', normalizedName: 'huevos, leche y mantequilla' }),
+      expect.objectContaining({ id: 'cat-panaderia-y-pasteleria', name: 'Panaderia y pasteleria', normalizedName: 'panaderia y pasteleria' }),
     ]);
     expect(result.products).toEqual([
-      expect.objectContaining({ id: 'prod-spanish-supermarkets-milk-1', name: 'Leche entera', normalizedName: 'leche entera', categoryId: 'cat-lacteos', brand: 'Marca blanca', packageSize: '1 L', source: 'spanish-supermarkets' }),
-      expect.objectContaining({ id: 'prod-manual-bread-1', name: 'Pan integral', normalizedName: 'pan integral', categoryId: 'cat-panaderia', source: 'manual' }),
+      expect.objectContaining({ id: 'prod-spanish-supermarkets-milk-1', name: 'Leche entera', normalizedName: 'leche entera', categoryId: 'cat-huevos-leche-y-mantequilla', brand: 'Marca blanca', packageSize: '1 L', source: 'spanish-supermarkets' }),
+      expect.objectContaining({ id: 'prod-manual-bread-1', name: 'Pan integral', normalizedName: 'pan integral', categoryId: 'cat-panaderia-y-pasteleria', source: 'manual' }),
     ]);
     expect(result.aliases).toEqual(expect.arrayContaining([
       expect.objectContaining({ productId: 'prod-spanish-supermarkets-milk-1', alias: 'leche normal', normalizedAlias: 'leche normal' }),
@@ -56,13 +56,54 @@ describe('catalog importer', () => {
     expect(sql).not.toContain('BEGIN TRANSACTION;');
     expect(sql).not.toContain('COMMIT;');
     expect(sql).toContain('INSERT INTO product_catalog');
-    expect(sql).toContain('Lacteos');
+    expect(sql).toContain('Huevos, leche y mantequilla');
   });
 
   it('repairs mojibake and strips accents from display text', () => {
     expect(cleanDisplayText('LÃ¡cteos')).toBe('Lacteos');
     expect(cleanDisplayText('Panadería')).toBe('Panaderia');
     expect(cleanDisplayText('Café, cacao e infusiones')).toBe('Cafe, cacao e infusiones');
+  });
+
+  it('merges small duplicate categories into the larger catalog categories', () => {
+    const result = normalizeCatalogImport([
+      { name: 'Barra de pan', category: 'Panaderia', sourceProductId: 'pan-1' },
+      { name: 'Macarrones', category: 'Arroz, pasta y legumbres', sourceProductId: 'pasta-1' },
+      { name: 'Champu familiar', category: 'Perfumeria e higiene', sourceProductId: 'champu-1' },
+      { name: 'Queso rallado', category: 'Lacteos', sourceProductId: 'queso-1' },
+      { name: 'Yogur natural', category: 'Lacteos', sourceProductId: 'yogur-1' },
+      { name: 'Leche entera', category: 'Lacteos', sourceProductId: 'leche-1' },
+    ], { defaultSource: 'manual' });
+
+    expect(result.categories.map((category) => category.name)).toEqual([
+      'Arroz, legumbres y pasta',
+      'Charcuteria y quesos',
+      'Cuidado del cabello',
+      'Huevos, leche y mantequilla',
+      'Panaderia y pasteleria',
+      'Postres y yogures',
+    ]);
+    expect(result.products).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'Barra de pan', categoryId: 'cat-panaderia-y-pasteleria' }),
+      expect.objectContaining({ name: 'Queso rallado', categoryId: 'cat-charcuteria-y-quesos' }),
+      expect.objectContaining({ name: 'Yogur natural', categoryId: 'cat-postres-y-yogures' }),
+      expect.objectContaining({ name: 'Leche entera', categoryId: 'cat-huevos-leche-y-mantequilla' }),
+    ]));
+  });
+
+  it('infers specific product icons before falling back to the generic cart', () => {
+    const result = normalizeCatalogImport([
+      { name: 'Arroz redondo', category: 'Arroz, legumbres y pasta', sourceProductId: 'arroz-1' },
+      { name: 'Atun claro en aceite', category: 'Conservas, caldos y cremas', sourceProductId: 'atun-1' },
+      { name: 'Papel higienico', category: 'Limpieza y hogar', sourceProductId: 'papel-1' },
+    ], { defaultSource: 'manual' });
+
+    expect(result.products).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'Arroz redondo', iconKey: 'rice' }),
+      expect.objectContaining({ name: 'Atun claro en aceite', iconKey: 'fish' }),
+      expect.objectContaining({ name: 'Papel higienico', iconKey: 'paper' }),
+    ]));
+    expect(result.products.map((product) => product.iconKey)).not.toContain('shopping-basket');
   });
 
   it('maps exported supermarket JSON fields into generic catalog records', () => {

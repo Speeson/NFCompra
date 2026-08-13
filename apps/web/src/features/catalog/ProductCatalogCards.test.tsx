@@ -41,6 +41,9 @@ describe('ProductCatalogCard', () => {
     expect(productIcon(product({ name: 'Queso semicurado', categoryName: 'Charcuteria y quesos' }))).toBe('🧀');
     expect(productIcon(product({ name: 'Tomate frito estilo casero', categoryName: 'Aceite, especias y salsas' }))).toBe('🍅');
     expect(productIcon(product({ name: 'Pan de leche', categoryName: 'Lacteos' }))).toBe('🥖');
+    expect(productIcon(product({ name: 'Compota infantil', iconKey: 'baby' }))).toBe('🍼');
+    expect(productIcon(product({ name: 'Lavavajillas concentrado', iconKey: 'detergent' }))).toBe('🧼');
+    expect(productIcon(product({ name: 'Cerveza lager', iconKey: 'beer' }))).toBe('🍺');
   });
 });
 

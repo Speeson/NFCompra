@@ -3723,19 +3723,55 @@ private fun PendingProductUiModel.metaLabel(): String =
 
 private fun productIcon(product: ProductCatalogUiModel): String {
     val text = "${product.iconKey} ${product.categoryName.orEmpty()} ${product.name}".normalizedUiSearch()
-    return when {
-        text.contains("atun") || text.contains("pescado") || text.contains("marisco") || text.contains("fish") -> "🐟"
-        text.contains("leche") || text.contains("lacteo") || text.contains("yogur") || text.contains("milk") -> "🥛"
-        text.contains("pan") || text.contains("bolleria") || text.contains("bread") -> "🥖"
-        text.contains("fruta") || text.contains("manzana") || text.contains("apple") -> "🍎"
-        text.contains("verdura") || text.contains("zanahoria") || text.contains("carrot") -> "🥕"
-        text.contains("carne") || text.contains("pollo") || text.contains("meat") -> "🥩"
-        text.contains("agua") || text.contains("bebida") || text.contains("refresco") || text.contains("bottle") -> "💧"
-        text.contains("limpieza") || text.contains("drogueria") -> "🧽"
-        text.contains("mascota") || text.contains("perro") || text.contains("gato") -> "🐾"
-        text.contains("conserva") -> "🥫"
-        else -> "🛒"
-    }
+    return productIconFromText(text)
+}
+
+private fun productIconFromText(text: String): String = when {
+    text.contains("arroz") || text.contains("rice") -> "\uD83C\uDF5A"
+    text.contains("pasta") || text.contains("macarron") || text.contains("espagueti") || text.contains("tallar") -> "\uD83C\uDF5D"
+    text.contains("alubia") || text.contains("judia") || text.contains("garbanzo") || text.contains("lenteja") || text.contains("legumbre") || text.contains("beans") -> "\uD83E\uDED8"
+    text.contains("cacao") || text.contains("chocolate") || text.contains("bombon") -> "\uD83C\uDF6B"
+    text.contains("cafe") || text.contains("infusion") || text.contains("coffee") -> "\u2615"
+    text.contains("salsa") || text.contains("mayonesa") || text.contains("mostaza") || text.contains("ketchup") -> "\uD83E\uDED9"
+    text.contains("atun") || text.contains("pescado") || text.contains("marisco") || text.contains("fish") -> "\uD83D\uDC1F"
+    text.contains("aceite") || text.contains("oliva") || text.contains("aceituna") || text.contains("oil") -> "\uD83E\uDED2"
+    text.contains("huevo") || text.contains("egg") -> "\uD83E\uDD5A"
+    text.contains("queso") || text.contains("cheese") -> "\uD83E\uDDC0"
+    text.contains("mantequilla") || text.contains("butter") -> "\uD83E\uDDC8"
+    text.contains("harina") || text.contains("flour") -> "\uD83C\uDF3E"
+    text.contains("sal") || text.contains("especia") || text.contains("pimienta") -> "\uD83E\uDDC2"
+    text.contains("galleta") || text.contains("cereal") || text.contains("cookie") -> "\uD83C\uDF6A"
+    text.contains("azucar") || text.contains("caramelo") || text.contains("dulce") || text.contains("candy") -> "\uD83C\uDF6C"
+    text.contains("postre") || text.contains("flan") || text.contains("natilla") || text.contains("dessert") -> "\uD83C\uDF6E"
+    text.contains("helado") || text.contains("congelado") || text.contains("frozen") -> "\uD83E\uDDCA"
+    text.contains("pizza") -> "\uD83C\uDF55"
+    text.contains("sopa") || text.contains("caldo") || text.contains("crema") || text.contains("soup") -> "\uD83E\uDD63"
+    text.contains("pan") || text.contains("bolleria") || text.contains("bread") -> "\uD83E\uDD56"
+    text.contains("leche") || text.contains("lacteo") || text.contains("yogur") || text.contains("milk") -> "\uD83E\uDD5B"
+    text.contains("tomate") -> "\uD83C\uDF45"
+    text.contains("patata") || text.contains("papa") || text.contains("potato") -> "\uD83E\uDD54"
+    text.contains("cebolla") || text.contains("onion") -> "\uD83E\uDDC5"
+    text.contains("ajo") || text.contains("garlic") -> "\uD83E\uDDC4"
+    text.contains("platano") || text.contains("banana") -> "\uD83C\uDF4C"
+    text.contains("naranja") || text.contains("mandarina") || text.contains("orange") -> "\uD83C\uDF4A"
+    text.contains("limon") || text.contains("lemon") -> "\uD83C\uDF4B"
+    text.contains("fruta") || text.contains("manzana") || text.contains("apple") -> "\uD83C\uDF4E"
+    text.contains("verdura") || text.contains("zanahoria") || text.contains("carrot") -> "\uD83E\uDD55"
+    text.contains("carne") || text.contains("pollo") || text.contains("meat") -> "\uD83E\uDD69"
+    text.contains("salchicha") || text.contains("chorizo") || text.contains("jamon") || text.contains("charcuteria") || text.contains("cold-cuts") -> "\uD83E\uDD53"
+    text.contains("agua") || text.contains("bebida") || text.contains("refresco") || text.contains("bottle") -> "\uD83D\uDCA7"
+    text.contains("zumo") || text.contains("jugo") || text.contains("juice") -> "\uD83E\uDDC3"
+    text.contains("vino") || text.contains("bodega") || text.contains("wine") -> "\uD83C\uDF77"
+    text.contains("cerveza") || text.contains("beer") -> "\uD83C\uDF7A"
+    text.contains("snack") || text.contains("aperitivo") || text.contains("patatas fritas") -> "\uD83E\uDD68"
+    text.contains("papel") || text.contains("servilleta") || text.contains("panuelo") -> "\uD83E\uDDFB"
+    text.contains("detergente") || text.contains("lavavajillas") -> "\uD83E\uDDFC"
+    text.contains("limpieza") || text.contains("drogueria") || text.contains("cleaning") -> "\uD83E\uDDFD"
+    text.contains("higiene") || text.contains("gel") || text.contains("champu") || text.contains("jabon") || text.contains("cuidado") -> "\uD83E\uDDF4"
+    text.contains("mascota") || text.contains("perro") || text.contains("gato") || text.contains("pet") -> "\uD83D\uDC3E"
+    text.contains("bebe") || text.contains("baby") -> "\uD83C\uDF7C"
+    text.contains("conserva") || text.contains("can") -> "\uD83E\uDD6B"
+    else -> "\uD83D\uDED2"
 }
 
 private fun String.normalizedUiSearch(): String =

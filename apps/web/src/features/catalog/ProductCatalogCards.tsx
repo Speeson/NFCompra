@@ -133,19 +133,19 @@ export function productIcon(product: ProductCatalogItem): string {
 function iconFromText(text: string): string | null {
   if (text.includes('arroz') || text.includes('rice')) return '🍚';
   if (text.includes('pasta') || text.includes('macarron') || text.includes('espagueti') || text.includes('tallar')) return '🍝';
-  if (text.includes('alubia') || text.includes('judia') || text.includes('garbanzo') || text.includes('lenteja') || text.includes('legumbre')) return '🫘';
+  if (text.includes('alubia') || text.includes('judia') || text.includes('garbanzo') || text.includes('lenteja') || text.includes('legumbre') || text.includes('beans')) return '🫘';
   if (text.includes('cacao') || text.includes('chocolate') || text.includes('bombon')) return '🍫';
   if (text.includes('cafe') || text.includes('infusion') || text.includes(' tea') || text.includes(' te ')) return '☕';
-  if (text.includes('salsa') || text.includes('mayonesa') || text.includes('mostaza') || text.includes('ketchup')) return '🫙';
+  if (text.includes('salsa') || text.includes('sauce') || text.includes('mayonesa') || text.includes('mostaza') || text.includes('ketchup')) return '🫙';
   if (text.includes('aceite') || text.includes('oliva') || text.includes('aceituna')) return '🫒';
   if (text.includes('huevo') || text.includes('egg')) return '🥚';
   if (text.includes('queso') || text.includes('cheese')) return '🧀';
   if (text.includes('mantequilla') || text.includes('butter')) return '🧈';
   if (text.includes('harina') || text.includes('flour')) return '🌾';
   if (text.includes('sal') || text.includes('especia') || text.includes('pimienta')) return '🧂';
-  if (text.includes('galleta') || text.includes('cereal')) return '🍪';
-  if (text.includes('azucar') || text.includes('caramelo') || text.includes('dulce')) return '🍬';
-  if (text.includes('postre') || text.includes('flan') || text.includes('natilla')) return '🍮';
+  if (text.includes('galleta') || text.includes('cereal') || text.includes('cookie')) return '🍪';
+  if (text.includes('azucar') || text.includes('caramelo') || text.includes('dulce') || text.includes('candy')) return '🍬';
+  if (text.includes('postre') || text.includes('flan') || text.includes('natilla') || text.includes('dessert')) return '🍮';
   if (text.includes('helado') || text.includes('congelado') || text.includes('frozen')) return '🧊';
   if (text.includes('pizza')) return '🍕';
   if (text.includes('sopa') || text.includes('caldo') || text.includes('crema')) return '🥣';
@@ -162,18 +162,20 @@ function iconFromText(text: string): string | null {
   if (text.includes('fruta') || text.includes('manzana') || text.includes('apple')) return '🍎';
   if (text.includes('verdura') || text.includes('zanahoria') || text.includes('carrot')) return '🥕';
   if (text.includes('carne') || text.includes('pollo') || text.includes('meat')) return '🥩';
-  if (text.includes('salchicha') || text.includes('chorizo') || text.includes('jamon') || text.includes('charcuteria')) return '🥓';
+  if (text.includes('salchicha') || text.includes('chorizo') || text.includes('jamon') || text.includes('charcuteria') || text.includes('cold-cuts')) return '🥓';
   if (text.includes('agua') || text.includes('bebida') || text.includes('refresco') || text.includes('bottle')) return '💧';
-  if (text.includes('zumo') || text.includes('jugo')) return '🧃';
-  if (text.includes('vino') || text.includes('bodega')) return '🍷';
-  if (text.includes('cerveza')) return '🍺';
+  if (text.includes('zumo') || text.includes('jugo') || text.includes('juice')) return '🧃';
+  if (text.includes('vino') || text.includes('bodega') || text.includes('wine')) return '🍷';
+  if (text.includes('cerveza') || text.includes('beer')) return '🍺';
   if (text.includes('snack') || text.includes('aperitivo') || text.includes('patatas fritas')) return '🥨';
   if (text.includes('limpieza') || text.includes('drogueria')) return '🧽';
-  if (text.includes('detergente') || text.includes('lavavajillas')) return '🧼';
-  if (text.includes('papel') || text.includes('servilleta') || text.includes('panuelo')) return '🧻';
+  if (text.includes('detergente') || text.includes('detergent') || text.includes('lavavajillas')) return '🧼';
+  if (text.includes('papel') || text.includes('paper') || text.includes('servilleta') || text.includes('panuelo')) return '🧻';
   if (text.includes('higiene') || text.includes('gel') || text.includes('champu') || text.includes('jabon')) return '🧴';
+  if (text.includes('maquillaje') || text.includes('makeup')) return '💄';
+  if (text.includes('bebe') || text.includes('baby')) return '🍼';
   if (text.includes('mascota') || text.includes('perro') || text.includes('gato')) return '🐾';
-  if (text.includes('conserva')) return '🥫';
+  if (text.includes('conserva') || text.includes('can')) return '🥫';
   return null;
 }
 

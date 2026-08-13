@@ -58,15 +58,16 @@ export function normalizeCatalogImport(records: CatalogImportInput[], options: {
 
   for (const record of records) {
     const name = cleanDisplayText(record.name);
-    const categoryName = cleanDisplayText(record.category);
-    if (!name || !categoryName) continue;
+    const rawCategoryName = cleanDisplayText(record.category);
+    if (!name || !rawCategoryName) continue;
+    const categoryName = canonicalCategoryName(name, rawCategoryName);
     const source = clean(record.source) || options.defaultSource;
     const sourceProductId = clean(record.sourceProductId) || slug(name);
     const sourceCategoryId = clean(record.sourceCategoryId) || categoryIdFrom(categoryName, source);
     const categoryNormalized = normalizedName(categoryName);
     const categoryId = `cat-${slug(categoryName)}`;
     const productId = `prod-${slug(source)}-${slug(sourceProductId)}`;
-    const iconKey = clean(record.iconKey) || inferIconKey(categoryNormalized);
+    const iconKey = clean(record.iconKey) || inferIconKey(normalizedName(name), categoryNormalized);
 
     if (!categories.has(categoryId)) {
       categories.set(categoryId, {
@@ -231,14 +232,74 @@ function slug(value: string): string {
   return normalized || 'item';
 }
 
-function inferIconKey(categoryNormalizedName: string): string {
-  if (categoryNormalizedName.includes('lacteo') || categoryNormalizedName.includes('leche')) return 'milk';
-  if (categoryNormalizedName.includes('pan')) return 'bread';
-  if (categoryNormalizedName.includes('fruta')) return 'apple';
-  if (categoryNormalizedName.includes('verdura')) return 'carrot';
-  if (categoryNormalizedName.includes('carne')) return 'meat';
-  if (categoryNormalizedName.includes('pescado')) return 'fish';
-  if (categoryNormalizedName.includes('bebida')) return 'bottle';
+function canonicalCategoryName(productName: string, categoryName: string): string {
+  const product = normalizedName(productName);
+  const category = normalizedName(categoryName);
+  if (category === 'panaderia') return 'Panaderia y pasteleria';
+  if (category === 'arroz, pasta y legumbres') return 'Arroz, legumbres y pasta';
+  if (category === 'cafe, cacao e infusiones') return 'Cacao, cafe e infusiones';
+  if (category === 'conservas y platos preparados') return 'Conservas, caldos y cremas';
+  if (category === 'drogueria y limpieza') return 'Limpieza y hogar';
+  if (category === 'perfumeria e higiene') return product.includes('champu') ? 'Cuidado del cabello' : 'Cuidado facial y corporal';
+  if (category === 'pescado') return 'Marisco y pescado';
+  if (category === 'bebidas') return 'Agua y refrescos';
+  if (category === 'huevos') return 'Huevos, leche y mantequilla';
+  if (category === 'fruta' || category === 'verdura') return 'Fruta y verdura';
+  if (category === 'lacteos') {
+    if (product.includes('queso')) return 'Charcuteria y quesos';
+    if (product.includes('yogur')) return 'Postres y yogures';
+    return 'Huevos, leche y mantequilla';
+  }
+  return categoryName;
+}
+
+function inferIconKey(productNormalizedName: string, categoryNormalizedName: string): string {
+  const text = `${productNormalizedName} ${categoryNormalizedName}`;
+  if (text.includes('arroz')) return 'rice';
+  if (text.includes('pasta') || text.includes('macarron') || text.includes('espagueti') || text.includes('tallar')) return 'pasta';
+  if (text.includes('alubia') || text.includes('judia') || text.includes('garbanzo') || text.includes('lenteja') || text.includes('legumbre')) return 'beans';
+  if (text.includes('cacao') || text.includes('chocolate') || text.includes('bombon')) return 'chocolate';
+  if (text.includes('cafe') || text.includes('infusion')) return 'coffee';
+  if (text.includes('salsa') || text.includes('mayonesa') || text.includes('mostaza') || text.includes('ketchup')) return 'sauce';
+  if (text.includes('atun') || text.includes('pescado') || text.includes('marisco')) return 'fish';
+  if (text.includes('aceite') || text.includes('oliva') || text.includes('aceituna')) return 'oil';
+  if (text.includes('huevo')) return 'egg';
+  if (text.includes('queso')) return 'cheese';
+  if (text.includes('mantequilla')) return 'butter';
+  if (text.includes('harina')) return 'flour';
+  if (text.includes('sal') || text.includes('especia') || text.includes('pimienta')) return 'salt';
+  if (text.includes('galleta') || text.includes('cereal')) return 'cookie';
+  if (text.includes('azucar') || text.includes('caramelo') || text.includes('dulce')) return 'candy';
+  if (text.includes('postre') || text.includes('flan') || text.includes('natilla')) return 'dessert';
+  if (text.includes('helado') || text.includes('congelado')) return 'frozen';
+  if (text.includes('pizza')) return 'pizza';
+  if (text.includes('sopa') || text.includes('caldo') || text.includes('crema')) return 'soup';
+  if (text.includes('pan') || text.includes('bolleria')) return 'bread';
+  if (text.includes('leche') || text.includes('lacteo') || text.includes('yogur')) return 'milk';
+  if (text.includes('tomate')) return 'tomato';
+  if (text.includes('patata') || text.includes('papa')) return 'potato';
+  if (text.includes('cebolla')) return 'onion';
+  if (text.includes('ajo')) return 'garlic';
+  if (text.includes('platano') || text.includes('banana')) return 'banana';
+  if (text.includes('naranja') || text.includes('mandarina')) return 'orange';
+  if (text.includes('limon')) return 'lemon';
+  if (text.includes('fruta') || text.includes('manzana')) return 'apple';
+  if (text.includes('verdura') || text.includes('zanahoria')) return 'carrot';
+  if (text.includes('carne') || text.includes('pollo')) return 'meat';
+  if (text.includes('salchicha') || text.includes('chorizo') || text.includes('jamon') || text.includes('charcuteria')) return 'cold-cuts';
+  if (text.includes('agua') || text.includes('bebida') || text.includes('refresco')) return 'bottle';
+  if (text.includes('zumo') || text.includes('jugo')) return 'juice';
+  if (text.includes('vino') || text.includes('bodega')) return 'wine';
+  if (text.includes('cerveza')) return 'beer';
+  if (text.includes('snack') || text.includes('aperitivo') || text.includes('patatas fritas')) return 'snack';
+  if (text.includes('papel') || text.includes('servilleta') || text.includes('panuelo')) return 'paper';
+  if (text.includes('detergente') || text.includes('lavavajillas')) return 'detergent';
+  if (text.includes('limpieza') || text.includes('drogueria')) return 'cleaning';
+  if (text.includes('higiene') || text.includes('gel') || text.includes('champu') || text.includes('jabon') || text.includes('cuidado')) return 'hygiene';
+  if (text.includes('maquillaje')) return 'makeup';
+  if (text.includes('mascota') || text.includes('perro') || text.includes('gato')) return 'pet';
+  if (text.includes('bebe')) return 'baby';
+  if (text.includes('conserva')) return 'can';
   return 'shopping-basket';
 }
 
