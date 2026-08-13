@@ -8,8 +8,13 @@ import dev.esgarpe.nfcompra.core.network.TokenStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.single
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import okhttp3.Request
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
@@ -88,6 +93,40 @@ class AuthRepositoryTest {
             )
         } finally {
             server.shutdown()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `register success exposes verification dialog state without signing in`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(201).setBody("""{"user":{"id":"user-1"}}"""))
+        server.start()
+        try {
+            val repository = AuthRepository(NetworkClient.authApi(server.url("/").toString()), FakeTokenStore())
+            val viewModel = AuthViewModel(repository)
+
+            viewModel.state.test {
+                assertEquals(AuthUiState(), awaitItem())
+                viewModel.register(
+                    firstName = "Esteban",
+                    lastName = "Garcia",
+                    birthDate = "1995-04-23",
+                    username = "Spee",
+                    email = " esteban@example.test ",
+                    password = "a secure password",
+                )
+                assertTrue(awaitItem().isSubmitting)
+                val result = awaitItem()
+                assertEquals("esteban@example.test", result.registrationSuccessEmail)
+                assertNull(result.message)
+                assertEquals(false, result.isSignedIn)
+                cancelAndIgnoreRemainingEvents()
+            }
+        } finally {
+            server.shutdown()
+            Dispatchers.resetMain()
         }
     }
 

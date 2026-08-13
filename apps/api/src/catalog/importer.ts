@@ -74,7 +74,7 @@ export function normalizeCatalogImport(records: CatalogImportInput[], options: {
         id: categoryId,
         name: categoryName,
         normalizedName: categoryNormalized,
-        iconKey,
+        iconKey: inferCategoryIconKey(categoryNormalized),
         source,
         sourceCategoryId,
       });
@@ -255,11 +255,19 @@ function canonicalCategoryName(productName: string, categoryName: string): strin
 
 function inferIconKey(productNormalizedName: string, categoryNormalizedName: string): string {
   const text = `${productNormalizedName} ${categoryNormalizedName}`;
+  if (productNormalizedName.includes('panal') || productNormalizedName.includes('panales')) return 'diaper';
+  if (productNormalizedName.includes('refresco') || productNormalizedName.includes('gaseosa') || productNormalizedName.includes('coca-cola') || productNormalizedName.includes('cola ')) return 'soft-drink';
+  if (productNormalizedName.includes('agua mineral') || productNormalizedName.includes('agua con gas') || productNormalizedName.includes('agua de soda') || productNormalizedName.includes('agua de coco') || productNormalizedName.includes('agua destilada')) return 'water';
+  if (productNormalizedName.includes('zumo') || productNormalizedName.includes('jugo')) return 'juice';
+  if (productNormalizedName.includes('vino')) return 'wine';
+  if (productNormalizedName.includes('cerveza')) return 'beer';
+  if (hasWord(productNormalizedName, 'cafe') || productNormalizedName.includes('capuccino') || productNormalizedName.includes('cappuccino')) return 'coffee';
+  if (productNormalizedName.includes('bebida')) return 'drink';
+  if (productNormalizedName.includes('acondicionador') || productNormalizedName.includes('pantene') || productNormalizedName.includes('cabello') || productNormalizedName.includes('capilar')) return 'hair-care';
   if (text.includes('arroz')) return 'rice';
   if (text.includes('pasta') || text.includes('macarron') || text.includes('espagueti') || text.includes('tallar')) return 'pasta';
   if (text.includes('alubia') || text.includes('judia') || text.includes('garbanzo') || text.includes('lenteja') || text.includes('legumbre')) return 'beans';
   if (text.includes('cacao') || text.includes('chocolate') || text.includes('bombon')) return 'chocolate';
-  if (text.includes('cafe') || text.includes('infusion')) return 'coffee';
   if (text.includes('salsa') || text.includes('mayonesa') || text.includes('mostaza') || text.includes('ketchup')) return 'sauce';
   if (text.includes('atun') || text.includes('pescado') || text.includes('marisco')) return 'fish';
   if (text.includes('aceite') || text.includes('oliva') || text.includes('aceituna')) return 'oil';
@@ -267,14 +275,14 @@ function inferIconKey(productNormalizedName: string, categoryNormalizedName: str
   if (text.includes('queso')) return 'cheese';
   if (text.includes('mantequilla')) return 'butter';
   if (text.includes('harina')) return 'flour';
-  if (text.includes('sal') || text.includes('especia') || text.includes('pimienta')) return 'salt';
+  if (hasWord(text, 'sal') || text.includes('especia') || text.includes('pimienta')) return 'salt';
   if (text.includes('galleta') || text.includes('cereal')) return 'cookie';
   if (text.includes('azucar') || text.includes('caramelo') || text.includes('dulce')) return 'candy';
   if (text.includes('postre') || text.includes('flan') || text.includes('natilla')) return 'dessert';
   if (text.includes('helado') || text.includes('congelado')) return 'frozen';
   if (text.includes('pizza')) return 'pizza';
   if (text.includes('sopa') || text.includes('caldo') || text.includes('crema')) return 'soup';
-  if (text.includes('pan') || text.includes('bolleria')) return 'bread';
+  if (hasWord(text, 'pan') || text.includes('panaderia') || text.includes('panecillo') || text.includes('baguette') || text.includes('bolleria') || text.includes('bocadillo') || text.includes('croissant') || text.includes('ensaimada') || text.includes('napolitana') || text.includes('bizcocho') || text.includes('magdalena') || text.includes('tostada') || text.includes('mollete') || text.includes('hogaza') || text.includes('rosquilla') || text.includes('palmera') || text.includes('grissini')) return 'bread';
   if (text.includes('leche') || text.includes('lacteo') || text.includes('yogur')) return 'milk';
   if (text.includes('tomate')) return 'tomato';
   if (text.includes('patata') || text.includes('papa')) return 'potato';
@@ -287,20 +295,45 @@ function inferIconKey(productNormalizedName: string, categoryNormalizedName: str
   if (text.includes('verdura') || text.includes('zanahoria')) return 'carrot';
   if (text.includes('carne') || text.includes('pollo')) return 'meat';
   if (text.includes('salchicha') || text.includes('chorizo') || text.includes('jamon') || text.includes('charcuteria')) return 'cold-cuts';
-  if (text.includes('agua') || text.includes('bebida') || text.includes('refresco')) return 'bottle';
   if (text.includes('zumo') || text.includes('jugo')) return 'juice';
   if (text.includes('vino') || text.includes('bodega')) return 'wine';
   if (text.includes('cerveza')) return 'beer';
+  if (text.includes('refresco') || text.includes('gaseosa') || productNormalizedName.includes('coca-cola') || productNormalizedName.includes('cola ')) return 'soft-drink';
+  if (productNormalizedName.includes('agua mineral') || productNormalizedName.includes('agua con gas') || productNormalizedName.includes('agua de soda') || productNormalizedName.includes('agua de coco') || productNormalizedName.includes('agua destilada') || categoryNormalizedName.includes('agua')) return 'water';
+  if (categoryNormalizedName.includes('cafe') || categoryNormalizedName.includes('infusion') || hasWord(productNormalizedName, 'cafe') || productNormalizedName.includes('capuccino') || productNormalizedName.includes('cappuccino')) return 'coffee';
+  if (text.includes('bebida')) return 'drink';
   if (text.includes('snack') || text.includes('aperitivo') || text.includes('patatas fritas')) return 'snack';
   if (text.includes('papel') || text.includes('servilleta') || text.includes('panuelo')) return 'paper';
   if (text.includes('detergente') || text.includes('lavavajillas')) return 'detergent';
   if (text.includes('limpieza') || text.includes('drogueria')) return 'cleaning';
+  if (text.includes('panal') || text.includes('panales')) return 'diaper';
+  if (text.includes('acondicionador') || text.includes('pantene') || text.includes('cabello') || text.includes('capilar')) return 'hair-care';
   if (text.includes('higiene') || text.includes('gel') || text.includes('champu') || text.includes('jabon') || text.includes('cuidado')) return 'hygiene';
   if (text.includes('maquillaje')) return 'makeup';
+  if (text.includes('preservativo')) return 'condom';
+  if (text.includes('lagrima') || text.includes('lente de contacto') || text.includes('ojos')) return 'eye-care';
+  if (text.includes('mosquito') || text.includes('citronela') || text.includes('repelente') || text.includes('picor')) return 'repellent';
+  if (text.includes('alcohol') || text.includes('antiseptico') || text.includes('desinfectante') || text.includes('clorhexidina') || text.includes('povidona')) return 'antiseptic';
+  if (text.includes('tirita') || text.includes('tira adhesiva') || text.includes('aposito') || text.includes('esparadrapo') || text.includes('venda') || text.includes('gasa')) return 'bandage';
+  if (text.includes('algodon') || text.includes('bastoncillo')) return 'cotton';
+  if (text.includes('capsula') || text.includes('comprimido') || text.includes('vitamina') || text.includes('mineral') || text.includes('probiotico') || text.includes('omega') || text.includes('melatonina') || text.includes('creatina') || text.includes('jalea real') || text.includes('propolis') || text.includes('valeriana') || text.includes('colagen')) return 'supplement';
+  if (text.includes('vaselina') || text.includes('arnica') || text.includes('balsamo') || text.includes('parafarmacia') || text.includes('fitoterapia')) return 'first-aid';
   if (text.includes('mascota') || text.includes('perro') || text.includes('gato')) return 'pet';
   if (text.includes('bebe')) return 'baby';
   if (text.includes('conserva')) return 'can';
   return 'shopping-basket';
+}
+
+function hasWord(text: string, word: string): boolean {
+  return new RegExp(`(^|[^a-z0-9])${word}([^a-z0-9]|$)`).test(text);
+}
+
+function inferCategoryIconKey(categoryNormalizedName: string): string {
+  if (categoryNormalizedName.includes('cafe') || categoryNormalizedName.includes('infusion')) return 'coffee';
+  if (categoryNormalizedName.includes('agua')) return 'water';
+  if (categoryNormalizedName.includes('refresco')) return 'soft-drink';
+  if (categoryNormalizedName.includes('bebida')) return 'drink';
+  return inferIconKey('', categoryNormalizedName);
 }
 
 function values(items: Array<string | number | null>): string {

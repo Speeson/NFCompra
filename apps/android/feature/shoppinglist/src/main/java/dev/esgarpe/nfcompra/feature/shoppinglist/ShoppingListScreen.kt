@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -316,6 +317,9 @@ internal fun ShoppingListContent(
     var notificationsOpen by remember { mutableStateOf(false) }
     var openedListId by remember { mutableStateOf<String?>(null) }
     var openedListMode by remember { mutableStateOf(ListOpenMode.Edit) }
+    var catalogNested by remember { mutableStateOf(false) }
+    var catalogRootRequestKey by remember { mutableStateOf(0) }
+    var householdsRootRequestKey by remember { mutableStateOf(0) }
     LaunchedEffect(openListsRequestKey) {
         if (openListsRequestKey > 0) {
             selectedTab = DashboardTab.Lists
@@ -366,10 +370,34 @@ internal fun ShoppingListContent(
         }
     }
     val shouldInterceptBack = !isRoot || lastBackPressMs == 0L || System.currentTimeMillis() - lastBackPressMs >= 2_000
+    fun openTabRoot(tab: DashboardTab) {
+        selectedTab = tab
+        when (tab) {
+            DashboardTab.Home -> {
+                openedListId = null
+            }
+            DashboardTab.Households -> {
+                openedListId = null
+                householdsRootRequestKey++
+            }
+            DashboardTab.Lists -> {
+                openedListId = null
+            }
+            DashboardTab.Catalog -> {
+                openedListId = null
+                catalogRootRequestKey++
+            }
+            DashboardTab.Profile -> {
+                openedListId = null
+            }
+        }
+    }
     BackHandler(enabled = shouldInterceptBack) {
         if (!isRoot) {
             if (isListDetailOpen) {
                 openedListId = null
+            } else if (selectedTab == DashboardTab.Catalog && catalogNested) {
+                catalogRootRequestKey++
             } else {
                 selectedTab = DashboardTab.Home
             }
@@ -380,7 +408,7 @@ internal fun ShoppingListContent(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(WebPage)) {
-        Column(modifier = Modifier.fillMaxSize().background(WebPage).padding(bottom = responsiveDp(0.114f))) {
+        Column(modifier = Modifier.fillMaxSize().statusBarsPadding().background(WebPage).padding(bottom = responsiveDp(0.114f))) {
             ShoppingAppBanner(
                 title = if (isListDetailOpen) data.content.title else selectedTab.label,
                 subtitle = if (isListDetailOpen) selectedListHouseholdName else null,
@@ -389,6 +417,8 @@ internal fun ShoppingListContent(
                 onBack = {
                     if (isListDetailOpen) {
                         openedListId = null
+                    } else if (selectedTab == DashboardTab.Catalog && catalogNested) {
+                        catalogRootRequestKey++
                     } else {
                         selectedTab = DashboardTab.Home
                     }
@@ -434,8 +464,8 @@ internal fun ShoppingListContent(
                                 displayName = data.displayName ?: displayName,
                                 pinnedListId = pinnedListId,
                                 onTogglePinned = togglePinnedList,
-                                onOpenHouseholds = { selectedTab = DashboardTab.Households },
-                                onOpenLists = { selectedTab = DashboardTab.Lists },
+                                onOpenHouseholds = { openTabRoot(DashboardTab.Households) },
+                                onOpenLists = { openTabRoot(DashboardTab.Lists) },
                                 onEditList = { listId ->
                                     openedListMode = ListOpenMode.Edit
                                     openedListId = listId
@@ -447,7 +477,7 @@ internal fun ShoppingListContent(
                                     selectedTab = DashboardTab.Lists
                                 },
                             )
-                            DashboardTab.Households -> HouseholdsPanel(data, onAction, { creatingHousehold = true }, onMembers, onOpenLists = { selectedTab = DashboardTab.Lists }, currentUserId = currentUserId)
+                            DashboardTab.Households -> HouseholdsPanel(data, onAction, { creatingHousehold = true }, onMembers, onOpenLists = { openTabRoot(DashboardTab.Lists) }, currentUserId = currentUserId, rootRequestKey = householdsRootRequestKey)
                             DashboardTab.Lists -> ListsPanel(
                                 data,
                                 onAction,
@@ -477,6 +507,8 @@ internal fun ShoppingListContent(
                                 onCreateProduct = onCreateProduct,
                                 onUpdateProduct = onUpdateProduct,
                                 onDeleteProduct = onDeleteProduct,
+                                rootRequestKey = catalogRootRequestKey,
+                                onNestedStateChange = { catalogNested = it },
                             )
                             DashboardTab.Profile -> ProfilePanel(
                                 profile = data.profile,
@@ -498,7 +530,7 @@ internal fun ShoppingListContent(
         Box(modifier = Modifier.align(Alignment.BottomCenter)) {
             FloatingDashboardNavigation(
                 selected = selectedTab,
-                onSelect = { selectedTab = it },
+                onSelect = ::openTabRoot,
             )
         }
     }
@@ -883,8 +915,9 @@ private fun HouseholdsPanel(
     onMembers: (String) -> Unit,
     onOpenLists: () -> Unit = {},
     currentUserId: String? = null,
+    rootRequestKey: Int = 0,
 ) {
-    var expandedHouseholdId by remember(data.households) { mutableStateOf<String?>(null) }
+    var expandedHouseholdId by remember(data.households, rootRequestKey) { mutableStateOf<String?>(null) }
     var renamingHousehold by remember { mutableStateOf<HouseholdUiModel?>(null) }
     var deletingHousehold by remember { mutableStateOf<HouseholdUiModel?>(null) }
     var nfcHousehold by remember { mutableStateOf<HouseholdUiModel?>(null) }
@@ -1049,6 +1082,8 @@ private fun CatalogPanel(
     onCreateProduct: suspend (String, String?, String, String?, String?) -> ProductCatalogUiModel?,
     onUpdateProduct: suspend (String, String, String?, String, String?, String?) -> ProductCatalogUiModel?,
     onDeleteProduct: suspend (String) -> Boolean,
+    rootRequestKey: Int = 0,
+    onNestedStateChange: (Boolean) -> Unit = {},
 ) {
     var search by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf<ProductCategoryUiModel?>(null) }
@@ -1139,6 +1174,14 @@ private fun CatalogPanel(
 
     fun refreshVisibleProducts() {
         loadProducts()
+    }
+
+    LaunchedEffect(rootRequestKey) {
+        if (rootRequestKey > 0) resetToCatalog()
+    }
+
+    LaunchedEffect(selectedCategory, search) {
+        onNestedStateChange(selectedCategory != null || search.trim().length >= 3)
     }
 
     LaunchedEffect(search, selectedFilter) {
@@ -1422,26 +1465,56 @@ private enum class CatalogMutationType { Category, Product }
 private data class CatalogIconOption(val key: String, val label: String, val glyph: String)
 
 private val CatalogIconOptions = listOf(
-    CatalogIconOption("star", "Favorito", "★"),
-    CatalogIconOption("fruit", "Fruta", "🍎"),
-    CatalogIconOption("vegetable", "Verdura", "🥬"),
-    CatalogIconOption("meat", "Carne", "🥩"),
-    CatalogIconOption("fish", "Pescado", "🐟"),
-    CatalogIconOption("milk", "Lacteos", "🥛"),
-    CatalogIconOption("egg", "Huevos", "🥚"),
-    CatalogIconOption("bread", "Pan", "🥖"),
-    CatalogIconOption("rice", "Arroz", "🍚"),
-    CatalogIconOption("pasta", "Pasta", "🍝"),
-    CatalogIconOption("legume", "Legumbres", "🫘"),
-    CatalogIconOption("coffee", "Cafe", "☕"),
-    CatalogIconOption("cocoa", "Cacao", "🍫"),
-    CatalogIconOption("water", "Agua", "💧"),
-    CatalogIconOption("snack", "Aperitivos", "🥨"),
-    CatalogIconOption("can", "Conservas", "🥫"),
-    CatalogIconOption("clean", "Limpieza", "🧽"),
-    CatalogIconOption("care", "Cuidado", "🧴"),
-    CatalogIconOption("pet", "Mascotas", "🐾"),
-    CatalogIconOption("cart", "General", "🛒"),
+    CatalogIconOption("star", "Favorito", "\u2605"),
+    CatalogIconOption("fruit", "Fruta", "\uD83C\uDF4E"),
+    CatalogIconOption("vegetable", "Verdura", "\uD83E\uDD6C"),
+    CatalogIconOption("meat", "Carne", "\uD83E\uDD69"),
+    CatalogIconOption("cold-cuts", "Charcuteria", "\uD83E\uDD53"),
+    CatalogIconOption("fish", "Pescado", "\uD83D\uDC1F"),
+    CatalogIconOption("milk", "Lácteos", "\uD83E\uDD5B"),
+    CatalogIconOption("cheese", "Queso", "\uD83E\uDDC0"),
+    CatalogIconOption("egg", "Huevos", "\uD83E\uDD5A"),
+    CatalogIconOption("bread", "Pan", "\uD83E\uDD56"),
+    CatalogIconOption("rice", "Arroz", "\uD83C\uDF5A"),
+    CatalogIconOption("pasta", "Pasta", "\uD83C\uDF5D"),
+    CatalogIconOption("beans", "Legumbres", "\uD83E\uDED8"),
+    CatalogIconOption("oil", "Aceite", "\uD83E\uDED2"),
+    CatalogIconOption("sauce", "Salsas", "\uD83E\uDED9"),
+    CatalogIconOption("coffee", "Café", "\u2615"),
+    CatalogIconOption("cocoa", "Cacao", "\uD83C\uDF6B"),
+    CatalogIconOption("water", "Agua", "\uD83D\uDCA7"),
+    CatalogIconOption("bottle", "Botella", "\uD83D\uDCA7"),
+    CatalogIconOption("soft-drink", "Refrescos", "\uD83E\uDD64"),
+    CatalogIconOption("drink", "Bebidas", "\uD83E\uDD64"),
+    CatalogIconOption("juice", "Zumo", "\uD83E\uDDC3"),
+    CatalogIconOption("beer", "Cerveza", "\uD83C\uDF7A"),
+    CatalogIconOption("wine", "Bodega", "\uD83C\uDF77"),
+    CatalogIconOption("snack", "Aperitivos", "\uD83E\uDD68"),
+    CatalogIconOption("chocolate", "Chocolate", "\uD83C\uDF6B"),
+    CatalogIconOption("candy", "Dulces", "\uD83C\uDF6C"),
+    CatalogIconOption("cookie", "Galletas", "\uD83C\uDF6A"),
+    CatalogIconOption("can", "Conservas", "\uD83E\uDD6B"),
+    CatalogIconOption("frozen", "Congelados", "\uD83E\uDDCA"),
+    CatalogIconOption("pizza", "Pizza", "\uD83C\uDF55"),
+    CatalogIconOption("detergent", "Detergente", "\uD83E\uDDFC"),
+    CatalogIconOption("paper", "Papel", "\uD83E\uDDFB"),
+    CatalogIconOption("clean", "Limpieza", "\uD83E\uDDFD"),
+    CatalogIconOption("hygiene", "Higiene", "\uD83E\uDDF4"),
+    CatalogIconOption("hair-care", "Cuidado capilar", "\uD83E\uDDF4"),
+    CatalogIconOption("makeup", "Maquillaje", "\uD83D\uDC84"),
+    CatalogIconOption("first-aid", "Parafarmacia", "\uD83E\uDE79"),
+    CatalogIconOption("supplement", "Suplementos", "\uD83D\uDC8A"),
+    CatalogIconOption("eye-care", "Ojos", "\uD83D\uDC41"),
+    CatalogIconOption("condom", "Protección", "\uD83D\uDEE1"),
+    CatalogIconOption("repellent", "Repelente", "\uD83E\uDD9F"),
+    CatalogIconOption("antiseptic", "Antiséptico", "\uD83E\uDDEA"),
+    CatalogIconOption("bandage", "Curas", "\uD83E\uDE79"),
+    CatalogIconOption("cotton", "Algodón", "\u2601"),
+    CatalogIconOption("baby", "Bebé", "\uD83C\uDF7C"),
+    CatalogIconOption("diaper", "Pañales", "\uD83E\uDDF7"),
+    CatalogIconOption("care", "Cuidado", "\uD83E\uDDF4"),
+    CatalogIconOption("pet", "Mascotas", "\uD83D\uDC3E"),
+    CatalogIconOption("cart", "General", "\uD83D\uDED2"),
 )
 
 @Composable
@@ -2015,26 +2088,54 @@ private fun categoryBackground(category: ProductCategoryUiModel): Color {
 private fun categoryEmoji(category: ProductCategoryUiModel): String {
     val text = "${category.iconKey} ${category.name}".normalizedUiSearch()
     return when {
-        text.contains("fruta") || text.contains("verdura") -> "🥬"
-        text.contains("aceite") || text.contains("salsa") || text.contains("especia") -> "🫒"
-        text.contains("agua") || text.contains("refresco") || text.contains("zumo") || text.contains("bebida") -> "🥤"
-        text.contains("carne") || text.contains("charcuteria") -> "🥩"
-        text.contains("pescado") || text.contains("marisco") -> "🐟"
-        text.contains("pan") || text.contains("pasteleria") -> "🥖"
-        text.contains("leche") || text.contains("huevo") || text.contains("yogur") || text.contains("postre") -> "🥛"
-        text.contains("congelado") -> "❄️"
-        text.contains("mascota") -> "🐾"
-        text.contains("limpieza") || text.contains("hogar") -> "🧽"
-        text.contains("bebe") -> "🍼"
-        text.contains("cafe") || text.contains("infusion") || text.contains("cacao") -> "☕"
-        text.contains("arroz") || text.contains("pasta") || text.contains("legumbre") -> "🍝"
-        text.contains("galleta") || text.contains("cereal") || text.contains("chocolate") || text.contains("caramelo") -> "🍪"
-        text.contains("bodega") -> "🍷"
-        text.contains("cuidado") || text.contains("maquillaje") || text.contains("parafarmacia") -> "🧴"
-        text.contains("aperitivo") -> "🥨"
-        text.contains("pizza") || text.contains("preparado") -> "🍕"
-        text.contains("conserva") || text.contains("caldo") || text.contains("crema") -> "🥫"
-        else -> "🛒"
+        text.contains("favorito") || text.contains("star") -> "\u2605"
+        text.contains("fruta") || text.contains("fruit") -> "\uD83C\uDF4E"
+        text.contains("verdura") || text.contains("vegetable") -> "\uD83E\uDD6C"
+        text.contains("aceite") || text.contains("oil") -> "\uD83E\uDED2"
+        text.contains("salsa") || text.contains("especia") || text.contains("sauce") -> "\uD83E\uDED9"
+        text.contains("zumo") || text.contains("jugo") || text.contains("juice") -> "\uD83E\uDDC3"
+        text.contains("refresco") || text.contains("soft-drink") -> "\uD83E\uDD64"
+        text.contains("agua") || text.contains("water") || text.contains("bottle") -> "\uD83D\uDCA7"
+        text.contains("bebida") || text.contains("drink") -> "\uD83E\uDD64"
+        text.contains("cerveza") || text.contains("beer") -> "\uD83C\uDF7A"
+        text.contains("vino") || text.contains("bodega") || text.contains("wine") -> "\uD83C\uDF77"
+        text.contains("carne") || text.contains("meat") -> "\uD83E\uDD69"
+        text.contains("charcuteria") || text.contains("embutido") || text.contains("cold-cuts") -> "\uD83E\uDD53"
+        text.contains("pescado") || text.contains("marisco") || text.contains("fish") -> "\uD83D\uDC1F"
+        text.contains("pan") || text.contains("pasteleria") || text.contains("bread") -> "\uD83E\uDD56"
+        text.contains("queso") || text.contains("cheese") -> "\uD83E\uDDC0"
+        text.contains("huevo") || text.contains("egg") -> "\uD83E\uDD5A"
+        text.contains("leche") || text.contains("yogur") || text.contains("lacteo") || text.contains("milk") -> "\uD83E\uDD5B"
+        text.contains("congelado") || text.contains("frozen") -> "\uD83E\uDDCA"
+        text.contains("mascota") || text.contains("pet") -> "\uD83D\uDC3E"
+        text.contains("detergente") || text.contains("detergent") -> "\uD83E\uDDFC"
+        text.contains("papel") || text.contains("paper") -> "\uD83E\uDDFB"
+        text.contains("limpieza") || text.contains("hogar") || text.contains("clean") -> "\uD83E\uDDFD"
+        text.contains("bebe") || text.contains("baby") -> "\uD83C\uDF7C"
+        text.contains("cafe") || text.contains("infusion") || text.contains("coffee") -> "\u2615"
+        text.contains("cacao") || text.contains("chocolate") -> "\uD83C\uDF6B"
+        text.contains("arroz") || text.contains("rice") -> "\uD83C\uDF5A"
+        text.contains("pasta") -> "\uD83C\uDF5D"
+        text.contains("legumbre") || text.contains("beans") -> "\uD83E\uDED8"
+        text.contains("galleta") || text.contains("cereal") || text.contains("cookie") -> "\uD83C\uDF6A"
+        text.contains("caramelo") || text.contains("candy") -> "\uD83C\uDF6C"
+        text.contains("postre") || text.contains("dessert") -> "\uD83C\uDF6E"
+        text.contains("hair-care") || text.contains("cabello") || text.contains("capilar") -> "\uD83E\uDDF4"
+        text.contains("cuidado") || text.contains("higiene") || text.contains("hygiene") || text.contains("care") -> "\uD83E\uDDF4"
+        text.contains("maquillaje") || text.contains("makeup") -> "\uD83D\uDC84"
+        text.contains("panal") || text.contains("panales") || text.contains("diaper") -> "\uD83E\uDDF7"
+        text.contains("first-aid") || text.contains("fitoterapia") || text.contains("parafarmacia") -> "\uD83E\uDE79"
+        text.contains("supplement") || text.contains("vitamina") || text.contains("mineral") -> "\uD83D\uDC8A"
+        text.contains("eye-care") -> "\uD83D\uDC41"
+        text.contains("condom") -> "\uD83D\uDEE1"
+        text.contains("repellent") -> "\uD83E\uDD9F"
+        text.contains("antiseptic") -> "\uD83E\uDDEA"
+        text.contains("bandage") -> "\uD83E\uDE79"
+        text.contains("cotton") -> "\u2601"
+        text.contains("aperitivo") || text.contains("snack") -> "\uD83E\uDD68"
+        text.contains("pizza") || text.contains("preparado") -> "\uD83C\uDF55"
+        text.contains("conserva") || text.contains("caldo") || text.contains("crema") || text.contains("can") || text.contains("soup") -> "\uD83E\uDD6B"
+        else -> "\uD83D\uDED2"
     }
 }
 
@@ -3727,11 +3828,19 @@ private fun productIcon(product: ProductCatalogUiModel): String {
 }
 
 private fun productIconFromText(text: String): String = when {
+    text.contains("panal") || text.contains("panales") || text.contains("diaper") -> "\uD83E\uDDF7"
+    text.contains("refresco") || text.contains("gaseosa") || text.contains("soft-drink") || text.contains("coca-cola") -> "\uD83E\uDD64"
+    text.contains("agua mineral") || text.contains("agua con gas") || text.contains("agua de soda") || text.contains("agua de coco") || text.contains("agua destilada") || text.contains("water") || text.contains("bottle") -> "\uD83D\uDCA7"
+    text.contains("zumo") || text.contains("jugo") || text.contains("juice") -> "\uD83E\uDDC3"
+    text.contains("vino") || text.contains("bodega") || text.contains("wine") -> "\uD83C\uDF77"
+    text.contains("cerveza") || text.contains("beer") -> "\uD83C\uDF7A"
+    text.contains("cafe") || text.contains("infusion") || text.contains("coffee") -> "\u2615"
+    text.contains("bebida") || text.contains("drink") -> "\uD83E\uDD64"
+    text.contains("acondicionador") || text.contains("pantene") || text.contains("cabello") || text.contains("capilar") || text.contains("hair-care") -> "\uD83E\uDDF4"
     text.contains("arroz") || text.contains("rice") -> "\uD83C\uDF5A"
     text.contains("pasta") || text.contains("macarron") || text.contains("espagueti") || text.contains("tallar") -> "\uD83C\uDF5D"
     text.contains("alubia") || text.contains("judia") || text.contains("garbanzo") || text.contains("lenteja") || text.contains("legumbre") || text.contains("beans") -> "\uD83E\uDED8"
     text.contains("cacao") || text.contains("chocolate") || text.contains("bombon") -> "\uD83C\uDF6B"
-    text.contains("cafe") || text.contains("infusion") || text.contains("coffee") -> "\u2615"
     text.contains("salsa") || text.contains("mayonesa") || text.contains("mostaza") || text.contains("ketchup") -> "\uD83E\uDED9"
     text.contains("atun") || text.contains("pescado") || text.contains("marisco") || text.contains("fish") -> "\uD83D\uDC1F"
     text.contains("aceite") || text.contains("oliva") || text.contains("aceituna") || text.contains("oil") -> "\uD83E\uDED2"
@@ -3739,14 +3848,14 @@ private fun productIconFromText(text: String): String = when {
     text.contains("queso") || text.contains("cheese") -> "\uD83E\uDDC0"
     text.contains("mantequilla") || text.contains("butter") -> "\uD83E\uDDC8"
     text.contains("harina") || text.contains("flour") -> "\uD83C\uDF3E"
-    text.contains("sal") || text.contains("especia") || text.contains("pimienta") -> "\uD83E\uDDC2"
+    text.hasWord("sal") || text.contains("especia") || text.contains("pimienta") -> "\uD83E\uDDC2"
     text.contains("galleta") || text.contains("cereal") || text.contains("cookie") -> "\uD83C\uDF6A"
     text.contains("azucar") || text.contains("caramelo") || text.contains("dulce") || text.contains("candy") -> "\uD83C\uDF6C"
     text.contains("postre") || text.contains("flan") || text.contains("natilla") || text.contains("dessert") -> "\uD83C\uDF6E"
     text.contains("helado") || text.contains("congelado") || text.contains("frozen") -> "\uD83E\uDDCA"
     text.contains("pizza") -> "\uD83C\uDF55"
     text.contains("sopa") || text.contains("caldo") || text.contains("crema") || text.contains("soup") -> "\uD83E\uDD63"
-    text.contains("pan") || text.contains("bolleria") || text.contains("bread") -> "\uD83E\uDD56"
+    text.hasWord("pan") || text.contains("panaderia") || text.contains("panecillo") || text.contains("bolleria") || text.contains("bread") -> "\uD83E\uDD56"
     text.contains("leche") || text.contains("lacteo") || text.contains("yogur") || text.contains("milk") -> "\uD83E\uDD5B"
     text.contains("tomate") -> "\uD83C\uDF45"
     text.contains("patata") || text.contains("papa") || text.contains("potato") -> "\uD83E\uDD54"
@@ -3759,15 +3868,19 @@ private fun productIconFromText(text: String): String = when {
     text.contains("verdura") || text.contains("zanahoria") || text.contains("carrot") -> "\uD83E\uDD55"
     text.contains("carne") || text.contains("pollo") || text.contains("meat") -> "\uD83E\uDD69"
     text.contains("salchicha") || text.contains("chorizo") || text.contains("jamon") || text.contains("charcuteria") || text.contains("cold-cuts") -> "\uD83E\uDD53"
-    text.contains("agua") || text.contains("bebida") || text.contains("refresco") || text.contains("bottle") -> "\uD83D\uDCA7"
-    text.contains("zumo") || text.contains("jugo") || text.contains("juice") -> "\uD83E\uDDC3"
-    text.contains("vino") || text.contains("bodega") || text.contains("wine") -> "\uD83C\uDF77"
-    text.contains("cerveza") || text.contains("beer") -> "\uD83C\uDF7A"
     text.contains("snack") || text.contains("aperitivo") || text.contains("patatas fritas") -> "\uD83E\uDD68"
     text.contains("papel") || text.contains("servilleta") || text.contains("panuelo") -> "\uD83E\uDDFB"
     text.contains("detergente") || text.contains("lavavajillas") -> "\uD83E\uDDFC"
     text.contains("limpieza") || text.contains("drogueria") || text.contains("cleaning") -> "\uD83E\uDDFD"
     text.contains("higiene") || text.contains("gel") || text.contains("champu") || text.contains("jabon") || text.contains("cuidado") -> "\uD83E\uDDF4"
+    text.contains("preservativo") || text.contains("condom") -> "\uD83D\uDEE1"
+    text.contains("lagrima") || text.contains("lente de contacto") || text.contains("ojos") || text.contains("eye-care") -> "\uD83D\uDC41"
+    text.contains("mosquito") || text.contains("citronela") || text.contains("repelente") || text.contains("picor") || text.contains("repellent") -> "\uD83E\uDD9F"
+    text.contains("alcohol") || text.contains("antiseptico") || text.contains("desinfectante") || text.contains("clorhexidina") || text.contains("povidona") || text.contains("antiseptic") -> "\uD83E\uDDEA"
+    text.contains("tirita") || text.contains("tira adhesiva") || text.contains("aposito") || text.contains("esparadrapo") || text.contains("venda") || text.contains("gasa") || text.contains("bandage") -> "\uD83E\uDE79"
+    text.contains("algodon") || text.contains("bastoncillo") || text.contains("cotton") -> "\u2601"
+    text.contains("capsula") || text.contains("comprimido") || text.contains("vitamina") || text.contains("mineral") || text.contains("probiotico") || text.contains("omega") || text.contains("melatonina") || text.contains("creatina") || text.contains("jalea real") || text.contains("propolis") || text.contains("valeriana") || text.contains("colagen") || text.contains("supplement") -> "\uD83D\uDC8A"
+    text.contains("vaselina") || text.contains("arnica") || text.contains("balsamo") || text.contains("parafarmacia") || text.contains("fitoterapia") || text.contains("first-aid") -> "\uD83E\uDE79"
     text.contains("mascota") || text.contains("perro") || text.contains("gato") || text.contains("pet") -> "\uD83D\uDC3E"
     text.contains("bebe") || text.contains("baby") -> "\uD83C\uDF7C"
     text.contains("conserva") || text.contains("can") -> "\uD83E\uDD6B"
@@ -3778,6 +3891,9 @@ private fun String.normalizedUiSearch(): String =
     java.text.Normalizer.normalize(this, java.text.Normalizer.Form.NFD)
         .replace("\\p{Mn}+".toRegex(), "")
         .lowercase()
+
+private fun String.hasWord(word: String): Boolean =
+    Regex("(^|[^a-z0-9])${Regex.escape(word)}([^a-z0-9]|$)").containsMatchIn(this)
 
 @Composable
 private fun ShoppingItemsSection(
@@ -4030,6 +4146,3 @@ private val EmptyListState = ShoppingListUiState("Compra semanal", emptyList(), 
 @Preview
 @Composable
 private fun ShoppingListPreview() = NFCompraTheme { ShoppingListScreen(EmptyListState, {}) }
-
-
-

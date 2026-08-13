@@ -23,47 +23,59 @@ const catalogCategoriesQueryKey = ['product-categories'] as const;
 type CatalogSearchFilter = 'all' | 'favorites' | 'category';
 type CatalogCreateMode = 'category' | 'product';
 const catalogIconOptions = [
-  { value: 'shopping-basket', label: '🛒 General' },
-  { value: 'milk', label: '🥛 Lácteos' },
-  { value: 'bread', label: '🥖 Panadería' },
-  { value: 'fish', label: '🐟 Pescado' },
-  { value: 'meat', label: '🥩 Carne' },
-  { value: 'fruit', label: '🍎 Fruta' },
-  { value: 'vegetable', label: '🥕 Verdura' },
-  { value: 'clean', label: '🧽 Limpieza' },
-  { value: 'water-drink', label: '💧 Bebidas' },
-  { value: 'frozen', label: '🧊 Congelados' },
-  { value: 'cheese', label: '🧀 Quesos' },
-  { value: 'butter', label: '🧈 Mantequilla' },
-  { value: 'egg', label: '🥚 Huevos' },
-  { value: 'flour', label: '🌾 Harina' },
-  { value: 'spices', label: '🧂 Sal y especias' },
-  { value: 'rice-pasta', label: '🍚 Arroz y pasta' },
-  { value: 'pasta', label: '🍝 Pasta' },
-  { value: 'beans', label: '🫘 Legumbres' },
-  { value: 'canned', label: '🥫 Conservas' },
-  { value: 'snacks', label: '🥨 Aperitivos' },
-  { value: 'coffee', label: '☕ Café e infusiones' },
-  { value: 'sauce', label: '🫙 Salsas' },
-  { value: 'oil', label: '🫒 Aceite y aceitunas' },
-  { value: 'sweet', label: '🍫 Dulces' },
-  { value: 'cookies', label: '🍪 Galletas y cereales' },
-  { value: 'soup', label: '🥣 Caldos y cremas' },
-  { value: 'dessert', label: '🍮 Postres' },
-  { value: 'pizza', label: '🍕 Platos preparados' },
-  { value: 'juice', label: '🧃 Zumos' },
-  { value: 'wine', label: '🍷 Bodega' },
-  { value: 'beer', label: '🍺 Cerveza' },
-  { value: 'pet', label: '🐾 Mascotas' },
-  { value: 'hygiene', label: '🧴 Higiene' },
-  { value: 'soap', label: '🧼 Detergente' },
-  { value: 'paper', label: '🧻 Papel' },
-  { value: 'tomato', label: '🍅 Tomate' },
-  { value: 'potato', label: '🥔 Patata' },
-  { value: 'onion', label: '🧅 Cebolla' },
-  { value: 'garlic', label: '🧄 Ajo' },
-  { value: 'banana', label: '🍌 Plátano' },
-  { value: 'citrus', label: '🍊 Cítricos' },
+  { value: 'shopping-basket', label: '\uD83D\uDED2 General' },
+  { value: 'milk', label: '\uD83E\uDD5B Lácteos' },
+  { value: 'bread', label: '\uD83E\uDD56 Panadería' },
+  { value: 'fish', label: '\uD83D\uDC1F Pescado' },
+  { value: 'meat', label: '\uD83E\uDD69 Carne' },
+  { value: 'fruit', label: '\uD83C\uDF4E Fruta' },
+  { value: 'vegetable', label: '\uD83E\uDD55 Verdura' },
+  { value: 'water', label: '\uD83D\uDCA7 Agua' },
+  { value: 'soft-drink', label: '\uD83E\uDD64 Refrescos' },
+  { value: 'drink', label: '\uD83E\uDD64 Bebidas' },
+  { value: 'juice', label: '\uD83E\uDDC3 Zumos' },
+  { value: 'coffee', label: '\u2615 Café e infusiones' },
+  { value: 'wine', label: '\uD83C\uDF77 Bodega' },
+  { value: 'beer', label: '\uD83C\uDF7A Cerveza' },
+  { value: 'frozen', label: '\uD83E\uDDCA Congelados' },
+  { value: 'cheese', label: '\uD83E\uDDC0 Quesos' },
+  { value: 'butter', label: '\uD83E\uDDC8 Mantequilla' },
+  { value: 'egg', label: '\uD83E\uDD5A Huevos' },
+  { value: 'flour', label: '\uD83C\uDF3E Harina' },
+  { value: 'spices', label: '\uD83E\uDDC2 Sal y especias' },
+  { value: 'rice-pasta', label: '\uD83C\uDF5A Arroz y pasta' },
+  { value: 'pasta', label: '\uD83C\uDF5D Pasta' },
+  { value: 'beans', label: '\uD83E\uDED8 Legumbres' },
+  { value: 'canned', label: '\uD83E\uDD6B Conservas' },
+  { value: 'snacks', label: '\uD83E\uDD68 Aperitivos' },
+  { value: 'sauce', label: '\uD83E\uDED9 Salsas' },
+  { value: 'oil', label: '\uD83E\uDED2 Aceite y aceitunas' },
+  { value: 'sweet', label: '\uD83C\uDF6B Dulces' },
+  { value: 'cookies', label: '\uD83C\uDF6A Galletas y cereales' },
+  { value: 'soup', label: '\uD83E\uDD63 Caldos y cremas' },
+  { value: 'dessert', label: '\uD83C\uDF6E Postres' },
+  { value: 'pizza', label: '\uD83C\uDF55 Platos preparados' },
+  { value: 'pet', label: '\uD83D\uDC3E Mascotas' },
+  { value: 'hygiene', label: '\uD83E\uDDF4 Higiene' },
+  { value: 'hair-care', label: '\uD83E\uDDF4 Cuidado capilar' },
+  { value: 'soap', label: '\uD83E\uDDFC Detergente' },
+  { value: 'paper', label: '\uD83E\uDDFB Papel' },
+  { value: 'baby', label: '\uD83C\uDF7C Bebé' },
+  { value: 'diaper', label: '\uD83E\uDDF7 Pañales' },
+  { value: 'first-aid', label: '\uD83E\uDE79 Parafarmacia' },
+  { value: 'supplement', label: '\uD83D\uDC8A Suplementos' },
+  { value: 'eye-care', label: '\uD83D\uDC41 Ojos' },
+  { value: 'condom', label: '\uD83D\uDEE1 Protección' },
+  { value: 'repellent', label: '\uD83E\uDD9F Repelente' },
+  { value: 'antiseptic', label: '\uD83E\uDDEA Antiséptico' },
+  { value: 'bandage', label: '\uD83E\uDE79 Curas' },
+  { value: 'cotton', label: '\u2601 Algodón' },
+  { value: 'tomato', label: '\uD83C\uDF45 Tomate' },
+  { value: 'potato', label: '\uD83E\uDD54 Patata' },
+  { value: 'onion', label: '\uD83E\uDDC5 Cebolla' },
+  { value: 'garlic', label: '\uD83E\uDDC4 Ajo' },
+  { value: 'banana', label: '\uD83C\uDF4C Plátano' },
+  { value: 'citrus', label: '\uD83C\uDF4A Cítricos' },
 ] as const;
 type CatalogDialogState =
   | { kind: 'create'; mode: CatalogCreateMode }
@@ -388,48 +400,59 @@ function normalize(value: string): string {
 
 function categoryIcon(iconKey: string): string {
   const key = normalize(iconKey);
-  if (key.includes('milk')) return '🥛';
-  if (key.includes('bread')) return '🥖';
-  if (key.includes('fish')) return '🐟';
-  if (key.includes('meat')) return '🥩';
-  if (key.includes('fruit') || key.includes('apple')) return '🍎';
-  if (key.includes('vegetable') || key.includes('carrot')) return '🥕';
-  if (key.includes('clean')) return '🧽';
-  if (key.includes('water') || key.includes('drink') || key.includes('bottle')) return '💧';
-  if (key.includes('frozen')) return '🧊';
-  if (key.includes('cheese')) return '🧀';
-  if (key.includes('butter')) return '🧈';
-  if (key.includes('egg')) return '🥚';
-  if (key.includes('flour')) return '🌾';
-  if (key.includes('spice')) return '🧂';
-  if (key.includes('rice-pasta') || key.includes('rice')) return '🍚';
-  if (key.includes('pasta')) return '🍝';
-  if (key.includes('beans')) return '🫘';
-  if (key.includes('oil')) return '🫒';
-  if (key.includes('canned') || key.includes('can')) return '🥫';
-  if (key.includes('snack')) return '🥨';
-  if (key.includes('coffee')) return '☕';
-  if (key.includes('sauce')) return '🫙';
-  if (key.includes('sweet') || key.includes('chocolate')) return '🍫';
-  if (key.includes('candy')) return '🍬';
-  if (key.includes('cookie')) return '🍪';
-  if (key.includes('soup')) return '🥣';
-  if (key.includes('dessert')) return '🍮';
-  if (key.includes('pizza')) return '🍕';
-  if (key.includes('juice')) return '🧃';
-  if (key.includes('wine')) return '🍷';
-  if (key.includes('beer')) return '🍺';
-  if (key.includes('pet')) return '🐾';
-  if (key.includes('hygiene')) return '🧴';
-  if (key.includes('soap') || key.includes('detergent')) return '🧼';
-  if (key.includes('paper')) return '🧻';
-  if (key.includes('makeup')) return '💄';
-  if (key.includes('baby')) return '🍼';
-  if (key.includes('tomato')) return '🍅';
-  if (key.includes('potato')) return '🥔';
-  if (key.includes('onion')) return '🧅';
-  if (key.includes('garlic')) return '🧄';
-  if (key.includes('banana')) return '🍌';
-  if (key.includes('citrus')) return '🍊';
-  return '🛒';
+  if (key.includes('milk')) return '\uD83E\uDD5B';
+  if (key.includes('bread')) return '\uD83E\uDD56';
+  if (key.includes('fish')) return '\uD83D\uDC1F';
+  if (key.includes('meat')) return '\uD83E\uDD69';
+  if (key.includes('fruit') || key.includes('apple')) return '\uD83C\uDF4E';
+  if (key.includes('vegetable') || key.includes('carrot')) return '\uD83E\uDD55';
+  if (key.includes('clean')) return '\uD83E\uDDFD';
+  if (key.includes('soft-drink')) return '\uD83E\uDD64';
+  if (key.includes('water') || key.includes('bottle')) return '\uD83D\uDCA7';
+  if (key.includes('drink')) return '\uD83E\uDD64';
+  if (key.includes('frozen')) return '\uD83E\uDDCA';
+  if (key.includes('cheese')) return '\uD83E\uDDC0';
+  if (key.includes('butter')) return '\uD83E\uDDC8';
+  if (key.includes('egg')) return '\uD83E\uDD5A';
+  if (key.includes('flour')) return '\uD83C\uDF3E';
+  if (key.includes('spice')) return '\uD83E\uDDC2';
+  if (key.includes('rice-pasta') || key.includes('rice')) return '\uD83C\uDF5A';
+  if (key.includes('pasta')) return '\uD83C\uDF5D';
+  if (key.includes('beans')) return '\uD83E\uDED8';
+  if (key.includes('oil')) return '\uD83E\uDED2';
+  if (key.includes('canned') || key.includes('can')) return '\uD83E\uDD6B';
+  if (key.includes('snack')) return '\uD83E\uDD68';
+  if (key.includes('coffee')) return '\u2615';
+  if (key.includes('sauce')) return '\uD83E\uDED9';
+  if (key.includes('sweet') || key.includes('chocolate')) return '\uD83C\uDF6B';
+  if (key.includes('candy')) return '\uD83C\uDF6C';
+  if (key.includes('cookie')) return '\uD83C\uDF6A';
+  if (key.includes('soup')) return '\uD83E\uDD63';
+  if (key.includes('dessert')) return '\uD83C\uDF6E';
+  if (key.includes('pizza')) return '\uD83C\uDF55';
+  if (key.includes('juice')) return '\uD83E\uDDC3';
+  if (key.includes('wine')) return '\uD83C\uDF77';
+  if (key.includes('beer')) return '\uD83C\uDF7A';
+  if (key.includes('pet')) return '\uD83D\uDC3E';
+  if (key.includes('hair-care')) return '\uD83E\uDDF4';
+  if (key.includes('hygiene')) return '\uD83E\uDDF4';
+  if (key.includes('soap') || key.includes('detergent')) return '\uD83E\uDDFC';
+  if (key.includes('paper')) return '\uD83E\uDDFB';
+  if (key.includes('makeup')) return '\uD83D\uDC84';
+  if (key.includes('diaper')) return '\uD83E\uDDF7';
+  if (key.includes('baby')) return '\uD83C\uDF7C';
+  if (key.includes('first-aid') || key.includes('bandage')) return '\uD83E\uDE79';
+  if (key.includes('supplement')) return '\uD83D\uDC8A';
+  if (key.includes('eye-care')) return '\uD83D\uDC41';
+  if (key.includes('condom')) return '\uD83D\uDEE1';
+  if (key.includes('repellent')) return '\uD83E\uDD9F';
+  if (key.includes('antiseptic')) return '\uD83E\uDDEA';
+  if (key.includes('cotton')) return '\u2601';
+  if (key.includes('tomato')) return '\uD83C\uDF45';
+  if (key.includes('potato')) return '\uD83E\uDD54';
+  if (key.includes('onion')) return '\uD83E\uDDC5';
+  if (key.includes('garlic')) return '\uD83E\uDDC4';
+  if (key.includes('banana')) return '\uD83C\uDF4C';
+  if (key.includes('citrus')) return '\uD83C\uDF4A';
+  return '\uD83D\uDED2';
 }

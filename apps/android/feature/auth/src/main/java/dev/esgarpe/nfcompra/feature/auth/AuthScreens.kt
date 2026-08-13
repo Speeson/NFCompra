@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -117,6 +119,7 @@ fun AuthApp(
     var route by remember { mutableStateOf(AuthRoute.WELCOME) }
     var resetEmail by remember { mutableStateOf("") }
     var resetOtp by remember { mutableStateOf("") }
+    var registrationSuccessEmail by remember { mutableStateOf<String?>(null) }
     val state by viewModel.state.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
     var lastBackPressMs by remember { mutableStateOf(0L) }
@@ -155,60 +158,73 @@ fun AuthApp(
             route = AuthRoute.RESET
         }
     }
-    when (route) {
-        AuthRoute.WELCOME -> WelcomeScreen(
-            state = state,
-            onLogin = {
-                when (welcomeLoginAction(hasSavedSession, canUseBiometricAccess)) {
-                    WelcomeLoginAction.SAVED_SESSION -> onSavedSessionAccess()
-                    WelcomeLoginAction.BIOMETRIC -> onBiometricAccess()
-                    WelcomeLoginAction.CREDENTIALS -> route = AuthRoute.LOGIN
-                }
-            },
-            canUseBiometricAccess = canUseBiometricAccess,
-            onBiometricAccess = onBiometricAccess,
-            onRegister = { route = AuthRoute.REGISTER },
-        )
-        AuthRoute.LOGIN -> LoginScreen(
-            state = state,
-            rememberedEmail = rememberedEmail,
-            onLogin = viewModel::login,
-            onRegister = { route = AuthRoute.REGISTER },
-            onForgotPassword = { route = AuthRoute.FORGOT },
-            onBack = { route = AuthRoute.WELCOME },
-            onRememberEmail = onRememberEmail,
-        )
-        AuthRoute.REGISTER -> RegisterScreen(state, viewModel::register, viewModel::resendVerification, { route = AuthRoute.LOGIN }, { route = AuthRoute.VERIFY })
-        AuthRoute.VERIFY -> VerificationScreen(state, viewModel::verify, { route = AuthRoute.LOGIN })
-        AuthRoute.FORGOT -> ForgotPasswordScreen(
-            state = state,
-            onRequest = { email ->
-                resetEmail = email
-                viewModel.forgotPassword(email)
-                route = AuthRoute.OTP
-            },
-            onOtp = { email ->
-                resetEmail = email
-                route = AuthRoute.OTP
-            },
-            onBack = { route = AuthRoute.WELCOME },
-        )
-        AuthRoute.OTP -> OtpScreen(
-            state = state,
-            initialEmail = resetEmail,
-            onNext = { email, otp ->
-                resetEmail = email
-                resetOtp = otp
-                viewModel.verifyPasswordResetOtp(email, otp)
-            },
-            onResend = { viewModel.forgotPassword(resetEmail) },
-            onBack = { route = AuthRoute.FORGOT },
-        )
-        AuthRoute.RESET -> ResetPasswordScreen(
-            state = state,
-            onReset = { password -> viewModel.resetPasswordWithOtp(resetEmail, resetOtp, password) },
-            onBack = { route = AuthRoute.LOGIN },
-        )
+    LaunchedEffect(state.registrationSuccessEmail) {
+        state.registrationSuccessEmail?.let { email ->
+            registrationSuccessEmail = email
+            route = AuthRoute.LOGIN
+            onRememberEmail(email)
+            viewModel.consumeRegistrationSuccess()
+        }
+    }
+    Box(modifier = Modifier.fillMaxSize()) {
+        when (route) {
+            AuthRoute.WELCOME -> WelcomeScreen(
+                state = state,
+                onLogin = {
+                    when (welcomeLoginAction(hasSavedSession, canUseBiometricAccess)) {
+                        WelcomeLoginAction.SAVED_SESSION -> onSavedSessionAccess()
+                        WelcomeLoginAction.BIOMETRIC -> onBiometricAccess()
+                        WelcomeLoginAction.CREDENTIALS -> route = AuthRoute.LOGIN
+                    }
+                },
+                canUseBiometricAccess = canUseBiometricAccess,
+                onBiometricAccess = onBiometricAccess,
+                onRegister = { route = AuthRoute.REGISTER },
+            )
+            AuthRoute.LOGIN -> LoginScreen(
+                state = state,
+                rememberedEmail = rememberedEmail,
+                onLogin = viewModel::login,
+                onRegister = { route = AuthRoute.REGISTER },
+                onForgotPassword = { route = AuthRoute.FORGOT },
+                onBack = { route = AuthRoute.WELCOME },
+                onRememberEmail = onRememberEmail,
+            )
+            AuthRoute.REGISTER -> RegisterScreen(state, viewModel::register, viewModel::resendVerification, { route = AuthRoute.LOGIN }, { route = AuthRoute.VERIFY })
+            AuthRoute.VERIFY -> VerificationScreen(state, viewModel::verify, { route = AuthRoute.LOGIN })
+            AuthRoute.FORGOT -> ForgotPasswordScreen(
+                state = state,
+                onRequest = { email ->
+                    resetEmail = email
+                    viewModel.forgotPassword(email)
+                    route = AuthRoute.OTP
+                },
+                onOtp = { email ->
+                    resetEmail = email
+                    route = AuthRoute.OTP
+                },
+                onBack = { route = AuthRoute.WELCOME },
+            )
+            AuthRoute.OTP -> OtpScreen(
+                state = state,
+                initialEmail = resetEmail,
+                onNext = { email, otp ->
+                    resetEmail = email
+                    resetOtp = otp
+                    viewModel.verifyPasswordResetOtp(email, otp)
+                },
+                onResend = { viewModel.forgotPassword(resetEmail) },
+                onBack = { route = AuthRoute.FORGOT },
+            )
+            AuthRoute.RESET -> ResetPasswordScreen(
+                state = state,
+                onReset = { password -> viewModel.resetPasswordWithOtp(resetEmail, resetOtp, password) },
+                onBack = { route = AuthRoute.LOGIN },
+            )
+        }
+        registrationSuccessEmail?.let { email ->
+            RegistrationSuccessDialog(email = email, onDismiss = { registrationSuccessEmail = null })
+        }
     }
 }
 
@@ -474,6 +490,37 @@ fun ResetPasswordScreen(state: AuthUiState, onReset: (String) -> Unit, onBack: (
 }
 
 @Composable
+private fun RegistrationSuccessDialog(email: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Cuenta creada correctamente", color = AuthPrimary, fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Text(
+                "Tu cuenta se ha registrado correctamente. Te hemos enviado un correo a $email para verificarla. Verifica tu cuenta antes de iniciar sesión.",
+                color = AuthText,
+                lineHeight = 20.sp,
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = AuthLime,
+                    contentColor = AuthText,
+                ),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text("Entendido", fontWeight = FontWeight.Bold)
+            }
+        },
+        shape = RoundedCornerShape(22.dp),
+        containerColor = Color.White,
+    )
+}
+
+@Composable
 private fun AuthVisualScaffold(
     title: String,
     bodyTop: androidx.compose.ui.unit.Dp,
@@ -489,6 +536,7 @@ private fun AuthVisualScaffold(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .safeDrawingPadding()
                 .background(AuthPage),
         ) {
             HeaderArtwork(title = title, showBack = showBack, onBack = onBack, logoTop = logoTop, logoSize = logoSize, height = headerHeight)
@@ -574,6 +622,7 @@ private fun AuthSimpleForm(title: String, state: AuthUiState, content: @Composab
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .safeDrawingPadding()
                 .background(AuthPage)
                 .verticalScroll(rememberScrollState())
                 .padding(24.dp),

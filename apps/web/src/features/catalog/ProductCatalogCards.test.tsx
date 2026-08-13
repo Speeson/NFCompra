@@ -44,6 +44,13 @@ describe('ProductCatalogCard', () => {
     expect(productIcon(product({ name: 'Compota infantil', iconKey: 'baby' }))).toBe('🍼');
     expect(productIcon(product({ name: 'Lavavajillas concentrado', iconKey: 'detergent' }))).toBe('🧼');
     expect(productIcon(product({ name: 'Cerveza lager', iconKey: 'beer' }))).toBe('🍺');
+    expect(productIcon(product({ name: 'Panales bebe talla 4 Deliplus', iconKey: 'bread' }))).toBe('\uD83E\uDDF7');
+    expect(productIcon(product({ name: 'Acondicionador Pantene', iconKey: 'bread' }))).toBe('\uD83E\uDDF4');
+    expect(productIcon(product({ name: 'Refresco Coca-Cola zero azucar zero cafeina', iconKey: 'coffee' }))).toBe('\uD83E\uDD64');
+    expect(productIcon(product({ name: 'Agua mineral grande Bezoya', iconKey: 'water' }))).toBe('\uD83D\uDCA7');
+    expect(productIcon(product({ name: 'Bebida energetica Furious Energy drink Hacendado', iconKey: 'drink' }))).toBe('\uD83E\uDD64');
+    expect(productIcon(product({ name: 'Bebida de avena con cafe Hacendado', iconKey: 'coffee' }))).toBe('\u2615');
+    expect(productIcon(product({ name: 'Pan de leche', categoryName: 'Lacteos' }))).toBe('\uD83E\uDD56');
   });
 });
 

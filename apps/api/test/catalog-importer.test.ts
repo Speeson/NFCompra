@@ -96,12 +96,38 @@ describe('catalog importer', () => {
       { name: 'Arroz redondo', category: 'Arroz, legumbres y pasta', sourceProductId: 'arroz-1' },
       { name: 'Atun claro en aceite', category: 'Conservas, caldos y cremas', sourceProductId: 'atun-1' },
       { name: 'Papel higienico', category: 'Limpieza y hogar', sourceProductId: 'papel-1' },
+      { name: 'Capsulas Probiotico Deliplus', category: 'Fitoterapia y parafarmacia', sourceProductId: 'probiotico-1' },
+      { name: 'Preservativos sensitive On', category: 'Fitoterapia y parafarmacia', sourceProductId: 'preservativo-1' },
+      { name: 'Spray repelente fuerte Deliplus antimosquitos', category: 'Fitoterapia y parafarmacia', sourceProductId: 'repelente-1' },
+      { name: 'Panales bebe talla 4 Deliplus', category: 'Bebe', sourceProductId: 'panales-1' },
+      { name: 'Acondicionador Repara & Protege Pantene', category: 'Perfumeria e higiene', sourceProductId: 'pantene-1' },
+      { name: 'Refresco Coca-Cola zero azucar zero cafeina', category: 'Bebidas', sourceProductId: 'refresco-1' },
+      { name: 'Agua mineral grande Bezoya', category: 'Bebidas', sourceProductId: 'agua-1' },
+      { name: 'Bebida energetica Furious Energy drink Hacendado', category: 'Bebidas', sourceProductId: 'bebida-1' },
+      { name: 'Bebida de avena con cafe Hacendado', category: 'Bebidas', sourceProductId: 'cafe-1' },
+      { name: 'Cafe molido natural Hacendado', category: 'Cacao, cafe e infusiones', sourceProductId: 'category-cafe-1' },
+      { name: 'Pan de leche', category: 'Panaderia', sourceProductId: 'pan-leche-1' },
     ], { defaultSource: 'manual' });
 
     expect(result.products).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'Arroz redondo', iconKey: 'rice' }),
       expect.objectContaining({ name: 'Atun claro en aceite', iconKey: 'fish' }),
       expect.objectContaining({ name: 'Papel higienico', iconKey: 'paper' }),
+      expect.objectContaining({ name: 'Capsulas Probiotico Deliplus', iconKey: 'supplement' }),
+      expect.objectContaining({ name: 'Preservativos sensitive On', iconKey: 'condom' }),
+      expect.objectContaining({ name: 'Spray repelente fuerte Deliplus antimosquitos', iconKey: 'repellent' }),
+      expect.objectContaining({ name: 'Panales bebe talla 4 Deliplus', iconKey: 'diaper' }),
+      expect.objectContaining({ name: 'Acondicionador Repara & Protege Pantene', iconKey: 'hair-care' }),
+      expect.objectContaining({ name: 'Refresco Coca-Cola zero azucar zero cafeina', iconKey: 'soft-drink' }),
+      expect.objectContaining({ name: 'Agua mineral grande Bezoya', iconKey: 'water' }),
+      expect.objectContaining({ name: 'Bebida energetica Furious Energy drink Hacendado', iconKey: 'drink' }),
+      expect.objectContaining({ name: 'Bebida de avena con cafe Hacendado', iconKey: 'coffee' }),
+      expect.objectContaining({ name: 'Pan de leche', iconKey: 'bread' }),
+    ]));
+    expect(result.categories).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'Agua y refrescos', iconKey: 'water' }),
+      expect.objectContaining({ name: 'Bebe', iconKey: 'baby' }),
+      expect.objectContaining({ name: 'Cacao, cafe e infusiones', iconKey: 'coffee' }),
     ]));
     expect(result.products.map((product) => product.iconKey)).not.toContain('shopping-basket');
   });

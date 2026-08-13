@@ -12,6 +12,7 @@ data class AuthUiState(
     val isSubmitting: Boolean = false,
     val message: String? = null,
     val isSignedIn: Boolean = false,
+    val registrationSuccessEmail: String? = null,
 )
 
 class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
@@ -19,8 +20,18 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     val state: StateFlow<AuthUiState> = mutableState.asStateFlow()
 
     fun login(email: String, password: String) = submit { repository.login(email, password) }
-    fun register(firstName: String, lastName: String, birthDate: String, username: String, email: String, password: String) =
-        submit { repository.register(firstName, lastName, birthDate, username, email, password) }
+    fun register(firstName: String, lastName: String, birthDate: String, username: String, email: String, password: String) {
+        viewModelScope.launch {
+            mutableState.value = AuthUiState(isSubmitting = true)
+            repository.register(firstName, lastName, birthDate, username, email, password).collect { result ->
+                mutableState.value = when (result) {
+                    AuthResult.SignedIn -> AuthUiState(message = "Sesión iniciada.", isSignedIn = true)
+                    is AuthResult.Success -> AuthUiState(registrationSuccessEmail = email.trim())
+                    is AuthResult.Failure -> AuthUiState(message = result.message)
+                }
+            }
+        }
+    }
     fun resendVerification(email: String) = submit { repository.resendVerification(email) }
     fun verify(token: String) = submit { repository.verifyEmail(token) }
     fun forgotPassword(email: String) = submit { repository.requestPasswordReset(email) }
@@ -49,6 +60,10 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
 
     fun clearMessage() {
         mutableState.value = mutableState.value.copy(message = null)
+    }
+
+    fun consumeRegistrationSuccess() {
+        mutableState.value = mutableState.value.copy(registrationSuccessEmail = null)
     }
 
     private fun submit(action: () -> kotlinx.coroutines.flow.Flow<AuthResult>) {
