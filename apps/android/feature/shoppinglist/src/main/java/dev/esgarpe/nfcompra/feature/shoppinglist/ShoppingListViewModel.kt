@@ -126,6 +126,12 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
             true
         } == true
 
+    suspend fun deleteAccount(currentPassword: String): Boolean =
+        catalogMutation("No se pudo eliminar la cuenta.") {
+            repository.deleteAccount(currentPassword)
+            true
+        } == true
+
     fun refreshProfile() {
         viewModelScope.launch {
             loadProfile()?.let { profile ->

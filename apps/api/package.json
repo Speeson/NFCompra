@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "test": "node --no-warnings --test test/migrations.wrangler.node-test.mjs && vitest run",
+    "admin:delete-user": "node --experimental-strip-types scripts/admin-delete-user.ts",
     "catalog:build-sql": "node --experimental-strip-types scripts/build-catalog-sql.ts",
     "catalog:build-mercadona": "node --experimental-strip-types scripts/build-mercadona-catalog.ts",
     "db:migrate:local": "wrangler d1 migrations apply DB --local"

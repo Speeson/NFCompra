@@ -278,8 +278,8 @@ internal fun ShoppingItemDto.toLocalItem() = LocalShoppingItem(
     isChecked = isChecked,
     position = position,
     version = version,
-    createdBy = createdBy,
-    updatedBy = updatedBy,
+    createdBy = createdBy.orEmpty(),
+    updatedBy = updatedBy.orEmpty(),
     createdAt = createdAt,
     updatedAt = updatedAt,
 )

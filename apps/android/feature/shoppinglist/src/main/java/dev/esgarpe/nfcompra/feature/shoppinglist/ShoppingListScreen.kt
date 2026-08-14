@@ -121,6 +121,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -248,6 +249,7 @@ fun ShoppingListApp(
             viewModel::deleteProductCatalogItem,
             viewModel::updateProfile,
             viewModel::changePassword,
+            viewModel::deleteAccount,
             viewModel::refreshProfile,
             viewModel::refreshProductCategories,
             viewModel::warmProductCatalog,
@@ -279,6 +281,7 @@ fun ShoppingListApp(
                 viewModel::deleteProductCatalogItem,
                 viewModel::updateProfile,
                 viewModel::changePassword,
+                viewModel::deleteAccount,
                 viewModel::refreshProfile,
                 viewModel::refreshProductCategories,
                 viewModel::warmProductCatalog,
@@ -318,6 +321,7 @@ fun ShoppingListApp(
             viewModel::deleteProductCatalogItem,
             viewModel::updateProfile,
             viewModel::changePassword,
+            viewModel::deleteAccount,
             viewModel::refreshProfile,
             viewModel::refreshProductCategories,
             viewModel::warmProductCatalog,
@@ -351,6 +355,7 @@ internal fun ShoppingListContent(
     onDeleteProduct: suspend (String) -> Boolean = { false },
     onUpdateProfile: suspend (String?, String?, String?) -> ProfileUiModel? = { _, _, _ -> null },
     onChangePassword: suspend (String, String) -> Boolean = { _, _ -> false },
+    onDeleteAccount: suspend (String) -> Boolean = { false },
     onRefreshProfile: () -> Unit = {},
     onRefreshProductCategories: () -> Unit = {},
     onWarmProductCatalog: () -> Unit = {},
@@ -593,6 +598,7 @@ internal fun ShoppingListContent(
                                 displayName = displayName,
                                 onUpdateProfile = onUpdateProfile,
                                 onChangePassword = onChangePassword,
+                                onDeleteAccount = onDeleteAccount,
                                 onRefreshProfile = onRefreshProfile,
                                 onLogout = onLogout,
                                 biometricAccessEnabled = biometricAccessEnabled,
@@ -2424,6 +2430,7 @@ private fun ProfilePanel(
     displayName: String,
     onUpdateProfile: suspend (String?, String?, String?) -> ProfileUiModel?,
     onChangePassword: suspend (String, String) -> Boolean,
+    onDeleteAccount: suspend (String) -> Boolean,
     onRefreshProfile: () -> Unit,
     onLogout: () -> Unit,
     biometricAccessEnabled: Boolean = false,
@@ -2434,6 +2441,7 @@ private fun ProfilePanel(
     var showLogoutConfirm by remember { mutableStateOf(false) }
     var editingField by remember { mutableStateOf<ProfileField?>(null) }
     var changingPassword by remember { mutableStateOf(false) }
+    var deletingAccount by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { onRefreshProfile() }
     Column(
@@ -2533,6 +2541,21 @@ private fun ProfilePanel(
         biometricAccessEnabled = biometricAccessEnabled,
         biometricAccessMessage = biometricAccessMessage,
         onBiometricAccessChange = onBiometricAccessChange,
+        onDeleteAccount = { deletingAccount = true },
+    )
+    if (deletingAccount) DeleteAccountDialog(
+        onDismiss = { deletingAccount = false },
+        onDelete = { currentPassword, done ->
+            scope.launch {
+                val deleted = onDeleteAccount(currentPassword)
+                done(deleted)
+                if (deleted) {
+                    deletingAccount = false
+                    showSettings = false
+                    onLogout()
+                }
+            }
+        },
     )
     if (showLogoutConfirm) AlertDialog(
         onDismissRequest = { showLogoutConfirm = false },
@@ -2673,9 +2696,9 @@ private fun PasswordChangeDialog(
         title = { Text("Cambiar contrase\u00f1a", color = WebPrimary, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(currentPassword, { currentPassword = it }, label = { Text("Contrase\u00f1a actual") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(newPassword, { newPassword = it }, label = { Text("Nueva contrase\u00f1a") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(repeatPassword, { repeatPassword = it }, label = { Text("Repetir contrase\u00f1a") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(currentPassword, { currentPassword = it }, label = { Text("Contrase\u00f1a actual") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(newPassword, { newPassword = it }, label = { Text("Nueva contrase\u00f1a") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(repeatPassword, { repeatPassword = it }, label = { Text("Repetir contrase\u00f1a") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
                 error?.let { Text(it, color = CheckedAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
             }
         },
@@ -2710,6 +2733,7 @@ private fun SettingsDialog(
     biometricAccessEnabled: Boolean = false,
     biometricAccessMessage: String? = null,
     onBiometricAccessChange: ((Boolean) -> Unit)? = null,
+    onDeleteAccount: () -> Unit = {},
 ) {
     val limeButtonColors = ButtonDefaults.buttonColors(containerColor = WebLime, contentColor = WebText)
     AlertDialog(
@@ -2771,6 +2795,19 @@ private fun SettingsDialog(
                         Text(it, color = WebMuted, fontSize = 12.sp)
                     }
                 }
+
+                Spacer(modifier = Modifier.height(4.dp))
+                SectionTitle("Cuenta")
+                Button(
+                    onClick = onDeleteAccount,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = CheckedAccent, contentColor = Color.White),
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Icon(Icons.Outlined.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Eliminar cuenta", fontWeight = FontWeight.Bold)
+                }
             }
         },
         confirmButton = {
@@ -2780,6 +2817,63 @@ private fun SettingsDialog(
             ) {
                 Text("Cerrar", fontWeight = FontWeight.Bold)
             }
+        },
+    )
+}
+
+@Composable
+private fun DeleteAccountDialog(
+    onDismiss: () -> Unit,
+    onDelete: (String, (Boolean) -> Unit) -> Unit,
+) {
+    var currentPassword by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text("Eliminar cuenta", color = CheckedAccent, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("Esta accion es permanente y no se puede deshacer.", color = CheckedAccent, fontWeight = FontWeight.Bold)
+                Text("Se eliminara tu cuenta y tus datos personales.", color = WebMuted, fontSize = 13.sp)
+                Text("Dejaras de pertenecer a todos tus hogares.", color = WebMuted, fontSize = 13.sp)
+                Text("Si eres propietario de algun hogar, la propiedad se transferira automaticamente a otro miembro.", color = WebMuted, fontSize = 13.sp)
+                Text("Si eres el unico miembro de un hogar, ese hogar se eliminara.", color = WebMuted, fontSize = 13.sp)
+                OutlinedTextField(
+                    value = currentPassword,
+                    onValueChange = { currentPassword = it },
+                    label = { Text("Contrase\u00f1a actual") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                error?.let { Text(it, color = CheckedAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = !saving,
+                onClick = {
+                    if (currentPassword.isBlank()) {
+                        error = "Introduce tu contrase\u00f1a actual."
+                        return@Button
+                    }
+                    saving = true
+                    error = null
+                    onDelete(currentPassword) { ok ->
+                        saving = false
+                        if (!ok) error = "La contrase\u00f1a actual no es correcta o no se pudo eliminar la cuenta."
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = CheckedAccent, contentColor = Color.White),
+                shape = RoundedCornerShape(8.dp),
+            ) { Text(if (saving) "Eliminando..." else "Eliminar mi cuenta", fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            TextButton(enabled = !saving, onClick = onDismiss) { Text("Cancelar") }
         },
     )
 }

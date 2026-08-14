@@ -95,6 +95,7 @@ function renderProfile(refreshUser = vi.fn().mockResolvedValue(user), onNavigate
       resetPasswordWithOtp: vi.fn(),
       refreshUser,
       logout: vi.fn(),
+      deleteAccount: vi.fn(),
     }}>
       <ProfilePage user={user} onNavigate={onNavigate} />
     </SessionContext.Provider>,

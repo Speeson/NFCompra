@@ -14,6 +14,7 @@ import { HouseholdsPage } from '../features/households/HouseholdsPage';
 import { ListsPage } from '../features/shopping-list/ListsPage';
 import { CatalogPage } from '../features/catalog/CatalogPage';
 import { ProfilePage } from '../features/profile/ProfilePage';
+import { SettingsPage } from '../features/profile/SettingsPage';
 import type { User } from '../api/session';
 
 export function App(): JSX.Element {
@@ -33,7 +34,7 @@ function AppRoute(): JSX.Element {
   const [notificationActionError, setNotificationActionError] = useState<string>();
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const authTriggerRef = useRef<HTMLElement | null>(null);
-  const { status, user, logout } = useSession();
+  const { status, user, logout, deleteAccount } = useSession();
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -103,7 +104,7 @@ function AppRoute(): JSX.Element {
 
   return <AppShell user={user!} pathname={location.pathname} onNavigate={navigate} onLogout={handleLogout} onNotificationActionError={setNotificationActionError}>
     {notificationActionAlert}
-    <AuthenticatedRoute pathname={location.pathname} search={location.searchParams} user={user!} onNavigate={navigate} />
+    <AuthenticatedRoute pathname={location.pathname} search={location.searchParams} user={user!} onNavigate={navigate} onDeleteAccount={deleteAccount} />
   </AppShell>;
 }
 
@@ -114,7 +115,7 @@ export function androidIntentUrlForHouseholdLink(pathname: string, href: string,
   return `intent://household/${householdListsMatch[1]}/lists#Intent;scheme=nfcompra;package=dev.esgarpe.nfcompra;S.browser_fallback_url=${encodeURIComponent(href)};end`;
 }
 
-export function AuthenticatedRoute({ pathname, search, user, onNavigate }: { pathname: string; search: URLSearchParams; user: User; onNavigate(path: string): void }): JSX.Element {
+export function AuthenticatedRoute({ pathname, search, user, onNavigate, onDeleteAccount = async () => undefined }: { pathname: string; search: URLSearchParams; user: User; onNavigate(path: string): void; onDeleteAccount?(currentPassword: string): Promise<void> }): JSX.Element {
   const userId = user.id;
   const householdMatch = pathname.match(/^\/households\/([^/]+)$/);
   const householdListsMatch = pathname.match(/^\/household\/([^/]+)\/lists$/);
@@ -127,7 +128,7 @@ export function AuthenticatedRoute({ pathname, search, user, onNavigate }: { pat
   if (listMatch) return <ShoppingListRoute currentUserId={userId} requestedListId={decodeURIComponent(listMatch[1])} onNavigate={onNavigate} />;
   if (pathname === '/catalog') return <CatalogPage />;
   if (pathname === '/profile') return <ProfilePage user={user} onNavigate={onNavigate} />;
-  if (pathname === '/settings') return <PlaceholderPage title="Ajustes" text="Los ajustes de la cuenta estarán disponibles aquí próximamente." />;
+  if (pathname === '/settings') return <SettingsPage onNavigate={onNavigate} onDeleteAccount={onDeleteAccount} />;
   return <ShoppingListRoute currentUserId={userId} requestedHouseholdId={search.get('household')} requestedListId={search.get('list')} onNavigate={onNavigate} />;
 }
 

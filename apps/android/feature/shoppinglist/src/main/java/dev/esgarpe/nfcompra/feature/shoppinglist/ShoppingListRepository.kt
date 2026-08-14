@@ -108,6 +108,7 @@ interface ShoppingRepository {
     suspend fun profile(): ProfileUiModel? = null
     suspend fun updateProfile(firstName: String?, lastName: String?, username: String?): ProfileUiModel? = null
     suspend fun changePassword(currentPassword: String, newPassword: String) = Unit
+    suspend fun deleteAccount(currentPassword: String) = Unit
     suspend fun profileDisplayName(): String? = null
     suspend fun resolveConflict(resolution: ResolveConflict) = Unit
 }
@@ -241,6 +242,10 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
 
     override suspend fun changePassword(currentPassword: String, newPassword: String) {
         api.changePassword(ChangePasswordRequest(currentPassword, newPassword)).bodyOrThrow()
+    }
+
+    override suspend fun deleteAccount(currentPassword: String) {
+        api.deleteAccount(DeleteAccountRequest(currentPassword)).bodyOrThrow()
     }
 
     override suspend fun profileDisplayName(): String? =
@@ -646,6 +651,11 @@ class OfflineShoppingRepository(
         Unit
     }
 
+    override suspend fun deleteAccount(currentPassword: String) = accountOperation {
+        api.deleteAccount(DeleteAccountRequest(currentPassword)).also { isOffline = false }.bodyOrThrow()
+        Unit
+    }
+
     private suspend fun loadCatalogSnapshotOrNull(): List<ProductCatalogUiModel>? = catalogMutex.withLock {
         catalogSnapshot?.let { return@withLock it }
         loadCachedCatalogSnapshotOrNull()?.let { return@withLock it }
@@ -838,8 +848,8 @@ private fun ShoppingItemDto.toLocal() = LocalShoppingItem(
     isChecked = isChecked,
     position = position,
     version = version,
-    createdBy = createdBy,
-    updatedBy = updatedBy,
+    createdBy = createdBy.orEmpty(),
+    updatedBy = updatedBy.orEmpty(),
     createdAt = createdAt,
     updatedAt = updatedAt,
 )

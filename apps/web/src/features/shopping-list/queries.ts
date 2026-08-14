@@ -4,7 +4,7 @@ export type Household = { id: string; name: string; ownerId: string; createdAt: 
 export type ShoppingList = { id: string; householdId: string; name: string; isDefault: boolean; version: number; createdAt: string; updatedAt: string };
 export type ApiShoppingItem = {
   id: string; listId: string; name: string; normalizedName: string; quantity: number; unit: string | null; category: string | null; note: string | null;
-  isChecked: boolean; position: number; version: number; createdBy: string; updatedBy: string; createdAt: string; updatedAt: string;
+  isChecked: boolean; position: number; version: number; createdBy: string | null; updatedBy: string | null; createdAt: string; updatedAt: string;
 };
 
 export const householdQueryKey = ['households'] as const;

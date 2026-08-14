@@ -14,8 +14,8 @@ data class ShoppingListDto(val id: String, val householdId: String, val name: St
 data class ShoppingItemDto(
     val id: String, val listId: String, val name: String, val normalizedName: String,
     val quantity: Double, val unit: String?, val category: String?, val note: String?,
-    val isChecked: Boolean, val position: Int, val version: Int, val createdBy: String,
-    val updatedBy: String, val createdAt: String, val updatedAt: String,
+    val isChecked: Boolean, val position: Int, val version: Int, val createdBy: String?,
+    val updatedBy: String?, val createdAt: String, val updatedAt: String,
 )
 
 data class HouseholdsResponse(val households: List<HouseholdDto>)
@@ -88,6 +88,8 @@ data class MeResponse(val user: MeUserDto)
 data class UpdateProfileRequest(val firstName: String? = null, val lastName: String? = null, val username: String? = null)
 data class ChangePasswordRequest(val currentPassword: String, val newPassword: String)
 data class PasswordChangedResponse(val status: String)
+data class DeleteAccountRequest(val currentPassword: String)
+data class DeleteAccountResponse(val status: String)
 
 interface ShoppingListApi {
     @GET("v1/households") suspend fun households(): Response<HouseholdsResponse>
@@ -124,6 +126,8 @@ interface ShoppingListApi {
     @GET("v1/me") suspend fun me(): Response<MeResponse>
     @PATCH("v1/me") suspend fun updateProfile(@Body request: UpdateProfileRequest): Response<MeResponse>
     @POST("v1/me/change-password") suspend fun changePassword(@Body request: ChangePasswordRequest): Response<PasswordChangedResponse>
+    @HTTP(method = "DELETE", path = "v1/me", hasBody = true)
+    suspend fun deleteAccount(@Body request: DeleteAccountRequest): Response<DeleteAccountResponse>
     @HTTP(method = "DELETE", path = "v1/households/{householdId}/leave")
     suspend fun leaveHousehold(@Path("householdId") householdId: String): Response<Unit>
 }

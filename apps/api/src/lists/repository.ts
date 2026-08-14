@@ -69,15 +69,15 @@ export interface ShoppingItem {
   isChecked: boolean;
   position: number;
   version: number;
-  createdBy: string;
-  updatedBy: string;
+  createdBy: string | null;
+  updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 interface ShoppingItemRow {
   id: string; list_id: string; name: string; normalized_name: string; quantity: number; unit: string | null; category: string | null; note: string | null;
-  is_checked: number; position: number; version: number; created_by: string; updated_by: string; created_at: string; updated_at: string;
+  is_checked: number; position: number; version: number; created_by: string | null; updated_by: string | null; created_at: string; updated_at: string;
 }
 
 function mapItem(row: ShoppingItemRow): ShoppingItem {

@@ -1,3 +1,4 @@
+import { AccountDeletionService } from '../account-deletion/service';
 import { createAuthToken, createRefreshToken, createUser, consumeAuthToken, consumePasswordResetOtp, consumeRefreshToken, findUserByEmail, findUserByUsername, findUserWithPasswordById, invalidateSessions, revokeRefreshToken, updatePassword, updateUserName, updateUserProfile, verifyEmail, verifyPasswordResetOtp, type AuthUser } from './auth-repository';
 import { hashPassword, verifyPassword } from './password-hasher';
 import { createAccessToken, createRandomToken, hashToken } from './token-service';
@@ -273,6 +274,17 @@ export async function handleMeRoute(request: Request, env: Env, user: AuthUser):
   const path = new URL(request.url).pathname;
   if (path === '/v1/me') {
     if (request.method === 'GET') return Response.json({ user });
+    if (request.method === 'DELETE') {
+      const body = await json(request);
+      const currentPassword = body ? text(body.currentPassword) : null;
+      if (!currentPassword) return invalidInput();
+      const current = await findUserWithPasswordById(env, user.id);
+      if (!current || !(await verifyPassword(currentPassword, current.passwordHash))) {
+        return errorResponse('INVALID_CURRENT_PASSWORD', 'La contrasena actual no es correcta.', 401);
+      }
+      await new AccountDeletionService(env).delete(user.id);
+      return Response.json({ status: 'deleted' });
+    }
     if (request.method !== 'PATCH') return null;
     const body = await json(request);
     if (!body) return invalidInput();

@@ -30,6 +30,7 @@ interface AuthContextValue {
   resetPasswordWithOtp(email: string, otp: string, password: string): Promise<void>;
   refreshUser(): Promise<User>;
   logout(): Promise<boolean>;
+  deleteAccount(currentPassword: string): Promise<void>;
 }
 
 export const SessionContext = createContext<AuthContextValue | null>(null);
@@ -114,6 +115,15 @@ export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
         setUser(null);
         setStatus('anonymous');
       }
+    },
+    async deleteAccount(currentPassword) {
+      const userId = user?.id;
+      await apiClient.request('/me', { method: 'DELETE', body: { currentPassword }, retryOnUnauthorized: false });
+      if (userId) await clearOfflineLists(userId).catch(() => undefined);
+      localStorage.removeItem('nfcompra.active-household-id');
+      apiClient.clearAccessToken();
+      setUser(null);
+      setStatus('anonymous');
     },
   }), [loadUser, refreshUser, status, user]);
 

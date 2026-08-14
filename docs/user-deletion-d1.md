@@ -1,49 +1,48 @@
 # Borrado seguro de usuarios en D1
 
-No borres directamente de `users` si el usuario tiene datos asociados. La base usa claves foráneas y algunas relaciones no tienen `ON DELETE CASCADE` porque conservan autoría o propiedad:
+No borres directamente de `users`. La base tiene claves foraneas y triggers, y el orden manual puede fallar con `SQLITE_CONSTRAINT_FOREIGNKEY`.
 
-- `households.owner_id -> users.id`
-- `invitations.invited_by -> users.id`
-- `shopping_items.created_by -> users.id`
-- `shopping_items.updated_by -> users.id`
-- `nfc_links.created_by -> users.id`
+Usa el servicio implementado en `apps/api/src/account-deletion/service.ts`.
 
-Las tablas que sí caen en cascada desde `users` son `auth_tokens`, `refresh_tokens`, `household_members`, `notifications` como usuario destino y `sync_operations`.
+## Usuario
 
-## Opción recomendada para uso personal
+La app llama a:
 
-Si se quiere eliminar completamente un usuario y todos sus hogares propios, hacerlo con una transacción controlada:
-
-```sql
-BEGIN TRANSACTION;
-
--- Sustituye estos valores antes de ejecutar.
--- :user_id = usuario a borrar
--- :fallback_user_id = usuario existente que conservará autoría histórica si hace falta
-
-DELETE FROM invitations
-WHERE invited_by = :user_id
-   OR household_id IN (SELECT id FROM households WHERE owner_id = :user_id);
-
-DELETE FROM nfc_links
-WHERE created_by = :user_id
-   OR household_id IN (SELECT id FROM households WHERE owner_id = :user_id);
-
-DELETE FROM households
-WHERE owner_id = :user_id;
-
-UPDATE shopping_items
-SET created_by = :fallback_user_id
-WHERE created_by = :user_id;
-
-UPDATE shopping_items
-SET updated_by = :fallback_user_id
-WHERE updated_by = :user_id;
-
-DELETE FROM users
-WHERE id = :user_id;
-
-COMMIT;
+```http
+DELETE /v1/me
 ```
 
-Si no existe un usuario de sustitución, primero hay que crearlo o convertir estas relaciones a `ON DELETE SET NULL` con una migración específica.
+con:
+
+```json
+{ "currentPassword": "actual" }
+```
+
+## Administrador local
+
+Previsualiza impacto sin cambios:
+
+```sh
+npm run admin:delete-user -- usuario@example.com --dry-run
+```
+
+Borrado local real, con confirmacion interactiva:
+
+```sh
+npm run admin:delete-user -- usuario@example.com
+```
+
+Produccion requiere decision explicita:
+
+```sh
+npm run admin:delete-user -- usuario@example.com --remote --dry-run
+```
+
+No ejecutes el borrado remoto real sin revisar antes el dry-run.
+
+## Regla de propiedad
+
+- Si el usuario es miembro, se elimina su membresia.
+- Si es propietario y hay otros miembros activos, el nuevo propietario es el miembro mas antiguo por `household_members.created_at ASC, user_id ASC`.
+- Si es propietario unico, el hogar se elimina con sus datos dependientes.
+- Las referencias historicas de autoria en `shopping_items` y `nfc_links` pasan a `NULL` tras la migracion `0014_account_deletion_author_nullable.sql`.

@@ -49,6 +49,14 @@ Los errores siguen esta envoltura:
 
 La contrasena nueva debe tener al menos 8 caracteres. Si la contrasena actual no coincide responde `401 INVALID_CURRENT_PASSWORD`. El cambio no cierra la sesion actual ni invalida sesiones existentes.
 
+`DELETE /v1/me` elimina la cuenta autenticada. Requiere contrasena actual:
+
+```json
+{ "currentPassword": "actual" }
+```
+
+Responde `200 { "status": "deleted" }`. Si la contrasena no coincide responde `401 INVALID_CURRENT_PASSWORD` y no modifica datos. El borrado transfiere cada hogar propio al miembro activo mas antiguo por `household_members.created_at ASC, user_id ASC`; si no hay otro miembro activo, elimina el hogar. Las referencias de autoria en productos de listas y enlaces NFC se conservan como `null` para no borrar datos compartidos.
+
 ## Invitaciones
 
 ### Crear o renovar
