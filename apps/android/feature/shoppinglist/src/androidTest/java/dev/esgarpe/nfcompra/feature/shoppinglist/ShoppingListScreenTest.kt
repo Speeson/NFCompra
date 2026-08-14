@@ -58,6 +58,98 @@ class ShoppingListScreenTest {
     }
 
     @Test
+    fun zeroHouseholdsShowsAuthenticatedEmptyHomeAndKeepsShellNavigation() {
+        composeTestRule.setContent {
+            NFCompraTheme {
+                ShoppingListContent(
+                    data = ShoppingListViewState.Data(
+                        content = ShoppingListUiState("Sin hogar", emptyList(), emptyList(), isOffline = false),
+                        households = emptyList(),
+                        lists = emptyList(),
+                        selectedHouseholdId = null,
+                        selectedListId = null,
+                        displayName = "Bea",
+                    ),
+                    onAction = {},
+                    onLogout = {},
+                    onMembers = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Empieza con NFCompra").assertExists()
+        composeTestRule.onNodeWithText("+ Crear hogar").assertExists()
+        composeTestRule.onNodeWithText("Ver invitaciones").assertExists()
+        composeTestRule.onNodeWithText("Hogares").assertExists()
+        composeTestRule.onNodeWithText("Perfil").assertExists()
+        composeTestRule.onNodeWithContentDescription("Abrir notificaciones").assertExists()
+    }
+
+    @Test
+    fun zeroHouseholdsSurfacesPendingInvitationActions() {
+        var accepted: String? = null
+        var rejected: String? = null
+        composeTestRule.setContent {
+            NFCompraTheme {
+                ShoppingListContent(
+                    data = ShoppingListViewState.Data(
+                        content = ShoppingListUiState("Sin hogar", emptyList(), emptyList(), isOffline = false),
+                        households = emptyList(),
+                        lists = emptyList(),
+                        selectedHouseholdId = null,
+                        selectedListId = null,
+                    ),
+                    pendingInvitationNotices = listOf(
+                        HouseholdInvitationNoticeUiModel(
+                            notificationId = "notice-1",
+                            invitationId = "invite-1",
+                            title = "Invitación a Casa",
+                            body = "Bea te ha invitado a Casa.",
+                        ),
+                    ),
+                    onAcceptInvitationNotice = { accepted = it },
+                    onRejectInvitationNotice = { rejected = it },
+                    onAction = {},
+                    onLogout = {},
+                    onMembers = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Tienes una invitación pendiente").assertExists()
+        composeTestRule.onNodeWithText("Invitación a Casa").assertExists()
+        composeTestRule.onNodeWithText("Aceptar").performClick()
+        assertEquals("invite-1", accepted)
+        composeTestRule.onNodeWithText("Rechazar").performClick()
+        assertEquals("notice-1", rejected)
+    }
+
+    @Test
+    fun zeroHouseholdsListsNavigationShowsRequirementMessage() {
+        composeTestRule.setContent {
+            NFCompraTheme {
+                ShoppingListContent(
+                    data = ShoppingListViewState.Data(
+                        content = ShoppingListUiState("Sin hogar", emptyList(), emptyList(), isOffline = false),
+                        households = emptyList(),
+                        lists = emptyList(),
+                        selectedHouseholdId = null,
+                        selectedListId = null,
+                    ),
+                    onAction = {},
+                    onLogout = {},
+                    onMembers = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Listas").performClick()
+
+        composeTestRule.onNodeWithText("Necesitas pertenecer a un hogar para acceder a tus listas.").assertExists()
+        composeTestRule.onNodeWithContentDescription("Inicio seleccionado").assertExists()
+    }
+
+    @Test
     fun catalogTabShowsExploreStyleCategoriesAndNotificationPanel() {
         composeTestRule.setContent {
             NFCompraTheme {

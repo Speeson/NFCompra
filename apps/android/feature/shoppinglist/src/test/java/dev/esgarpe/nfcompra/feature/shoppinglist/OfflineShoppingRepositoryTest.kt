@@ -691,6 +691,23 @@ class OfflineShoppingRepositoryTest {
         assertEquals(1, server.requestCount)
     }
 
+    @Test
+    fun `creating a catalog product updates warmed snapshot before the next search`() = runTest {
+        server.enqueue(catalogSnapshotResponse())
+        repository.warmProductCatalog()
+
+        server.enqueue(catalogProductMutationResponse("prod-oat", "Leche avena"))
+        val created = repository.createProductCatalogItem("Leche avena", "cat-1", "milk", null, "1 L")
+
+        val results = repository.searchProductCatalog("leche avena", 30)
+
+        assertEquals("prod-oat", created.id)
+        assertEquals(listOf("Leche avena"), results.map { it.name })
+        assertEquals("/v1/product-catalog/snapshot", server.takeRequest(1, TimeUnit.SECONDS)?.path)
+        assertEquals("/v1/product-catalog", server.takeRequest(1, TimeUnit.SECONDS)?.path)
+        assertEquals(2, server.requestCount)
+    }
+
     private suspend fun seedList() {
         database.shoppingDao().replaceServerSnapshot(
             households = listOf(
@@ -794,9 +811,16 @@ class OfflineShoppingRepositoryTest {
             .setHeader("content-type", "application/json")
             .setBody(body)
 
-    private fun catalogSnapshotResponse() = json(
-        """{"version":"v1","productCount":1,"products":[{"id":"prod-milk","name":"Leche entera","normalizedName":"leche entera","categoryId":"cat-1","categoryName":"Lacteos","iconKey":"milk","brand":"Hacendado","packageSize":"1 L","source":"spanish-supermarkets","sourceProductId":"milk-1","isFavorite":false}]}""",
+    private fun catalogSnapshotResponse(id: String = "prod-milk", name: String = "Leche entera") = json(
+        """{"version":"v1","productCount":1,"products":[${catalogProductJson(id, name)}]}""",
     )
+
+    private fun catalogProductMutationResponse(id: String, name: String) = json(
+        """{"product":${catalogProductJson(id, name)}}""",
+    )
+
+    private fun catalogProductJson(id: String, name: String) =
+        """{"id":"$id","name":"$name","normalizedName":"${name.lowercase()}","categoryId":"cat-1","categoryName":"Lacteos","iconKey":"milk","brand":"Hacendado","packageSize":"1 L","source":"spanish-supermarkets","sourceProductId":"milk-1","isFavorite":false}"""
 
     private fun itemResponse(name: String, version: Int) = json(
         """{"item":${serverItemJson(name, version)}}""",

@@ -31,6 +31,14 @@ data class ShoppingListMetricsUiModel(
     val totalCount: Int = pendingCount + checkedCount
 }
 
+data class HouseholdInvitationNoticeUiModel(
+    val notificationId: String,
+    val invitationId: String,
+    val title: String,
+    val body: String,
+    val createdAt: String? = null,
+)
+
 sealed interface ShoppingListAction {
     data class ToggleItem(val id: String) : ShoppingListAction
     data class AddItem(val name: String, val quantity: Double = 1.0) : ShoppingListAction
@@ -69,7 +77,7 @@ sealed interface ShoppingListViewState {
         val content: ShoppingListUiState,
         val households: List<HouseholdUiModel>,
         val lists: List<ShoppingListSummaryUiModel>,
-        val selectedHouseholdId: String,
+        val selectedHouseholdId: String?,
         val selectedListId: String?,
         val listMetrics: Map<String, ShoppingListMetricsUiModel> = emptyMap(),
         val productCategories: List<ProductCategoryUiModel> = emptyList(),

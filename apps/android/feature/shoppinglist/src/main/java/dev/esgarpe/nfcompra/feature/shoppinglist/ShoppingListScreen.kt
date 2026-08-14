@@ -221,6 +221,10 @@ fun ShoppingListApp(
     onLogout: () -> Unit = {},
     onMembers: (String) -> Unit = {},
     onOpenNotifications: (() -> Unit)? = null,
+    pendingInvitationNotices: List<HouseholdInvitationNoticeUiModel> = emptyList(),
+    invitationsLoading: Boolean = false,
+    onAcceptInvitationNotice: (String) -> Unit = {},
+    onRejectInvitationNotice: (String) -> Unit = {},
     currentUserId: String? = null,
     openListsRequestKey: Int = 0,
     biometricAccessEnabled: Boolean = false,
@@ -231,19 +235,65 @@ fun ShoppingListApp(
     LaunchedEffect(viewModel) { viewModel.load() }
     when (state) {
         ShoppingListViewState.Loading -> LoadingLogoScreen()
-        ShoppingListViewState.NoHouseholds -> FirstHouseholdSetup(
-            initialName = "",
-            errorMessage = null,
-            onCreate = { viewModel.onAction(ShoppingListAction.CreateHousehold(it)) },
-            onLogout = onLogout,
+        ShoppingListViewState.NoHouseholds -> ShoppingListContent(
+            emptyHouseholdsData(),
+            viewModel::onAction,
+            viewModel::searchProductCatalog,
+            viewModel::setProductFavorite,
+            viewModel::createProductCategory,
+            viewModel::updateProductCategory,
+            viewModel::deleteProductCategory,
+            viewModel::createProductCatalogItem,
+            viewModel::updateProductCatalogItem,
+            viewModel::deleteProductCatalogItem,
+            viewModel::updateProfile,
+            viewModel::changePassword,
+            viewModel::refreshProfile,
+            viewModel::refreshProductCategories,
+            viewModel::warmProductCatalog,
+            onLogout,
+            onMembers,
+            onOpenNotifications = onOpenNotifications,
+            pendingInvitationNotices = pendingInvitationNotices,
+            invitationsLoading = invitationsLoading,
+            onAcceptInvitationNotice = onAcceptInvitationNotice,
+            onRejectInvitationNotice = onRejectInvitationNotice,
+            currentUserId = currentUserId,
+            openListsRequestKey = openListsRequestKey,
+            biometricAccessEnabled = biometricAccessEnabled,
+            biometricAccessMessage = biometricAccessMessage,
+            onBiometricAccessChange = onBiometricAccessChange,
         )
         is ShoppingListViewState.InitialHouseholdError -> {
             val error = state as ShoppingListViewState.InitialHouseholdError
-            FirstHouseholdSetup(
-                initialName = error.retryAction.name,
-                errorMessage = error.message,
-                onCreate = { viewModel.onAction(ShoppingListAction.CreateHousehold(it)) },
-                onLogout = onLogout,
+            ShoppingListContent(
+                emptyHouseholdsData(message = error.message, retryAction = error.retryAction),
+                viewModel::onAction,
+                viewModel::searchProductCatalog,
+                viewModel::setProductFavorite,
+                viewModel::createProductCategory,
+                viewModel::updateProductCategory,
+                viewModel::deleteProductCategory,
+                viewModel::createProductCatalogItem,
+                viewModel::updateProductCatalogItem,
+                viewModel::deleteProductCatalogItem,
+                viewModel::updateProfile,
+                viewModel::changePassword,
+                viewModel::refreshProfile,
+                viewModel::refreshProductCategories,
+                viewModel::warmProductCatalog,
+                onLogout,
+                onMembers,
+                onOpenNotifications = onOpenNotifications,
+                pendingInvitationNotices = pendingInvitationNotices,
+                invitationsLoading = invitationsLoading,
+                onAcceptInvitationNotice = onAcceptInvitationNotice,
+                onRejectInvitationNotice = onRejectInvitationNotice,
+                currentUserId = currentUserId,
+                openListsRequestKey = openListsRequestKey,
+                biometricAccessEnabled = biometricAccessEnabled,
+                biometricAccessMessage = biometricAccessMessage,
+                onBiometricAccessChange = onBiometricAccessChange,
             )
         }
         is ShoppingListViewState.InitialHouseholdLoadError -> {
@@ -274,6 +324,10 @@ fun ShoppingListApp(
             onLogout,
             onMembers,
             onOpenNotifications = onOpenNotifications,
+            pendingInvitationNotices = pendingInvitationNotices,
+            invitationsLoading = invitationsLoading,
+            onAcceptInvitationNotice = onAcceptInvitationNotice,
+            onRejectInvitationNotice = onRejectInvitationNotice,
             currentUserId = currentUserId,
             openListsRequestKey = openListsRequestKey,
             biometricAccessEnabled = biometricAccessEnabled,
@@ -303,6 +357,10 @@ internal fun ShoppingListContent(
     onLogout: () -> Unit,
     onMembers: (String) -> Unit,
     onOpenNotifications: (() -> Unit)? = null,
+    pendingInvitationNotices: List<HouseholdInvitationNoticeUiModel> = emptyList(),
+    invitationsLoading: Boolean = false,
+    onAcceptInvitationNotice: (String) -> Unit = {},
+    onRejectInvitationNotice: (String) -> Unit = {},
     currentUserId: String? = null,
     openListsRequestKey: Int = 0,
     biometricAccessEnabled: Boolean = false,
@@ -320,6 +378,7 @@ internal fun ShoppingListContent(
     var catalogNested by remember { mutableStateOf(false) }
     var catalogRootRequestKey by remember { mutableStateOf(0) }
     var householdsRootRequestKey by remember { mutableStateOf(0) }
+    var navigationMessage by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(openListsRequestKey) {
         if (openListsRequestKey > 0) {
             selectedTab = DashboardTab.Lists
@@ -355,11 +414,18 @@ internal fun ShoppingListContent(
             if (next == null) remove("pinned_list_id") else putString("pinned_list_id", next)
         }.apply()
     }
+    val hasHouseholds = data.households.isNotEmpty()
     val isListDetailOpen = selectedTab == DashboardTab.Lists && data.selectedListId != null && openedListId == data.selectedListId
     val selectedListHouseholdName = data.lists.firstOrNull { it.id == data.selectedListId }
         ?.let { selectedList -> data.households.firstOrNull { it.id == selectedList.householdId }?.name }
         ?: data.households.firstOrNull { it.id == data.selectedHouseholdId }?.name
         ?: "hogar"
+    LaunchedEffect(isListDetailOpen, data.productCategories.isEmpty()) {
+        if (isListDetailOpen) {
+            if (data.productCategories.isEmpty()) onRefreshProductCategories()
+            onWarmProductCatalog()
+        }
+    }
 
     val isRoot = selectedTab == DashboardTab.Home && !isListDetailOpen
     var lastBackPressMs by remember { mutableStateOf(0L) }
@@ -371,6 +437,11 @@ internal fun ShoppingListContent(
     }
     val shouldInterceptBack = !isRoot || lastBackPressMs == 0L || System.currentTimeMillis() - lastBackPressMs >= 2_000
     fun openTabRoot(tab: DashboardTab) {
+        if (tab == DashboardTab.Lists && !hasHouseholds) {
+            openedListId = null
+            navigationMessage = "Necesitas pertenecer a un hogar para acceder a tus listas."
+            return
+        }
         selectedTab = tab
         when (tab) {
             DashboardTab.Home -> {
@@ -449,6 +520,8 @@ internal fun ShoppingListContent(
                             onAction = onAction,
                             onSearchProducts = onSearchProducts,
                             onSetProductFavorite = onSetProductFavorite,
+                            categories = data.productCategories,
+                            onCreateProduct = onCreateProduct,
                             readOnly = openedListMode == ListOpenMode.View,
                             onRename = { renamingList = true },
                             onClearChecked = { onAction(ShoppingListAction.ClearSelectedList) },
@@ -466,6 +539,11 @@ internal fun ShoppingListContent(
                                 onTogglePinned = togglePinnedList,
                                 onOpenHouseholds = { openTabRoot(DashboardTab.Households) },
                                 onOpenLists = { openTabRoot(DashboardTab.Lists) },
+                                pendingInvitationNotices = pendingInvitationNotices,
+                                invitationsLoading = invitationsLoading,
+                                onOpenInvitations = { onOpenNotifications?.invoke() },
+                                onAcceptInvitation = onAcceptInvitationNotice,
+                                onRejectInvitation = onRejectInvitationNotice,
                                 onEditList = { listId ->
                                     openedListMode = ListOpenMode.Edit
                                     openedListId = listId
@@ -539,7 +617,7 @@ internal fun ShoppingListContent(
         onAction(ShoppingListAction.CreateHousehold(it))
         creatingHousehold = false
     }) { creatingHousehold = false }
-    if (creatingList) CreateListDialog(
+    if (creatingList && hasHouseholds) CreateListDialog(
         households = data.households,
         selectedHouseholdId = data.selectedHouseholdId,
         onConfirm = { householdId, name ->
@@ -548,6 +626,19 @@ internal fun ShoppingListContent(
         },
         onDismiss = { creatingList = false },
     )
+    navigationMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { navigationMessage = null },
+            containerColor = WebSurface,
+            title = { DialogTitle("Sin hogar activo") },
+            text = { Text(message, color = WebMuted, fontWeight = FontWeight.SemiBold) },
+            confirmButton = {
+                Button(onClick = { navigationMessage = null }, shape = MaterialTheme.shapes.medium, colors = webPrimaryButtonColors()) {
+                    Text("Entendido")
+                }
+            },
+        )
+    }
     if (renamingList) CreateEntityDialog("Renombrar lista", "Nuevo nombre de la lista", confirmText = "Guardar", onConfirm = {
         onAction(ShoppingListAction.RenameList(it))
         renamingList = false
@@ -811,9 +902,26 @@ private fun DashboardHome(
     onTogglePinned: (String) -> Unit,
     onOpenHouseholds: () -> Unit,
     onOpenLists: () -> Unit,
+    pendingInvitationNotices: List<HouseholdInvitationNoticeUiModel> = emptyList(),
+    invitationsLoading: Boolean = false,
+    onOpenInvitations: () -> Unit = {},
+    onAcceptInvitation: (String) -> Unit = {},
+    onRejectInvitation: (String) -> Unit = {},
     onEditList: (String) -> Unit,
     onViewList: (String) -> Unit,
 ) {
+    if (data.households.isEmpty()) {
+        ZeroHouseholdsHome(
+            displayName = displayName,
+            invitations = pendingInvitationNotices,
+            invitationsLoading = invitationsLoading,
+            onCreateHousehold = onCreateHousehold,
+            onOpenInvitations = onOpenInvitations,
+            onAcceptInvitation = onAcceptInvitation,
+            onRejectInvitation = onRejectInvitation,
+        )
+        return
+    }
     val selectedList = data.lists.firstOrNull { it.id == data.selectedListId } ?: data.lists.firstOrNull()
     val selectedHousehold = selectedList?.let { list -> data.households.firstOrNull { it.id == list.householdId } }
     val pinnedList = pinnedListId?.let { id -> data.lists.firstOrNull { it.id == id } }
@@ -1006,8 +1114,12 @@ private fun ListsPanel(
     onTogglePinned: (String) -> Unit,
 ) {
     val selectedHousehold = data.households.firstOrNull { it.id == data.selectedHouseholdId }
-    val householdName = selectedHousehold?.name ?: "Hogar"
-    val filteredLists = if (selectedHousehold != null) data.lists.filter { it.householdId == selectedHousehold.id } else data.lists
+    if (selectedHousehold == null) {
+        HouseholdRequiredPanel()
+        return
+    }
+    val householdName = selectedHousehold.name
+    val filteredLists = data.lists.filter { it.householdId == selectedHousehold.id }
     val totalLists = filteredLists.size
     val allMetrics = filteredLists.mapNotNull { data.listMetrics[it.id] }
     val totalPending = allMetrics.sumOf { it.pendingCount }
@@ -1032,7 +1144,7 @@ private fun ListsPanel(
                 Button(onClick = onCreateList, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, colors = webPrimaryButtonColors()) { Text("Crear lista") }
             }
         }
-        if (selectedHousehold != null && filteredLists.isNotEmpty()) {
+        if (filteredLists.isNotEmpty()) {
             Row(horizontalArrangement = Arrangement.spacedBy(innerGap), modifier = Modifier.fillMaxWidth()) {
                 CompactMetricCard("Listas", totalLists.toString(), Modifier.weight(1f))
                 CompactMetricCard("Pendientes", totalPending.toString(), Modifier.weight(1f))
@@ -1367,6 +1479,159 @@ private fun CatalogPanel(
 }
 
 @Composable
+private fun HouseholdRequiredPanel() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(WebPage)
+            .padding(horizontal = responsiveWidthDp(0.051f))
+            .padding(top = screenTopPadding(), bottom = screenBottomPadding()),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Card(colors = CardDefaults.cardColors(containerColor = WebSurface), shape = MaterialTheme.shapes.large) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(Icons.AutoMirrored.Outlined.ListAlt, contentDescription = null, tint = WebPrimary, modifier = Modifier.size(40.dp))
+                Text("Sin hogar activo", color = WebText, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "Necesitas pertenecer a un hogar para acceder a tus listas.",
+                    color = WebMuted,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ZeroHouseholdsHome(
+    displayName: String,
+    invitations: List<HouseholdInvitationNoticeUiModel>,
+    invitationsLoading: Boolean,
+    onCreateHousehold: () -> Unit,
+    onOpenInvitations: () -> Unit,
+    onAcceptInvitation: (String) -> Unit,
+    onRejectInvitation: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(WebPage)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = responsiveWidthDp(0.051f))
+            .padding(top = screenTopPadding(), bottom = screenBottomPadding()),
+        verticalArrangement = Arrangement.spacedBy(responsiveDp(0.018f)),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("Hola, $displayName", style = MaterialTheme.typography.headlineSmall, color = WebText, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth())
+        Card(
+            colors = CardDefaults.cardColors(containerColor = WebSurface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            shape = MaterialTheme.shapes.large,
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(responsiveDp(0.022f)),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(70.dp)
+                        .clip(CircleShape)
+                        .background(WebLime.copy(alpha = 0.8f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Outlined.HomeWork, contentDescription = null, tint = WebPrimary, modifier = Modifier.size(36.dp))
+                }
+                Text(
+                    if (invitations.isNotEmpty()) "Tienes una invitación pendiente" else "Empieza con NFCompra",
+                    color = WebText,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLarge,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    if (invitations.isNotEmpty()) "Puedes aceptar una invitación o crear tu propio hogar."
+                    else "Para empezar, puedes crear un hogar nuevo o revisar si alguien te ha invitado a uno.",
+                    color = WebMuted,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = onCreateHousehold, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium, colors = webPrimaryButtonColors()) {
+                        Text("+ Crear hogar")
+                    }
+                    Button(onClick = onOpenInvitations, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium, colors = webLimeButtonColors()) {
+                        Text("Ver invitaciones")
+                    }
+                }
+            }
+        }
+        when {
+            invitationsLoading -> Text("Cargando invitaciones...", color = WebMuted, fontWeight = FontWeight.SemiBold)
+            invitations.isNotEmpty() -> {
+                SectionTitle("Invitaciones")
+                invitations.forEach { invitation ->
+                    InvitationNoticeCard(
+                        invitation = invitation,
+                        onAccept = { onAcceptInvitation(invitation.invitationId) },
+                        onReject = { onRejectInvitation(invitation.notificationId) },
+                    )
+                }
+            }
+            else -> {
+                Card(colors = CardDefaults.cardColors(containerColor = WebLime.copy(alpha = 0.45f)), shape = MaterialTheme.shapes.large) {
+                    Text(
+                        "Los hogares te permiten compartir listas de compra con otras personas.",
+                        color = WebPrimary,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InvitationNoticeCard(
+    invitation: HouseholdInvitationNoticeUiModel,
+    onAccept: () -> Unit,
+    onReject: () -> Unit,
+) {
+    Card(colors = CardDefaults.cardColors(containerColor = WebSurface), shape = MaterialTheme.shapes.large, elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(invitation.title, color = WebText, fontWeight = FontWeight.Bold)
+            Text(invitation.body, color = WebMuted, fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = onAccept, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium, colors = webPrimaryButtonColors()) {
+                    Text("Aceptar")
+                }
+                Button(onClick = onReject, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFEF2F2), contentColor = Color(0xFFDC2626))) {
+                    Text("Rechazar")
+                }
+            }
+        }
+    }
+}
+
+private fun emptyHouseholdsData(message: String? = null, retryAction: ShoppingListAction? = null) = ShoppingListViewState.Data(
+    content = ShoppingListUiState("Sin hogar", emptyList(), emptyList(), isOffline = false),
+    households = emptyList(),
+    lists = emptyList(),
+    selectedHouseholdId = null,
+    selectedListId = null,
+    message = message,
+    retryAction = retryAction,
+)
+
+@Composable
 private fun CatalogSearchBar(
     search: String,
     onSearchChange: (String) -> Unit,
@@ -1523,22 +1788,24 @@ private fun CatalogMutationDialog(
     selectedCategory: ProductCategoryUiModel? = null,
     editingCategory: ProductCategoryUiModel? = null,
     editingProduct: ProductCatalogUiModel? = null,
+    initialProductName: String = "",
+    productOnly: Boolean = false,
     onDismiss: () -> Unit,
     onSubmitCategory: (String, String) -> Unit,
     onSubmitProduct: (String, String?, String, String?, String?) -> Unit,
 ) {
     val editableCategories = categories.filterNot { it.isFavorite }
     var type by remember(editingCategory, editingProduct) {
-        mutableStateOf(if (editingProduct != null) CatalogMutationType.Product else CatalogMutationType.Category)
+        mutableStateOf(if (editingProduct != null || productOnly) CatalogMutationType.Product else CatalogMutationType.Category)
     }
     val effectiveType = when {
         editingCategory != null -> CatalogMutationType.Category
-        editingProduct != null -> CatalogMutationType.Product
+        editingProduct != null || productOnly -> CatalogMutationType.Product
         else -> type
     }
     var categoryName by remember(editingCategory) { mutableStateOf(editingCategory?.name.orEmpty()) }
     var categoryIcon by remember(editingCategory) { mutableStateOf(editingCategory?.iconKey ?: selectedCategory?.iconKey ?: "cart") }
-    var productName by remember(editingProduct) { mutableStateOf(editingProduct?.name.orEmpty()) }
+    var productName by remember(editingProduct, initialProductName) { mutableStateOf(editingProduct?.name ?: initialProductName.trim()) }
     var productCategoryId by remember(editingProduct, selectedCategory) {
         mutableStateOf(editingProduct?.categoryId ?: selectedCategory?.takeUnless { it.isFavorite }?.id ?: editableCategories.firstOrNull()?.id.orEmpty())
     }
@@ -1546,6 +1813,7 @@ private fun CatalogMutationDialog(
     var productBrand by remember(editingProduct) { mutableStateOf(editingProduct?.brand.orEmpty()) }
     var productPackage by remember(editingProduct) { mutableStateOf(editingProduct?.packageSize.orEmpty()) }
     val isEditing = editingCategory != null || editingProduct != null
+    val maxTextHeight = (LocalConfiguration.current.screenHeightDp.dp * 0.62f).coerceAtMost(420.dp)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1553,8 +1821,14 @@ private fun CatalogMutationDialog(
         shape = RoundedCornerShape(26.dp),
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(if (isEditing) "Editar" else "Crear", color = WebText, fontWeight = FontWeight.Bold)
-                if (!isEditing) {
+                Text(
+                    if (productOnly && !isEditing) "Crear producto" else if (isEditing) "Editar" else "Crear",
+                    color = WebText,
+                    fontWeight = FontWeight.Bold,
+                    modifier = if (productOnly && !isEditing) Modifier.fillMaxWidth() else Modifier,
+                    textAlign = if (productOnly && !isEditing) TextAlign.Center else TextAlign.Start,
+                )
+                if (!isEditing && !productOnly) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1570,7 +1844,12 @@ private fun CatalogMutationDialog(
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = maxTextHeight)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 if (effectiveType == CatalogMutationType.Category) {
                     OutlinedTextField(
                         value = categoryName,
@@ -3040,7 +3319,7 @@ private fun ConfirmDialog(title: String, message: String, onConfirm: () -> Unit,
 @Composable
 private fun CreateListDialog(
     households: List<HouseholdUiModel>,
-    selectedHouseholdId: String,
+    selectedHouseholdId: String?,
     onConfirm: (String, String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -3127,6 +3406,8 @@ fun ShoppingListScreen(
     onAction: (ShoppingListAction) -> Unit,
     onSearchProducts: suspend (String, Int) -> List<ProductCatalogUiModel> = { _, _ -> emptyList() },
     onSetProductFavorite: suspend (String, Boolean) -> ProductCatalogUiModel? = { _, _ -> null },
+    categories: List<ProductCategoryUiModel> = emptyList(),
+    onCreateProduct: suspend (String, String?, String, String?, String?) -> ProductCatalogUiModel? = { _, _, _, _, _ -> null },
     readOnly: Boolean = false,
     onRename: () -> Unit = {},
     onClearChecked: () -> Unit = {},
@@ -3140,7 +3421,21 @@ fun ShoppingListScreen(
     var cardQuantities by remember { mutableStateOf(emptyMap<String, Int>()) }
     var waitlist by remember { mutableStateOf(emptyList<PendingProductUiModel>()) }
     var recentlyAddedId by remember { mutableStateOf<String?>(null) }
+    var createProductDialogOpen by remember { mutableStateOf(false) }
     val searchScope = rememberCoroutineScope()
+    suspend fun refreshSuggestions(query: String = addName, mode: Boolean = cardMode, createdProduct: ProductCatalogUiModel? = null) {
+        val search = query.trim()
+        if (state.isOffline || search.length < 2) {
+            suggestions = emptyList()
+            return
+        }
+        val loaded = onSearchProducts(search, if (mode) 12 else 8)
+        suggestions = if (createdProduct != null && createdProduct.matchesSearch(search)) {
+            (listOf(createdProduct) + loaded).distinctBy { it.id }
+        } else {
+            loaded
+        }
+    }
     val toggleFavorite: (ProductCatalogUiModel) -> Unit = { product ->
         val nextFavorite = !product.isFavorite
         suggestions = suggestions.map { if (it.id == product.id) it.copy(isFavorite = nextFavorite) else it }
@@ -3162,7 +3457,7 @@ fun ShoppingListScreen(
             return@LaunchedEffect
         }
         delay(if (cardMode) 80 else 150)
-        suggestions = onSearchProducts(search, if (cardMode) 12 else 8)
+        refreshSuggestions(search, cardMode)
     }
 
     LaunchedEffect(recentlyAddedId) {
@@ -3200,6 +3495,7 @@ fun ShoppingListScreen(
                         cardQuantities = emptyMap()
                         isProductSearchOpen = true
                     },
+                    onCreateProduct = { createProductDialogOpen = true },
                     onAdd = {
                         if (addName.isNotBlank()) {
                             onAction(ShoppingListAction.AddItem(addName.trim(), quantity.toDouble()))
@@ -3303,6 +3599,26 @@ fun ShoppingListScreen(
             }
         }
     }
+    if (createProductDialogOpen) {
+        CatalogMutationDialog(
+            categories = categories,
+            selectedCategory = categories.firstOrNull { !it.isFavorite },
+            initialProductName = addName,
+            productOnly = true,
+            onDismiss = { createProductDialogOpen = false },
+            onSubmitCategory = { _, _ -> },
+            onSubmitProduct = { name, categoryId, icon, brand, packageSize ->
+                searchScope.launch {
+                    val created = onCreateProduct(name, categoryId, icon, brand, packageSize)
+                    if (created != null) {
+                        createProductDialogOpen = false
+                        isProductSearchOpen = true
+                        refreshSuggestions(createdProduct = created)
+                    }
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -3316,13 +3632,14 @@ private fun ShoppingListWebHeader(
     onQuantityDecrease: () -> Unit,
     onQuantityIncrease: () -> Unit,
     onCardModeChange: (Boolean) -> Unit,
+    onCreateProduct: () -> Unit,
     onAdd: () -> Unit,
     onClearChecked: () -> Unit,
 ) {
     Card(colors = CardDefaults.cardColors(containerColor = WebSurface)) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                     Button(
                         onClick = onClearChecked,
                         modifier = Modifier.height(42.dp),
@@ -3332,7 +3649,12 @@ private fun ShoppingListWebHeader(
                         Text("Vaciar")
                     }
                 }
-                ViewModeSwitch(cardMode = cardMode, onCardModeChange = onCardModeChange)
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    QuickCreateProductButton(onClick = onCreateProduct)
+                }
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                    ViewModeSwitch(cardMode = cardMode, onCardModeChange = onCardModeChange)
+                }
             }
             if (isOffline) {
                 Text("Sin conexión", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
@@ -3671,6 +3993,20 @@ private fun CompactFavoriteButton(favorite: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
+private fun QuickCreateProductButton(onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(42.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(WebLime.copy(alpha = 0.95f))
+            .semantics { contentDescription = "Crear producto" },
+    ) {
+        Icon(Icons.Outlined.Add, contentDescription = null, tint = WebPrimary, modifier = Modifier.size(24.dp))
+    }
+}
+
+@Composable
 private fun CatalogMiniActionButton(
     contentDescription: String,
     onClick: () -> Unit,
@@ -3818,6 +4154,16 @@ private fun PendingProductWaitlist(
 
 private fun ProductCatalogUiModel.metaLabel(): String =
     listOfNotNull(categoryName, packageSize).filter { it.isNotBlank() }.joinToString(" · ")
+
+private fun ProductCatalogUiModel.matchesSearch(search: String): Boolean {
+    val query = search.normalizedUiSearch()
+    if (query.isBlank()) return true
+    val name = normalizedName.ifBlank { name.normalizedUiSearch() }
+    return name.startsWith(query) ||
+        name.split(' ').any { it.startsWith(query) } ||
+        name.contains(query) ||
+        categoryName.orEmpty().normalizedUiSearch().contains(query)
+}
 
 private fun PendingProductUiModel.metaLabel(): String =
     listOfNotNull(categoryName, packageSize).filter { it.isNotBlank() }.joinToString(" · ")

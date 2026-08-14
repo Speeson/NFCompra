@@ -189,7 +189,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
                 }
                 val households = repository.households()
                 if (households.isEmpty()) {
-                    if (generation == loadGeneration) mutableState.value = ShoppingListViewState.NoHouseholds
+                    if (generation == loadGeneration) publishNoHouseholds(expectedGeneration = generation)
                     return@launch
                 }
                 val household = context?.let { requested ->
@@ -255,7 +255,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         publishSelection(
             data.households.map { if (it.id == updated.id) updated else it },
             data.lists,
-            data.selectedHouseholdId,
+            data.selectedHouseholdId ?: return,
             data.selectedListId,
             refreshFromServer = false,
         )
@@ -266,7 +266,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         repository.deleteHousehold(current)
         val remainingHouseholds = data.households.filterNot { it.id == householdId }
         if (remainingHouseholds.isEmpty()) {
-            mutableState.value = ShoppingListViewState.NoHouseholds
+            publishNoHouseholds()
             return
         }
         val nextHouseholdId = remainingHouseholds.firstOrNull { it.id == data.selectedHouseholdId }?.id
@@ -283,7 +283,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         repository.leaveHousehold(householdId)
         val remainingHouseholds = data.households.filterNot { it.id == householdId }
         if (remainingHouseholds.isEmpty()) {
-            mutableState.value = ShoppingListViewState.NoHouseholds
+            publishNoHouseholds()
             return
         }
         val nextHouseholdId = remainingHouseholds.firstOrNull { it.id == data.selectedHouseholdId }?.id
@@ -333,7 +333,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         publishSelection(
             data.households,
             data.lists.map { if (it.id == updated.id) updated else it },
-            data.selectedHouseholdId,
+            data.selectedHouseholdId ?: return,
             updated.id,
         )
     }
@@ -342,13 +342,13 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         val current = data.selectedList() ?: return
         repository.deleteList(current)
         val remaining = data.lists.filterNot { it.id == current.id }
-        publishSelection(data.households, remaining, data.selectedHouseholdId, remaining.firstOrNull()?.id)
+        publishSelection(data.households, remaining, data.selectedHouseholdId ?: return, remaining.firstOrNull()?.id)
     }
 
     private suspend fun deleteCheckedItems(data: ShoppingListViewState.Data) {
         val listId = data.selectedListId ?: return
         repository.deleteCheckedItems(listId)
-        publishSelection(data.households, data.lists, data.selectedHouseholdId, listId)
+        publishSelection(data.households, data.lists, data.selectedHouseholdId ?: return, listId)
     }
 
     private suspend fun clearSelectedList(data: ShoppingListViewState.Data) {
@@ -356,23 +356,23 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         val items = data.content.pending + data.content.checked
         if (items.isEmpty()) return
         items.forEach { repository.deleteItem(it) }
-        publishSelection(data.households, data.lists, data.selectedHouseholdId, listId, refreshFromServer = false)
+        publishSelection(data.households, data.lists, data.selectedHouseholdId ?: return, listId, refreshFromServer = false)
     }
 
     private suspend fun mutateAfter(data: ShoppingListViewState.Data, action: suspend () -> Unit) {
         val listId = data.selectedListId ?: return
         action()
-        publishSelection(data.households, data.lists, data.selectedHouseholdId, listId, refreshFromServer = false)
+        publishSelection(data.households, data.lists, data.selectedHouseholdId ?: return, listId, refreshFromServer = false)
     }
 
     private suspend fun mutateItem(data: ShoppingListViewState.Data, itemId: String, action: suspend (ShoppingListItemUiModel) -> Unit) {
         val listId = data.selectedListId ?: return
         action(data.item(itemId))
-        publishSelection(data.households, data.lists, data.selectedHouseholdId, listId, refreshFromServer = false)
+        publishSelection(data.households, data.lists, data.selectedHouseholdId ?: return, listId, refreshFromServer = false)
     }
 
     private suspend fun refresh(data: ShoppingListViewState.Data, listId: String) {
-        publishSelection(data.households, data.lists, data.selectedHouseholdId, listId)
+        publishSelection(data.households, data.lists, data.selectedHouseholdId ?: return, listId)
     }
 
     private suspend fun publishSelection(
@@ -447,6 +447,29 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
             selectedListId = null,
             listMetrics = metrics,
             productCategories = categories,
+            profile = profile,
+            displayName = displayName,
+        )
+    }
+
+    private suspend fun publishNoHouseholds(expectedGeneration: Int? = null) {
+        if (expectedGeneration != null && expectedGeneration != loadGeneration) return
+        itemObservation?.cancel()
+        val profile = currentProfile() ?: loadProfile()
+        val displayName = profile?.displayName ?: currentDisplayName()
+        mutableState.value = ShoppingListViewState.Data(
+            content = ShoppingListUiState(
+                title = "Sin hogar",
+                pending = emptyList(),
+                checked = emptyList(),
+                isOffline = repository.isOffline,
+            ),
+            households = emptyList(),
+            lists = emptyList(),
+            selectedHouseholdId = null,
+            selectedListId = null,
+            listMetrics = emptyMap(),
+            productCategories = currentCategories(),
             profile = profile,
             displayName = displayName,
         )

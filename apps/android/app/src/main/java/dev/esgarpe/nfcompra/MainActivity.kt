@@ -50,12 +50,14 @@ import dev.esgarpe.nfcompra.feature.auth.AuthRepository
 import dev.esgarpe.nfcompra.feature.auth.AuthResult
 import dev.esgarpe.nfcompra.feature.auth.AuthViewModel
 import dev.esgarpe.nfcompra.feature.shoppinglist.AccountShoppingSession
+import dev.esgarpe.nfcompra.feature.shoppinglist.HouseholdInvitationNoticeUiModel
 import dev.esgarpe.nfcompra.feature.shoppinglist.ShoppingListApp
 import dev.esgarpe.nfcompra.feature.sharing.AcceptInvitationScreen
 import dev.esgarpe.nfcompra.feature.sharing.AuthenticatedRefreshGate
 import dev.esgarpe.nfcompra.feature.sharing.InvitationTokenHandoff
 import dev.esgarpe.nfcompra.feature.sharing.NotificationActionErrorBanner
 import dev.esgarpe.nfcompra.feature.sharing.NotificationPopup
+import dev.esgarpe.nfcompra.feature.sharing.NotificationUiState
 import dev.esgarpe.nfcompra.feature.sharing.SharingAction
 import dev.esgarpe.nfcompra.feature.sharing.SharingApi
 import dev.esgarpe.nfcompra.feature.sharing.SharingNavigation
@@ -278,6 +280,23 @@ class MainActivity : FragmentActivity() {
             var contextualNotificationError by remember { mutableStateOf<String?>(null) }
             var showNotificationPopup by remember { mutableStateOf(false) }
             val notificationPopState by globalNotifications.notifications.collectAsState()
+            val pendingInvitationNotices = remember(notificationPopState) {
+                (notificationPopState as? NotificationUiState.Ready)
+                    ?.notifications
+                    .orEmpty()
+                    .filter { it.invitationId != null }
+                    .mapNotNull { notification ->
+                        notification.invitationId?.let { invitationId ->
+                            HouseholdInvitationNoticeUiModel(
+                                notificationId = notification.id,
+                                invitationId = invitationId,
+                                title = notification.title,
+                                body = notification.body,
+                                createdAt = notification.createdAt,
+                            )
+                        }
+                    }
+            }
             LaunchedEffect(authenticatedContentUnlocked) {
                 if (authenticatedContentUnlocked) lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
                     globalNotifications.pollNotifications()
@@ -372,6 +391,10 @@ class MainActivity : FragmentActivity() {
                                     },
                                     { selectedHouseholdId = it },
                                     onOpenNotifications = { showNotificationPopup = true },
+                                    pendingInvitationNotices = pendingInvitationNotices,
+                                    invitationsLoading = notificationPopState is NotificationUiState.Loading,
+                                    onAcceptInvitationNotice = { globalNotifications.onAction(SharingAction.AcceptInvitationById(it)) },
+                                    onRejectInvitationNotice = { globalNotifications.onAction(SharingAction.DeleteNotification(it)) },
                                     currentUserId = accountId,
                                     openListsRequestKey = openListsRequestKey,
                                     biometricAccessEnabled = biometricAccessEnabled,

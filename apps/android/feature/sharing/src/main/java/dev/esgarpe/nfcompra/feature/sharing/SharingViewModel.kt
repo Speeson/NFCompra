@@ -64,7 +64,10 @@ class SharingViewModel(
     fun acceptInvitationById(invitationId: String) = viewModelScope.launch {
         if (mutableIsAccepting.value) return@launch
         mutableIsAccepting.value = true
-        try { mutableNavigation.value = SharingNavigation.HouseholdContext(repository.acceptById(invitationId).householdId) }
+        try {
+            mutableNavigation.value = SharingNavigation.HouseholdContext(repository.acceptById(invitationId).householdId)
+            runCatching { refreshNotificationSnapshot() }
+        }
         catch (error: SharingApiException) { mutableState.value = SharingUiState.Error(error.message) }
         catch (_: Exception) { mutableState.value = SharingUiState.Error("No se pudo conectar con el servidor.") }
         finally { mutableIsAccepting.value = false }
@@ -97,7 +100,10 @@ class SharingViewModel(
     private suspend fun accept(token: String) {
         if (mutableIsAccepting.value) return
         mutableIsAccepting.value = true
-        try { mutableNavigation.value = SharingNavigation.HouseholdContext(repository.accept(token).householdId) }
+        try {
+            mutableNavigation.value = SharingNavigation.HouseholdContext(repository.accept(token).householdId)
+            runCatching { refreshNotificationSnapshot() }
+        }
         finally { mutableIsAccepting.value = false }
     }
 

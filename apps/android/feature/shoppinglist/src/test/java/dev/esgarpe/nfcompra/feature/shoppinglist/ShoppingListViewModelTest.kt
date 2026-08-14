@@ -205,6 +205,7 @@ class ShoppingListViewModelTest {
 
     @Test fun `an authenticated user without homes can create the first household`() = runTest {
         server.enqueue(json("{\"households\":[]}"))
+        server.enqueue(profileResponse())
         server.enqueue(json("{\"household\":{\"id\":\"home-1\",\"name\":\"Casa\",\"ownerId\":\"user-1\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}}", 201))
         val viewModel = ShoppingListViewModel(
             ShoppingListRepository(NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java)),
@@ -213,7 +214,11 @@ class ShoppingListViewModelTest {
 
         viewModel.state.test {
             assertEquals(ShoppingListViewState.Loading, awaitItem())
-            assertEquals(ShoppingListViewState.NoHouseholds, awaitItem())
+            val empty = awaitItem() as ShoppingListViewState.Data
+            assertTrue(empty.households.isEmpty())
+            assertEquals(null, empty.selectedHouseholdId)
+            assertEquals(null, empty.selectedListId)
+            assertEquals("Sin hogar", empty.content.title)
             viewModel.onAction(ShoppingListAction.CreateHousehold("Casa"))
             val data = awaitItem() as ShoppingListViewState.Data
             assertEquals("home-1", data.selectedHouseholdId)
@@ -222,6 +227,7 @@ class ShoppingListViewModelTest {
             assertTrue(data.lists.isEmpty())
         }
 
+        server.takeRequest(1, TimeUnit.SECONDS)
         server.takeRequest(1, TimeUnit.SECONDS)
         val create = server.takeRequest(1, TimeUnit.SECONDS)
         assertEquals("/v1/households", create?.path)
@@ -274,6 +280,7 @@ class ShoppingListViewModelTest {
 
     @Test fun `failed first household creation preserves its name and can be retried`() = runTest {
         server.enqueue(json("{\"households\":[]}"))
+        server.enqueue(profileResponse())
         server.enqueue(json("{\"error\":{\"code\":\"REQUEST_FAILED\",\"message\":\"No se pudo crear el hogar.\",\"details\":{}}}", 503))
         server.enqueue(json("{\"household\":{\"id\":\"home-1\",\"name\":\"Casa\",\"ownerId\":\"user-1\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}}", 201))
         val viewModel = ShoppingListViewModel(
@@ -283,17 +290,20 @@ class ShoppingListViewModelTest {
 
         viewModel.state.test {
             assertEquals(ShoppingListViewState.Loading, awaitItem())
-            assertEquals(ShoppingListViewState.NoHouseholds, awaitItem())
+            val empty = awaitItem() as ShoppingListViewState.Data
+            assertTrue(empty.households.isEmpty())
+            assertEquals(null, empty.selectedHouseholdId)
             viewModel.onAction(ShoppingListAction.CreateHousehold("Casa"))
-            val failed = awaitItem() as ShoppingListViewState.InitialHouseholdError
+            val failed = awaitItem() as ShoppingListViewState.Data
             assertEquals("No se pudo crear el hogar.", failed.message)
             assertEquals(ShoppingListAction.CreateHousehold("Casa"), failed.retryAction)
-            viewModel.onAction(failed.retryAction)
+            viewModel.onAction(failed.retryAction!!)
             val data = awaitItem() as ShoppingListViewState.Data
             assertEquals("home-1", data.selectedHouseholdId)
             assertEquals(null, data.selectedListId)
         }
 
+        server.takeRequest(1, TimeUnit.SECONDS)
         server.takeRequest(1, TimeUnit.SECONDS)
         val failedCreate = server.takeRequest(1, TimeUnit.SECONDS)
         val retriedCreate = server.takeRequest(1, TimeUnit.SECONDS)
@@ -484,6 +494,10 @@ class ShoppingListViewModelTest {
     }
 
     private fun json(body: String, status: Int = 200) = MockResponse().setResponseCode(status).setHeader("content-type", "application/json").setBody(body)
+
+    private fun profileResponse() = json(
+        """{"user":{"id":"user-1","email":"bea@example.com","name":"Bea","firstName":"Bea","lastName":null,"username":"bea"}}""",
+    )
 }
 
 private class FlowShoppingRepository(

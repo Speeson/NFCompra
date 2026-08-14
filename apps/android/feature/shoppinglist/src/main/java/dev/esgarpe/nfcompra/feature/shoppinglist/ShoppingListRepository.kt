@@ -215,8 +215,11 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
     }
 
     override suspend fun createProductCatalogItem(name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel {
-        invalidateCatalogSnapshot()
-        return api.createProductCatalogItem(ProductCatalogMutationRequest(name, categoryId, iconKey, brand, packageSize)).bodyOrThrow().product.toUiModel()
+        return api.createProductCatalogItem(ProductCatalogMutationRequest(name, categoryId, iconKey, brand, packageSize))
+            .bodyOrThrow()
+            .product
+            .toUiModel()
+            .also(::upsertCatalogSnapshot)
     }
 
     override suspend fun updateProductCatalogItem(productId: String, name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel {
@@ -248,6 +251,10 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
 
     private fun invalidateCatalogSnapshot() {
         catalogSnapshot = null
+    }
+
+    private fun upsertCatalogSnapshot(product: ProductCatalogUiModel) {
+        catalogSnapshot = catalogSnapshot?.filterNot { it.id == product.id }?.plus(product)
     }
 
     private suspend fun loadCatalogSnapshotOrNull(): List<ProductCatalogUiModel>? = catalogMutex.withLock {
@@ -603,7 +610,7 @@ class OfflineShoppingRepository(
 
     override suspend fun createProductCatalogItem(name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel = accountOperation {
         val product = api.createProductCatalogItem(ProductCatalogMutationRequest(name, categoryId, iconKey, brand, packageSize)).also { isOffline = false }.bodyOrThrow().product.toUiModel()
-        invalidateCatalogSnapshot()
+        upsertCatalogSnapshot(product)
         product
     }
 
@@ -662,6 +669,11 @@ class OfflineShoppingRepository(
     private fun invalidateCatalogSnapshot() {
         catalogSnapshot = null
         catalogCache?.clear()
+    }
+
+    private suspend fun upsertCatalogSnapshot(product: ProductCatalogUiModel) = catalogMutex.withLock {
+        catalogSnapshot = catalogSnapshot?.filterNot { it.id == product.id }?.plus(product)
+        catalogSnapshot?.let { catalogCache?.write(it) }
     }
 
     override suspend fun deleteItem(item: ShoppingListItemUiModel) = accountOperation {
