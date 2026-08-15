@@ -55,6 +55,7 @@ jobs:
     outputs:
       web: ${{ steps.select.outputs.web }}
       api: ${{ steps.select.outputs.api }}
+      android_build: ${{ steps.select.outputs.android_build }}
       android: ${{ steps.select.outputs.android }}
       android_release_mode: ${{ steps.select.outputs.android_release_mode }}
       android_version_bump: ${{ steps.select.outputs.android_version_bump }}
@@ -92,16 +93,17 @@ jobs:
 
           web="$(node -e "const p=require('./impact.json'); console.log(p.components.web.changed)")"
           api="$(node -e "const p=require('./impact.json'); console.log(p.components.api.changed)")"
+          android_build="$(node -e "const p=require('./impact.json'); console.log(p.components.androidBuild.changed)")"
           android="$(node -e "const p=require('./impact.json'); console.log(p.components.android.changed)")"
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             case "$mode" in
-              everything) web=true; api=true; android=true ;;
-              web) web=true; api=false; android=false ;;
-              api) web=false; api=true; android=false ;;
-              android) web=false; api=false; android=true ;;
+              everything) web=true; api=true; android_build=true ;;
+              web) web=true; api=false; android_build=false; android=false ;;
+              api) web=false; api=true; android_build=false; android=false ;;
+              android) web=false; api=false; android_build=true ;;
               custom)
-                web=false; api=false; android=false
+                web=false; api=false; android_build=false; android=false
                 echo "$CUSTOM_COMPONENTS" | tr ',' '\n' | while read -r component; do
                   component="$(echo "$component" | xargs)"
                   case "$component" in
@@ -114,14 +116,22 @@ jobs:
                 done
                 grep -qx web selected-components.txt 2>/dev/null && web=true || true
                 grep -qx api selected-components.txt 2>/dev/null && api=true || true
-                grep -qx android selected-components.txt 2>/dev/null && android=true || true
+                grep -qx android selected-components.txt 2>/dev/null && android_build=true || true
                 ;;
             esac
+            if [ "$android_build" = "true" ] && [ "$release_mode" = "release" ]; then
+              android=true
+            else
+              android=false
+            fi
+          elif [ "$android_build" = "true" ] && [ "$android" != "true" ]; then
+            release_mode="build-only"
           fi
 
           {
             echo "web=$web"
             echo "api=$api"
+            echo "android_build=$android_build"
             echo "android=$android"
             echo "android_release_mode=$release_mode"
             echo "android_version_bump=$version_bump"
@@ -134,7 +144,8 @@ jobs:
             echo "## NFCompra Deployment Impact"
             echo "- Web: $web"
             echo "- API: $api"
-            echo "- Android: $android"
+            echo "- Android build: $android_build"
+            echo "- Android release: $android"
             echo "- Mode: $mode"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -157,7 +168,7 @@ jobs:
 
   android:
     needs: detect
-    if: needs.detect.outputs.android == 'true'
+    if: needs.detect.outputs.android_build == 'true' || needs.detect.outputs.android == 'true'
     permissions:
       contents: write
     uses: ./.github/workflows/release-android.yml

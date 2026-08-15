@@ -5,12 +5,19 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url)).replace(/[\\/]$/, '');
 
-const COMPONENTS = ['web', 'api', 'android'];
+const COMPONENTS = ['web', 'api', 'androidBuild', 'android'];
+const COMPONENT_LABELS = {
+  web: 'WEB',
+  api: 'API',
+  androidBuild: 'ANDROID BUILD',
+  android: 'ANDROID RELEASE',
+};
 
 const DEFAULT_REASONS = {
   web: 'Web source or build input changed',
   api: 'API source, Worker config, migration, or API build input changed',
-  android: 'Android source, resource, manifest, dependency, or build input changed',
+  androidBuild: 'Android validation or build input changed',
+  android: 'Android source, resource, manifest, dependency, or app-impacting build input changed',
 };
 
 export function normalizePath(file) {
@@ -52,6 +59,15 @@ function changedDiffLines(file, diffTextByFile = {}) {
     .filter(Boolean);
 }
 
+function isAndroidBuildPerformanceOnlyGradleProperties(file, diffTextByFile = {}) {
+  if (file !== 'apps/android/gradle.properties') return false;
+  const changed = changedDiffLines(file, diffTextByFile);
+  if (changed.length === 0) return false;
+  return changed.every((line) =>
+    /^org\.gradle\.(caching|configuration-cache|parallel|daemon|configureondemand)\s*=/.test(line)
+  );
+}
+
 function isRootPackageScriptOnly(file, diffTextByFile = {}) {
   if (file !== 'package.json') return false;
   const changed = changedDiffLines(file, diffTextByFile);
@@ -65,9 +81,12 @@ function isRootPackageScriptOnly(file, diffTextByFile = {}) {
 export function classifyFile(file, options = {}) {
   const normalized = normalizePath(file);
   if (!normalized || isDocumentation(normalized)) return [];
-  if (/^\.github\/workflows\//.test(normalized)) return [];
+  if (/^\.github\/workflows\//.test(normalized)) {
+    return normalized === '.github/workflows/release-android.yml' ? ['androidBuild'] : [];
+  }
   if (/^\.agents\/skills\/deploy-impact\//.test(normalized)) return [];
-  if (/^scripts\/(deploy-impact|android-release|vercel-ignore-build)(\.test)?\.mjs$/.test(normalized)) return [];
+  if (/^scripts\/android-release(\.test)?\.mjs$/.test(normalized)) return ['androidBuild'];
+  if (/^scripts\/(deploy-impact|vercel-ignore-build)(\.test)?\.mjs$/.test(normalized)) return [];
 
   const components = new Set();
 
@@ -93,9 +112,14 @@ export function classifyFile(file, options = {}) {
 
   if (normalized.startsWith('apps/android/')) {
     if (!isDocumentation(normalized) && !isVersionOnlyAndroidBuildGradle(normalized, options.diffTextByFile)) {
-      if (/(^|\/)(src\/main|AndroidManifest\.xml|build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties|gradle\/wrapper\/)/.test(normalized) ||
-        /^apps\/android\/(build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties|gradle\/wrapper\/)/.test(normalized) ||
+      if (/^apps\/android\/(gradlew|gradlew\.bat|gradle\/wrapper\/)/.test(normalized)) {
+        components.add('androidBuild');
+      } else if (isAndroidBuildPerformanceOnlyGradleProperties(normalized, options.diffTextByFile)) {
+        components.add('androidBuild');
+      } else if (/(^|\/)(src\/main|AndroidManifest\.xml|build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties)/.test(normalized) ||
+        /^apps\/android\/(build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties)/.test(normalized) ||
         /^apps\/android\/(app|core|feature)\//.test(normalized)) {
+        components.add('androidBuild');
         components.add('android');
       }
     }
@@ -109,6 +133,7 @@ export function calculateImpact(files, options = {}) {
     components: {
       web: { changed: false, files: [], reasons: [] },
       api: { changed: false, files: [], reasons: [] },
+      androidBuild: { changed: false, files: [], reasons: [] },
       android: { changed: false, files: [], reasons: [] },
     },
     changedFiles: [...new Set(files.map(normalizePath).filter(Boolean))].sort(),
@@ -124,6 +149,7 @@ export function calculateImpact(files, options = {}) {
   }
   result.web = result.components.web.changed;
   result.api = result.components.api.changed;
+  result.androidBuild = result.components.androidBuild.changed;
   result.android = result.components.android.changed;
   return result;
 }
@@ -183,7 +209,7 @@ function localDiffText(files) {
 export function formatText(impact) {
   const lines = ['NFCompra Deployment Impact', ''];
   for (const component of COMPONENTS) {
-    const label = component.toUpperCase();
+    const label = COMPONENT_LABELS[component];
     const data = impact.components[component];
     lines.push(label);
     lines.push(data.changed ? 'Changed: yes' : 'Changed: no');
@@ -200,6 +226,7 @@ export function formatGithubOutputs(impact) {
   return [
     `web=${impact.components.web.changed}`,
     `api=${impact.components.api.changed}`,
+    `android_build=${impact.components.androidBuild.changed}`,
     `android=${impact.components.android.changed}`,
     `json=${JSON.stringify(impact)}`,
   ].join('\n');

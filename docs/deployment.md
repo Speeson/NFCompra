@@ -20,12 +20,13 @@ Reglas principales:
 
 - `apps/web/**` relevante de runtime/build afecta Web.
 - `apps/api/**` relevante de runtime/build, migraciones y Wrangler afecta API.
-- `apps/android/**` relevante de runtime/build afecta Android.
+- `apps/android/**` relevante de runtime/build afecta Android build; solo cambios de producto/runtime afectan Android release.
 - `package-lock.json` afecta Web y API porque son npm workspaces.
 - `.changes/**`, `docs/**`, screenshots de raiz, README-only y workflows no son cambios desplegables.
+- Cambios Android solo de CI/build performance, como `org.gradle.caching=true`, workflow Android, wrapper o tooling de release, pueden requerir validacion Android pero no crean release.
 - Un cambio solo de `versionCode`/`versionName` en `apps/android/app/build.gradle.kts` no crea otro release Android.
 
-El script soporta rangos Git para CI y cambios locales sin rango. GitHub Actions recalcula siempre el impacto antes de validar, desplegar o publicar.
+El script soporta rangos Git para CI y cambios locales sin rango. En JSON, `androidBuild` indica validacion/build Android y `android` indica release Android requerido. GitHub Actions recalcula siempre el impacto antes de validar, desplegar o publicar.
 
 ## Changesets
 
@@ -111,6 +112,7 @@ Concurrencia:
 - El orquestador `Deploy NFCompra` serializa runs por branch y no cancela runs en progreso.
 - Web automatico evita builds stale desde `ignoreCommand`: si el commit de Vercel ya no es HEAD de la rama, sale con `0` y salta el build.
 - API automatico comprueba que `GITHUB_SHA` sigue siendo HEAD de la rama antes de aplicar migraciones o desplegar Worker; si fue superseded, valida pero salta el deploy.
+- Android automatico ejecuta `build-only` cuando solo hay `androidBuild=true`; solo usa `release` cuando `android=true`.
 - Web/API manuales no se cancelan entre si; se serializan por componente y branch.
 - Android usa grupo `android-release-main` para evitar dos versiones calculadas a la vez y no cancela releases en progreso.
 
