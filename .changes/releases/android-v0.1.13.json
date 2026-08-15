@@ -1,0 +1,20 @@
+{
+  "component": "android",
+  "versionName": "0.1.13",
+  "versionCode": 14,
+  "releasedAt": null,
+  "changesets": [
+    {
+      "file": "android-system-bars-household-access.json",
+      "components": [
+        "android"
+      ],
+      "type": "patch",
+      "category": "fixed",
+      "summary": "Improve Android system-bar integration and fix household access from Home.",
+      "details": [
+        "Status and navigation safe areas now match NFCompra's green interface, and Home household access opens the selected household correctly."
+      ]
+    }
+  ]
+}
