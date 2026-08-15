@@ -81,6 +81,30 @@ class ShoppingListViewModelTest {
         assertEquals(0, data.listMetrics["list-2"]?.checkedCount)
     }
 
+    @Test fun `selecting households switches the active household and selected list`() = runTest {
+        val viewModel = ShoppingListViewModel(TwoHouseholdSelectionRepository())
+        viewModel.load()
+        advanceUntilIdle()
+
+        assertEquals("home-a", (viewModel.state.value as ShoppingListViewState.Data).selectedHouseholdId)
+
+        viewModel.onAction(ShoppingListAction.SelectHousehold("home-b"))
+        advanceUntilIdle()
+
+        val homeB = viewModel.state.value as ShoppingListViewState.Data
+        assertEquals("home-b", homeB.selectedHouseholdId)
+        assertEquals("list-b", homeB.selectedListId)
+        assertEquals("Compra B", homeB.content.title)
+
+        viewModel.onAction(ShoppingListAction.SelectHousehold("home-a"))
+        advanceUntilIdle()
+
+        val homeA = viewModel.state.value as ShoppingListViewState.Data
+        assertEquals("home-a", homeA.selectedHouseholdId)
+        assertEquals("list-a", homeA.selectedListId)
+        assertEquals("Compra A", homeA.content.title)
+    }
+
     @Test fun `refreshes product categories into data state for catalog tab`() = runTest {
         val viewModel = ShoppingListViewModel(MultiListMetricsRepository())
         viewModel.load()
@@ -546,6 +570,27 @@ private class MultiListMetricsRepository : ShoppingRepository {
         warmProductCatalogCalls++
     }
     override fun observeItems(listId: String) = MutableStateFlow(itemsByList.getValue(listId))
+    override suspend fun createHousehold(name: String) = error("No se usa en esta prueba.")
+    override suspend fun createList(householdId: String, name: String) = error("No se usa en esta prueba.")
+    override suspend fun createItem(listId: String, name: String, quantity: Double) = error("No se usa en esta prueba.")
+    override suspend fun updateItem(item: ShoppingListItemUiModel, name: String?, checked: Boolean?, quantity: Double?) =
+        error("No se usa en esta prueba.")
+    override suspend fun deleteItem(item: ShoppingListItemUiModel) = error("No se usa en esta prueba.")
+}
+
+private class TwoHouseholdSelectionRepository : ShoppingRepository {
+    private val households = listOf(
+        HouseholdUiModel("home-a", "Casa A"),
+        HouseholdUiModel("home-b", "Casa B"),
+    )
+    private val lists = mapOf(
+        "home-a" to listOf(ShoppingListSummaryUiModel("list-a", "home-a", "Compra A")),
+        "home-b" to listOf(ShoppingListSummaryUiModel("list-b", "home-b", "Compra B")),
+    )
+
+    override suspend fun households() = households
+    override suspend fun lists(householdId: String) = lists.getValue(householdId)
+    override fun observeItems(listId: String) = MutableStateFlow(emptyList<ShoppingListItemUiModel>())
     override suspend fun createHousehold(name: String) = error("No se usa en esta prueba.")
     override suspend fun createList(householdId: String, name: String) = error("No se usa en esta prueba.")
     override suspend fun createItem(listId: String, name: String, quantity: Double) = error("No se usa en esta prueba.")

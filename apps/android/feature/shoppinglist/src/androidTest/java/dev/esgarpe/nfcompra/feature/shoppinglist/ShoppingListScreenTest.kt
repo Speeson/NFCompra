@@ -6,6 +6,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import dev.esgarpe.nfcompra.core.designsystem.NFCompraTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -324,6 +327,55 @@ class ShoppingListScreenTest {
 
         composeTestRule.onNodeWithText("Vaciar").assertDoesNotExist()
         composeTestRule.onNodeWithText("Crear lista").assertExists()
+    }
+
+    @Test
+    fun homeHouseholdAccessSelectsHouseholdAndOpensListsRoot() {
+        val homeA = HouseholdUiModel("home-a", "Casa A")
+        val homeB = HouseholdUiModel("home-b", "Casa B")
+        val listsByHousehold = mapOf(
+            "home-a" to listOf(ShoppingListSummaryUiModel("list-a", "home-a", "Compra A")),
+            "home-b" to listOf(ShoppingListSummaryUiModel("list-b", "home-b", "Compra B")),
+        )
+        var actions = emptyList<ShoppingListAction>()
+        var data by mutableStateOf(
+            ShoppingListViewState.Data(
+                content = ShoppingListUiState("Compra A", emptyList(), emptyList(), isOffline = false),
+                households = listOf(homeA, homeB),
+                lists = listsByHousehold.getValue("home-a"),
+                selectedHouseholdId = "home-a",
+                selectedListId = "list-a",
+            ),
+        )
+        composeTestRule.setContent {
+            NFCompraTheme {
+                ShoppingListContent(
+                    data = data,
+                    onAction = { action ->
+                        actions = actions + action
+                        if (action is ShoppingListAction.SelectHousehold) {
+                            val selectedLists = listsByHousehold.getValue(action.id)
+                            data = data.copy(
+                                content = ShoppingListUiState(selectedLists.first().name, emptyList(), emptyList(), isOffline = false),
+                                lists = selectedLists,
+                                selectedHouseholdId = action.id,
+                                selectedListId = selectedLists.first().id,
+                            )
+                        }
+                    },
+                    onLogout = {},
+                    onMembers = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Abrir").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(listOf(ShoppingListAction.SelectHousehold("home-b")), actions)
+        composeTestRule.onNodeWithContentDescription("Listas seleccionado").assertExists()
+        composeTestRule.onNodeWithText("Casa B").assertExists()
+        composeTestRule.onNodeWithText("Compra B").assertExists()
     }
 
     @Test

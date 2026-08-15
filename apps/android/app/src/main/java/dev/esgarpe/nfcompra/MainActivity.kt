@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import java.util.concurrent.Executor
@@ -80,6 +81,11 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = AndroidColor.rgb(108, 197, 29)
+        window.navigationBarColor = AndroidColor.rgb(108, 197, 29)
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
         invitationHandoff = InvitationTokenHandoff(savedInstanceState?.getString(PENDING_INVITATION_TOKEN))
         pendingInvitationToken = invitationHandoff.token
         pendingHouseholdDeepLink = savedInstanceState?.getString(PENDING_HOUSEHOLD_DEEP_LINK)

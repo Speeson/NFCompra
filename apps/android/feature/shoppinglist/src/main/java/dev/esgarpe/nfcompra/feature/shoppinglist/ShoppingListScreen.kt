@@ -384,6 +384,7 @@ internal fun ShoppingListContent(
     var catalogRootRequestKey by remember { mutableStateOf(0) }
     var householdsRootRequestKey by remember { mutableStateOf(0) }
     var navigationMessage by remember { mutableStateOf<String?>(null) }
+    var pendingOpenHouseholdId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(openListsRequestKey) {
         if (openListsRequestKey > 0) {
             selectedTab = DashboardTab.Lists
@@ -431,7 +432,6 @@ internal fun ShoppingListContent(
             onWarmProductCatalog()
         }
     }
-
     val isRoot = selectedTab == DashboardTab.Home && !isListDetailOpen
     var lastBackPressMs by remember { mutableStateOf(0L) }
     LaunchedEffect(lastBackPressMs) {
@@ -468,6 +468,12 @@ internal fun ShoppingListContent(
             }
         }
     }
+    LaunchedEffect(data.selectedHouseholdId, pendingOpenHouseholdId) {
+        if (pendingOpenHouseholdId != null && data.selectedHouseholdId == pendingOpenHouseholdId) {
+            pendingOpenHouseholdId = null
+            openTabRoot(DashboardTab.Lists)
+        }
+    }
     BackHandler(enabled = shouldInterceptBack) {
         if (!isRoot) {
             if (isListDetailOpen) {
@@ -483,7 +489,12 @@ internal fun ShoppingListContent(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(WebPage)) {
+    fun openHouseholdRoot(householdId: String) {
+        pendingOpenHouseholdId = householdId
+        onAction(ShoppingListAction.SelectHousehold(householdId))
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(Brush.linearGradient(GroceryPrimaryGradient))) {
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding().background(WebPage).padding(bottom = responsiveDp(0.114f))) {
             ShoppingAppBanner(
                 title = if (isListDetailOpen) data.content.title else selectedTab.label,
@@ -549,6 +560,7 @@ internal fun ShoppingListContent(
                                 onOpenInvitations = { onOpenNotifications?.invoke() },
                                 onAcceptInvitation = onAcceptInvitationNotice,
                                 onRejectInvitation = onRejectInvitationNotice,
+                                onOpenHousehold = ::openHouseholdRoot,
                                 onEditList = { listId ->
                                     openedListMode = ListOpenMode.Edit
                                     openedListId = listId
@@ -560,7 +572,7 @@ internal fun ShoppingListContent(
                                     selectedTab = DashboardTab.Lists
                                 },
                             )
-                            DashboardTab.Households -> HouseholdsPanel(data, onAction, { creatingHousehold = true }, onMembers, onOpenLists = { openTabRoot(DashboardTab.Lists) }, currentUserId = currentUserId, rootRequestKey = householdsRootRequestKey)
+                            DashboardTab.Households -> HouseholdsPanel(data, onAction, { creatingHousehold = true }, onMembers, onOpenHousehold = ::openHouseholdRoot, currentUserId = currentUserId, rootRequestKey = householdsRootRequestKey)
                             DashboardTab.Lists -> ListsPanel(
                                 data,
                                 onAction,
@@ -913,6 +925,7 @@ private fun DashboardHome(
     onOpenInvitations: () -> Unit = {},
     onAcceptInvitation: (String) -> Unit = {},
     onRejectInvitation: (String) -> Unit = {},
+    onOpenHousehold: (String) -> Unit,
     onEditList: (String) -> Unit,
     onViewList: (String) -> Unit,
 ) {
@@ -996,7 +1009,8 @@ private fun DashboardHome(
                 household = household,
                 listCount = data.lists.count { it.householdId == household.id },
                 selected = household.id == data.selectedHouseholdId,
-                onOpen = { onAction(ShoppingListAction.SelectHousehold(household.id)) },
+                onOpen = { onOpenHousehold(household.id) },
+                onOpenLists = { onOpenHousehold(household.id) },
             )
         }
         SectionTitle("Listas recientes")
@@ -1027,7 +1041,7 @@ private fun HouseholdsPanel(
     onAction: (ShoppingListAction) -> Unit,
     onCreateHousehold: () -> Unit,
     onMembers: (String) -> Unit,
-    onOpenLists: () -> Unit = {},
+    onOpenHousehold: (String) -> Unit = {},
     currentUserId: String? = null,
     rootRequestKey: Int = 0,
 ) {
@@ -1066,8 +1080,8 @@ private fun HouseholdsPanel(
                 onToggleExpanded = {
                     expandedHouseholdId = if (expanded) null else household.id
                 },
-                onOpen = { onAction(ShoppingListAction.SelectHousehold(household.id)) },
-                onOpenLists = onOpenLists,
+                onOpen = { onOpenHousehold(household.id) },
+                onOpenLists = { onOpenHousehold(household.id) },
                 onRename = { renamingHousehold = household },
                 onDelete = { deletingHousehold = household },
                 onMembers = { onMembers(household.id) },

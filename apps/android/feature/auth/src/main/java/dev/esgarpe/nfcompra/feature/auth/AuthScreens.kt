@@ -536,6 +536,7 @@ private fun AuthVisualScaffold(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .background(Brush.linearGradient(AuthGradient))
                 .safeDrawingPadding()
                 .background(AuthPage),
         ) {
@@ -622,6 +623,7 @@ private fun AuthSimpleForm(title: String, state: AuthUiState, content: @Composab
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(Brush.linearGradient(AuthGradient))
                 .safeDrawingPadding()
                 .background(AuthPage)
                 .verticalScroll(rememberScrollState())
