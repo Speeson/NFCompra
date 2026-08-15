@@ -1,0 +1,9 @@
+{
+  "components": ["web"],
+  "type": "patch",
+  "category": "changed",
+  "summary": "Refresh the NFCompra landing page with a polished Android section and dark mode.",
+  "details": [
+    "Improves Android app mockups, landing copy, visual polish, and a persisted theme toggle."
+  ]
+}

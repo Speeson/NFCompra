@@ -9,6 +9,7 @@ import { PublicLanding } from './PublicLanding';
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   vi.unstubAllGlobals();
   window.history.pushState({}, '', '/');
 });
@@ -56,10 +57,23 @@ describe('la landing pública', () => {
     expect(screen.getByRole('heading', { name: 'La web también funciona como aplicación.' })).toBeVisible();
     expect(screen.getByText('Acceso desde iPhone')).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Productos, categorías y favoritos para buscar menos.' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'APK propia, biometría y actualización integrada.' })).toBeVisible();
-    expect(screen.getByText('Favoritos sincronizados')).toBeVisible();
-    expect(screen.getByText('Acceder con biometría')).toBeVisible();
-    expect(screen.getByText('Actualización desde release APK')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'La app Android lista para comprar, entrar y actualizar.' })).toBeVisible();
+    expect(screen.getByText('Catálogo y favoritos sincronizados')).toBeVisible();
+    expect(screen.getAllByText('Biometría opcional')).toHaveLength(2);
+    expect(screen.getByText('Nueva APK disponible')).toBeVisible();
+  });
+
+  it('permite alternar y persistir el tema de la landing', () => {
+    const onOpenAuth = vi.fn();
+    render(<PublicLanding onOpenAuth={onOpenAuth} />);
+
+    const toggle = screen.getByRole('button', { name: /Tema:/ });
+    expect(toggle).toHaveAttribute('aria-label', expect.stringContaining('Cambiar a oscuro'));
+
+    fireEvent.click(toggle);
+
+    expect(localStorage.getItem('nfcompra.landing-theme')).toBe('dark');
+    expect(screen.getByRole('button', { name: /Tema: oscuro/ })).toBeVisible();
   });
 
   it('entrega el modo de autenticación elegido a la aplicación', () => {

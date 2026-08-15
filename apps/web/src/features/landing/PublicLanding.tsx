@@ -1,15 +1,63 @@
-import type { JSX } from 'react';
+import { useEffect, useMemo, useState, type JSX } from 'react';
 
 import logo from '../../assets/brand/nfcompra-logo.png';
 
 type AuthMode = 'login' | 'register';
+type ThemePreference = 'system' | 'light' | 'dark';
+type ResolvedTheme = 'light' | 'dark';
 
 interface PublicLandingProps {
   onOpenAuth(mode: AuthMode): void;
 }
 
+const themeStorageKey = 'nfcompra.landing-theme';
+const themeOptions: ThemePreference[] = ['system', 'dark', 'light'];
+
+function readStoredTheme(): ThemePreference {
+  try {
+    const stored = localStorage.getItem(themeStorageKey);
+    return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+function resolveTheme(preference: ThemePreference): ResolvedTheme {
+  if (preference !== 'system') return preference;
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
 export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
-  return <div className="public-landing">
+  const [themePreference, setThemePreference] = useState(readStoredTheme);
+  const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(() => resolveTheme('system'));
+  const theme = themePreference === 'system' ? systemTheme : themePreference;
+  const nextThemePreference = useMemo(() => themeOptions[(themeOptions.indexOf(themePreference) + 1) % themeOptions.length], [themePreference]);
+  const themeLabel = themePreference === 'system' ? `Tema: sistema (${theme === 'dark' ? 'oscuro' : 'claro'})` : `Tema: ${themePreference === 'dark' ? 'oscuro' : 'claro'}`;
+  const themeIcon = themePreference === 'system' ? '◐' : themePreference === 'dark' ? '☾' : '☀';
+
+  useEffect(() => {
+    const media = window.matchMedia?.('(prefers-color-scheme: dark)');
+    if (!media) return;
+    const updateTheme = () => setSystemTheme(media.matches ? 'dark' : 'light');
+    updateTheme();
+    media.addEventListener('change', updateTheme);
+    return () => media.removeEventListener('change', updateTheme);
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (themePreference === 'system') localStorage.removeItem(themeStorageKey);
+      else localStorage.setItem(themeStorageKey, themePreference);
+    } catch {
+      // Ignore private browsing storage failures; theme still works for the session.
+    }
+  }, [themePreference]);
+
+  function cycleTheme(): void {
+    setThemePreference(nextThemePreference);
+  }
+
+  return <div className="public-landing" data-theme={theme}>
     <header className="public-landing__header">
       <nav className="public-landing__nav" aria-label="Navegación principal">
         <a className="public-landing__brand" href="#inicio">
@@ -24,6 +72,9 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
           <a href="#nfc">NFC</a>
         </div>
         <div className="public-landing__access">
+          <button className="public-landing__theme-toggle" type="button" aria-label={`${themeLabel}. Cambiar a ${nextThemePreference === 'system' ? 'sistema' : nextThemePreference === 'dark' ? 'oscuro' : 'claro'}`} title={themeLabel} onClick={cycleTheme}>
+            <span aria-hidden="true">{themeIcon}</span>
+          </button>
           <button className="button button--quiet" type="button" onClick={() => onOpenAuth('login')}>Iniciar sesión</button>
           <button className="button" type="button" onClick={() => onOpenAuth('register')}>Registrarse</button>
         </div>
@@ -201,34 +252,37 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
       <section className="public-landing__android" id="android" aria-labelledby="android-title">
         <div className="public-landing__android-copy">
           <p className="public-landing__eyebrow">App Android ya desarrollada</p>
-          <h2 id="android-title">APK propia, biometría y actualización integrada.</h2>
+          <h2 id="android-title">La app Android lista para comprar, entrar y actualizar.</h2>
           <p>
-            La app Android tiene login, registro, recuperación por OTP, acceso biométrico opcional, catálogo, favoritos, enlaces NFC al hogar correcto y comprobación de nuevas versiones desde GitHub Releases.
+            Inicia sesión, crea tu cuenta o recupera el acceso por OTP. Después puedes entrar con biometría, abrir hogares desde NFC, usar catálogo y favoritos sincronizados y recibir avisos cuando haya una nueva APK publicada.
           </p>
         </div>
         <div className="public-landing__android-panel">
           <div className="public-landing__android-features">
-            <span>Acceso biométrico opcional</span>
-            <span>Actualización desde release APK</span>
-            <span>Enlaces NFC al hogar</span>
-            <span>Favoritos sincronizados</span>
+            <span>Login, registro y recuperación OTP</span>
+            <span>Biometría opcional</span>
+            <span>NFC al hogar correcto</span>
+            <span>Catálogo y favoritos sincronizados</span>
           </div>
           <div className="landing-android-strip" aria-label="Vistas de la app Android">
-            <article>
+            <article className="landing-android-screen landing-android-screen--auth">
+              <div className="landing-android-screen__status"><span>9:41</span><span>5G</span></div>
               <img src={logo} alt="" />
-              <strong>Bienvenido</strong>
+              <strong>NFCompra</strong>
               <span className="landing-android-strip__primary">Iniciar sesión</span>
-              <span>Acceder con biometría</span>
-              <small>Nueva versión disponible</small>
+              <span>Crear cuenta</span>
+              <small>Biometría opcional</small>
             </article>
-            <article>
-              <strong>Código NFC</strong>
-              <span>Casa principal</span>
-              <p>URL / URI</p>
-              <em>https://nfcompra.esgarpe.dev/household/...</em>
-              <span className="landing-android-strip__primary">Copiar</span>
+            <article className="landing-android-screen landing-android-screen--catalog">
+              <div className="landing-android-screen__status"><span>9:41</span><span>WiFi</span></div>
+              <strong>Catálogo</strong>
+              <span>Favoritos primero</span>
+              <div className="landing-android-product is-favorite"><b>★</b><div><strong>Tomate frito</strong><small>Favorito</small></div></div>
+              <div className="landing-android-product"><b>☆</b><div><strong>Leche entera</strong><small>Lácteos</small></div></div>
+              <div className="landing-android-update">Nueva APK disponible</div>
             </article>
-            <article>
+            <article className="landing-android-screen landing-android-screen--nfc">
+              <div className="landing-android-screen__status"><span>9:41</span><span>NFC</span></div>
               <strong>Compra semanal</strong>
               <span>Casa principal</span>
               <p>Pendientes</p>
