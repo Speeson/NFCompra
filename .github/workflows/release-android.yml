@@ -1,0 +1,145 @@
+name: Release Android
+
+on:
+  workflow_call:
+    inputs:
+      release_mode:
+        required: false
+        type: string
+        default: build-only
+      version_bump:
+        required: false
+        type: string
+        default: auto
+    secrets:
+      ANDROID_RELEASE_KEYSTORE_BASE64:
+        required: false
+      ANDROID_RELEASE_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_RELEASE_KEY_ALIAS:
+        required: false
+      ANDROID_RELEASE_KEY_PASSWORD:
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-main
+  cancel-in-progress: false
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Validate Android
+        working-directory: apps/android
+        run: ./gradlew :core:database:testDebugUnitTest :core:network:testDebugUnitTest :feature:auth:testDebugUnitTest :feature:shoppinglist:testDebugUnitTest :feature:sharing:testDebugUnitTest :feature:shoppinglist:compileDebugAndroidTestKotlin :feature:sharing:compileDebugAndroidTestKotlin :app:assembleDebug
+
+      - name: Validate changesets
+        if: inputs.release_mode == 'release' || inputs.release_mode == 'release-dry-run'
+        run: npm run changeset:validate
+
+      - name: Plan Android release
+        if: inputs.release_mode == 'release' || inputs.release_mode == 'release-dry-run'
+        run: node scripts/android-release.mjs plan --bump "${{ inputs.version_bump }}" --format json > android-plan.json
+
+      - name: Prepare Android release commit
+        if: inputs.release_mode == 'release'
+        run: |
+          node scripts/android-release.mjs prepare --bump "${{ inputs.version_bump }}" --format json > android-plan.json
+          VERSION="$(node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('android-plan.json','utf8')); console.log(p.nextVersionName)")"
+          if git ls-remote --exit-code --tags origin "v$VERSION"; then
+            echo "Tag v$VERSION already exists."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/android/app/build.gradle.kts .changes
+          git commit -m "Release Android v$VERSION"
+          git tag "v$VERSION"
+          git push origin HEAD:main
+          git push origin "v$VERSION"
+          echo "ANDROID_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Read current Android version
+        if: inputs.release_mode != 'release'
+        run: |
+          VERSION="$(node -e "import('./scripts/android-release.mjs').then(m => console.log(m.readAndroidVersion().versionName))")"
+          echo "ANDROID_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Configure release signing
+        if: inputs.release_mode != 'build-only'
+        env:
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          ANDROID_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+        run: |
+          test -n "$ANDROID_RELEASE_KEYSTORE_BASE64"
+          test -n "$ANDROID_RELEASE_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_RELEASE_KEY_ALIAS"
+          test -n "$ANDROID_RELEASE_KEY_PASSWORD"
+          echo "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/nfcompra-release.jks"
+          echo "NFCOMPRA_KEYSTORE_FILE=$RUNNER_TEMP/nfcompra-release.jks" >> "$GITHUB_ENV"
+          echo "NFCOMPRA_KEYSTORE_PASSWORD=$ANDROID_RELEASE_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "NFCOMPRA_KEY_ALIAS=$ANDROID_RELEASE_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "NFCOMPRA_KEY_PASSWORD=$ANDROID_RELEASE_KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Build release APK
+        if: inputs.release_mode != 'build-only'
+        working-directory: apps/android
+        run: ./gradlew :app:assembleRelease
+
+      - name: Verify signed release APK
+        if: inputs.release_mode != 'build-only'
+        run: |
+          set -euo pipefail
+          apk="apps/android/app/build/outputs/apk/release/app-release.apk"
+          test -f "$apk"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          test -n "$apksigner"
+          "$apksigner" verify --print-certs "$apk" >/dev/null
+
+      - name: Upload dry-run signed APK artifact
+        if: inputs.release_mode == 'release-dry-run'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NFCompra-release-dry-run-apk
+          path: apps/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Publish GitHub Release
+        if: inputs.release_mode == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp apps/android/app/build/outputs/apk/release/app-release.apk NFCompra-release.apk
+          gh release create "v$ANDROID_VERSION" NFCompra-release.apk \
+            --target main \
+            --title "NFCompra Android $ANDROID_VERSION" \
+            --notes-file ".changes/releases/android-v$ANDROID_VERSION.md"
+
+      - name: Summary
+        run: |
+          {
+            echo "## Android"
+            echo "- Validation: OK"
+            echo "- Release mode: ${{ inputs.release_mode }}"
+            echo "- Version: ${ANDROID_VERSION:-not released}"
+            if [ -f android-plan.json ]; then
+              echo "- Release plan: calculated"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

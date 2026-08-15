@@ -8,6 +8,9 @@
   "scripts": {
     "api:test": "npm --workspace @nfcompra/api run test",
     "admin:delete-user": "npm --workspace @nfcompra/api run admin:delete-user --",
+    "deploy:impact": "node scripts/deploy-impact.mjs",
+    "changeset:validate": "node scripts/android-release.mjs validate",
+    "android:release-plan": "node scripts/android-release.mjs plan",
     "web:test": "npm --workspace @nfcompra/web run test",
     "api:dev": "npm --workspace @nfcompra/api run dev",
     "web:dev": "npm --workspace @nfcompra/web run dev"

@@ -18,6 +18,7 @@ Local worktree layout is simplified to `C:\DAM2\NFCompra` on `main` and `C:\DAM2
 - **Catalog search performance**: `product_aliases` is indexed by `product_id` (migration `0010_product_alias_product_index.sql`, applied to production 2026-08-12) so the correlated alias lookup in `/v1/product-catalog?search=` switches from a full alias scan per product (~12.6M rows/query) to an index seek (~7k rows). Android warms the catalog snapshot when the Catálogo tab opens (`warmProductCatalog()` on `ShoppingListViewModel`, triggered from `LaunchedEffect(selectedTab, ...)` in `ShoppingListContent`, idempotent via in-memory + file cache). Normal typing searches the local snapshot; the remote search endpoint is fallback only. Minimum catalog search length is 3 characters with a 350 ms debounce and generation-based stale-search cancellation in `CatalogPanel`.
 - **Catalog cleanup**: migration `0011_catalog_category_merge_and_icons.sql` consolidates small duplicate seed categories into the Mercadona-style category set, moves non-duplicate products, deactivates exact duplicate products after copying favorites, and updates generic product/category icon keys. Migration `0012_catalog_icon_priority_fixes.sql` fixes icon priority for existing catalog rows: diapers/panales before bread, soft drinks before sugar/coffee, water/drink/coffee split, hair care before bread, and specific parafarmacia icons. Migration `0013_catalog_hair_care_category_icon.sql` aligns hair-care category icons. Catalog SQL seeds now infer product-specific icon keys from product names before category fallback; verified seed imports have 0 generic product icons.
 - **Contract**: `/v1` versioned API. Product catalog supports search, snapshot download, favorites, categories, and authenticated create/update/delete for products and categories. Product deletion is a soft delete; category deletion detaches affected products and child categories.
+- **CI/CD**: Deployment Impact is the source of truth for selective deployment. Run `npm run deploy:impact` after relevant work; it uses `scripts/deploy-impact.mjs` to classify Web/API/Android from real Git changes. `.changes/pending/*.json` stores user-facing release metadata and does not trigger deploy impact. GitHub Actions has `Deploy NFCompra` plus reusable Web/API/Android workflows. Vercel Git integration remains enabled, but `vercel.json` uses `node scripts/vercel-ignore-build.mjs` to skip non-Web or superseded Web builds. Automatic API deploy checks that the run SHA is still branch HEAD before migrations/deploy; manual Web/API runs serialize without cancellation. Android releases use pending changesets to bump SemVer/versionCode, archive release metadata under `.changes/releases/`, tag `v<version>`, and publish `NFCompra-release.apk`; `release-dry-run` validates signing without commit/tag/release.
 
 ## Recent work (last 20 commits)
 
@@ -36,7 +37,7 @@ Local worktree layout is simplified to `C:\DAM2\NFCompra` on `main` and `C:\DAM2
 - Global MCPs (`~/.config/opencode/opencode.jsonc`): playwright, context7.
 - Project MCPs (`opencode.json`): cloudflare (`@cloudflare/mcp-server-cloudflare run <accountId>`, uses `CLOUDFLARE_API_TOKEN` env var; verified working — lists D1/Workers), maestro (drives Android E2E via Maestro CLI).
 - Maestro setup: CLI 2.8.0 in `~\.maestro\bin\maestro`; `MAESTRO_BIN` points to `maestro-launcher.exe` (a C# shim because Node `execFile` cannot run `.bat` on Windows). Requires an emulator/device connected via adb. AVDs available: Medium_Phone, Pixel_9_Pro_Fold, Small_Phone. APK installed manually with `adb install -r NFCompra-release.apk`.
-- Project skills (`.opencode/skills/`): nfcompra-api-contract, nfcompra-android-compose, nfcompra-offline-sync.
+- Project skills: repo-local Codex skills under `.agents/skills/`: deploy-impact, nfcompra-api-contract, nfcompra-android-compose, nfcompra-offline-sync.
 - Global skills: spec-driven-development, verify-before-done, systematic-debugging, code-review.
 
 ## Build / test commands
@@ -49,6 +50,12 @@ npm run api:test && npx --workspace @nfcompra/api tsc --noEmit
 npm --workspace @nfcompra/web run test
 npm --workspace @nfcompra/web run typecheck
 npm --workspace @nfcompra/web run build
+
+# Deployment impact
+npm run deploy:impact
+npm run deploy:impact -- --format json
+npm run changeset:validate
+npm run android:release-plan
 
 # Android (from apps/android, requires ANDROID_HOME)
 .\gradlew.bat :core:database:testDebugUnitTest :core:network:testDebugUnitTest :feature:auth:testDebugUnitTest :feature:shoppinglist:testDebugUnitTest :feature:sharing:testDebugUnitTest :feature:shoppinglist:compileDebugAndroidTestKotlin :feature:sharing:compileDebugAndroidTestKotlin :app:assembleDebug
@@ -63,7 +70,7 @@ adb shell am start -a android.intent.action.VIEW -d "https://nfcompra.esgarpe.de
 - PWA does not queue offline mutations. Android offline queue limited to product mutations only.
 - NFC App Link verification requires deploying `apps/web/public/.well-known/assetlinks.json` to `https://nfcompra.esgarpe.dev/.well-known/assetlinks.json`. The file contains both debug and release APK signing fingerprints.
 - No WebSockets or push notifications.
-- PWA production deploy is handled by Vercel and redeploys automatically after pushing to GitHub `main`. API deploys are separate and use Wrangler/Cloudflare OAuth login; do not rely on `CLOUDFLARE_API_TOKEN` for deploys.
+- PWA production deploy is handled by Vercel Git integration and `vercel.json` skips non-Web builds through `ignoreCommand`. API deploys in GitHub Actions use `CLOUDFLARE_API_TOKEN`; local manual API deploys can still use Wrangler OAuth by clearing that environment variable.
 - On the local Medium_Phone emulator (SDK 37), `:feature:shoppinglist:connectedDebugAndroidTest` currently fails before UI assertions with Espresso `NoSuchMethodException: android.hardware.input.InputManager.getInstance`; compile-only Android test validation still works.
 
 ## Docs

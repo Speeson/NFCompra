@@ -1,0 +1,60 @@
+name: Deploy Web
+
+on:
+  workflow_call:
+    inputs:
+      deploy:
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      VERCEL_TOKEN:
+        required: false
+      VERCEL_ORG_ID:
+        required: false
+      VERCEL_PROJECT_ID:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm --workspace @nfcompra/web run test
+      - run: npm --workspace @nfcompra/web run typecheck
+      - run: npm --workspace @nfcompra/web run build
+
+      - name: Deploy to Vercel
+        if: inputs.deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          test -n "$VERCEL_TOKEN"
+          test -n "$VERCEL_ORG_ID"
+          test -n "$VERCEL_PROJECT_ID"
+          npx vercel deploy --prod --yes --token "$VERCEL_TOKEN"
+
+      - name: Summary
+        run: |
+          {
+            echo "## Web"
+            echo "- Validation: OK"
+            if [ "${{ inputs.deploy }}" = "true" ]; then
+              echo "- Deployment: Vercel CLI"
+            else
+              echo "- Deployment: skipped by this workflow"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

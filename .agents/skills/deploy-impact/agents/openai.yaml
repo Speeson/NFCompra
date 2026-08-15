@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deploy Impact"
+  short_description: "Report NFCompra deployment impact"
+  default_prompt: "Run NFCompra deployment impact and report affected components, validations, deployments, releases, and changesets."

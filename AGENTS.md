@@ -79,6 +79,7 @@ After any code change:
 - Do not stop after editing without validation.
 - Do not claim success unless validation succeeds.
 - For Android code changes, always compile the affected Android project.
+- After verified product or deployment-related changes, run the repository Deployment Impact workflow/skill (`npm run deploy:impact`) before reporting completion. Use the script result as the source of truth, create/update `.changes/pending/*.json` for user-facing changes when required, and do not push, deploy, tag, or publish releases unless explicitly requested.
 
 ## Final response
 

@@ -24,3 +24,8 @@ NFCompra-release.apk
 .idea/
 .kotlin/
 opencode.json
+
+.vercel/
+.env
+.env.local
+.env.*.local

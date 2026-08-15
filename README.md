@@ -29,6 +29,25 @@ npm run web:dev
 
 El servidor de desarrollo de la PWA reenvia `/v1` a `http://localhost:8787`, por lo que las rutas autenticadas y las listas usan la API local. `GET /health` responde `200` con `{ "status": "ok" }` en la API local.
 
+## CI/CD y releases
+
+NFCompra usa Deployment Impact para decidir si un cambio afecta Web, API o Android:
+
+```sh
+npm run deploy:impact
+npm run deploy:impact -- --format json
+```
+
+Los cambios user-facing se documentan en `.changes/pending/*.json`, y Android calcula su siguiente version con:
+
+```sh
+npm run android:release-plan
+```
+
+El manual completo de workflows, Vercel, Cloudflare, Android signing, changesets y troubleshooting esta en `docs/deployment.md`.
+
+## D1 y catalogo
+
 Para preparar un catalogo propio desde un JSON local de productos:
 
 ```sh
