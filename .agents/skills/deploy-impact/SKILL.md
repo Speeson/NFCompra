@@ -42,4 +42,7 @@ npm run changeset:validate
 - Do not decide changed components using only file names remembered from the conversation; use `scripts/deploy-impact.mjs`.
 - Create a `.changes/pending/*.json` changeset for user-facing product behavior changes.
 - Do not create changesets for docs-only, screenshots, comments, or CI-only changes.
+- Write user-facing changeset `summary` and `details` in Spanish.
+- Keep machine-readable metadata such as `components`, `type`, and `category` in the repository's canonical values; do not translate schema values, code identifiers, enum values, or filenames.
+- Android GitHub Release notes are generated in Spanish by default.
 - If Android changed and pending changesets include `minor`, suggest a minor bump; if any include `major`, suggest major; otherwise patch.

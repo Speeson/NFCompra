@@ -35,10 +35,10 @@ Los cambios user-facing se documentan en `.changes/pending/*.json`:
 ```json
 {
   "components": ["android"],
-  "type": "minor",
-  "category": "added",
-  "summary": "Added account deletion from Settings.",
-  "details": ["Deletes local session data after the account is removed."]
+  "type": "patch",
+  "category": "fixed",
+  "summary": "Corrige el acceso a hogares desde Inicio.",
+  "details": ["El botón Acceder abre correctamente el hogar seleccionado."]
 }
 ```
 
@@ -47,8 +47,10 @@ Campos:
 - `components`: `web`, `api`, `android`.
 - `type`: `patch`, `minor`, `major`.
 - `category`: `added`, `changed`, `fixed`, `removed`, `security`.
-- `summary`: texto user-facing.
-- `details`: opcional.
+- `summary`: texto user-facing en español.
+- `details`: opcional; texto user-facing en español.
+
+Los metadatos técnicos (`components`, `type`, `category`) mantienen sus valores canónicos en inglés para que los scripts puedan leerlos. El contenido visible para usuarios (`summary`, `details`) debe escribirse en español.
 
 No crees changesets para docs internas, screenshots, comentarios, workflows o mantenimiento sin impacto de producto.
 
@@ -73,6 +75,14 @@ npm run android:release-plan -- --bump minor
 ```
 
 Con varios changesets Android se usa el mayor impacto: `major` > `minor` > `patch`.
+
+Las GitHub Release notes de Android se generan en español y solo incluyen secciones con contenido:
+
+- `added` -> `Novedades`
+- `changed` -> `Cambios`
+- `fixed` -> `Correcciones`
+- `removed` -> `Eliminado`
+- `security` -> `Seguridad`
 
 El workflow `release-android.yml`:
 

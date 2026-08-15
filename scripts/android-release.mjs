@@ -8,6 +8,13 @@ const buildGradlePath = join(repoRoot, 'apps/android/app/build.gradle.kts');
 const pendingDir = join(repoRoot, '.changes/pending');
 const releasedDir = join(repoRoot, '.changes/releases');
 const categories = ['added', 'changed', 'fixed', 'removed', 'security'];
+const categoryTitles = {
+  added: 'Novedades',
+  changed: 'Cambios',
+  fixed: 'Correcciones',
+  removed: 'Eliminado',
+  security: 'Seguridad',
+};
 const bumps = ['patch', 'minor', 'major'];
 
 export function readAndroidVersion(text = readFileSync(buildGradlePath, 'utf8')) {
@@ -99,10 +106,11 @@ export function planAndroidRelease({ bump = 'auto' } = {}) {
 
 export function generateAndroidReleaseNotes(versionName, changesets) {
   const lines = [`NFCompra Android v${versionName}`, ''];
+  const androidChangesets = changesets.filter((item) => !item.components || item.components.includes('android'));
   for (const category of categories) {
-    const entries = changesets.filter((item) => item.category === category);
+    const entries = androidChangesets.filter((item) => item.category === category);
     if (!entries.length) continue;
-    lines.push(titleCase(category));
+    lines.push(categoryTitle(category));
     for (const entry of entries) {
       lines.push(`- ${entry.summary}`);
       for (const detail of entry.details ?? []) lines.push(`  - ${detail}`);
@@ -112,8 +120,8 @@ export function generateAndroidReleaseNotes(versionName, changesets) {
   return lines.join('\n').trimEnd() + '\n';
 }
 
-function titleCase(category) {
-  return ({ added: 'Added', changed: 'Changed', fixed: 'Fixed', removed: 'Removed', security: 'Security' })[category];
+function categoryTitle(category) {
+  return categoryTitles[category];
 }
 
 export function updateAndroidVersion({ versionName, versionCode }) {
