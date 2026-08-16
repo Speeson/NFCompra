@@ -34,16 +34,20 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -53,7 +57,38 @@ import androidx.compose.ui.unit.sp
 
 private val DangerRed = Color(0xFFDC2626)
 private val SoftRed = Color(0xFFE57373)
-private val LimeColor = Color(0xFFDCFF72)
+
+@Immutable
+private data class SharingColors(
+    val card: Color,
+    val primary: Color,
+    val text: Color,
+    val muted: Color,
+    val lime: Color,
+)
+
+private val LightSharingColors = SharingColors(
+    card = Color.White,
+    primary = Color(0xFF1C7144),
+    text = Color(0xFF10271E),
+    muted = Color(0xFF527062),
+    lime = Color(0xFFDCFF72),
+)
+
+private val DarkSharingColors = SharingColors(
+    card = Color(0xFF10231A),
+    primary = Color(0xFF89E5AE),
+    text = Color(0xFFEAF7EE),
+    muted = Color(0xFFA6BDAF),
+    lime = Color(0xFFC8F85A),
+)
+
+private val LocalSharingColors = staticCompositionLocalOf { LightSharingColors }
+private val ShareCard: Color @Composable get() = LocalSharingColors.current.card
+private val SharePrimary: Color @Composable get() = LocalSharingColors.current.primary
+private val ShareText: Color @Composable get() = LocalSharingColors.current.text
+private val ShareMuted: Color @Composable get() = LocalSharingColors.current.muted
+private val ShareLime: Color @Composable get() = LocalSharingColors.current.lime
 
 @Composable
 fun SharingRoute(
@@ -81,100 +116,104 @@ fun MembersPopupContent(state: SharingUiState, onAction: (SharingAction) -> Unit
     var invitationEmail by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf<SharingAction?>(null) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.5f))
-            .padding(16.dp),
-        contentAlignment = Alignment.Center,
+    CompositionLocalProvider(
+        LocalSharingColors provides if (MaterialTheme.colorScheme.background.luminance() < 0.5f) DarkSharingColors else LightSharingColors,
     ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .padding(16.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = ShareCard),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
             ) {
-                when (state) {
-                    SharingUiState.Loading -> Text("Cargando miembros…")
-                    is SharingUiState.Error -> {
-                        Text(state.message, color = MaterialTheme.colorScheme.error)
-                        Button(onClick = { onAction(SharingAction.Retry) }) { Text("Reintentar") }
-                    }
-                    is SharingUiState.Ready -> {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f, fill = false)
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            val owner = state.members.firstOrNull { it.role == "owner" }
-                            if (owner != null) {
-                                SectionTitle("Dueño del hogar")
-                                OwnerRow(owner)
-                            }
-
-                            val regularMembers = state.members.filter { it.role != "owner" }
-                            if (regularMembers.isNotEmpty()) {
-                                SectionTitle("Miembros del hogar")
-                                regularMembers.forEach { member ->
-                                    MemberRow(
-                                        member = member,
-                                        showRemove = state.isOwner,
-                                        onRemove = { confirm = SharingAction.RemoveMember(member.userId) },
-                                    )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                ) {
+                    when (state) {
+                        SharingUiState.Loading -> Text("Cargando miembros…")
+                        is SharingUiState.Error -> {
+                            Text(state.message, color = MaterialTheme.colorScheme.error)
+                            Button(onClick = { onAction(SharingAction.Retry) }) { Text("Reintentar") }
+                        }
+                        is SharingUiState.Ready -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f, fill = false)
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                val owner = state.members.firstOrNull { it.role == "owner" }
+                                if (owner != null) {
+                                    SectionTitle("Dueño del hogar")
+                                    OwnerRow(owner)
                                 }
-                            }
 
-                            if (state.isOwner) {
-                                val pendingInvitations = state.invitations.filter { it.status == "pending" }
-                                if (pendingInvitations.isNotEmpty()) {
-                                    SectionTitle("Invitaciones pendientes")
-                                    pendingInvitations.forEach { invitation ->
-                                        InvitationRow(
-                                            invitation = invitation,
-                                            onRevoke = { confirm = SharingAction.Revoke(invitation.id) },
+                                val regularMembers = state.members.filter { it.role != "owner" }
+                                if (regularMembers.isNotEmpty()) {
+                                    SectionTitle("Miembros del hogar")
+                                    regularMembers.forEach { member ->
+                                        MemberRow(
+                                            member = member,
+                                            showRemove = state.isOwner,
+                                            onRemove = { confirm = SharingAction.RemoveMember(member.userId) },
                                         )
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(8.dp))
-                                SectionTitle("Invitar persona")
-                                OutlinedTextField(
-                                    value = invitationEmail,
-                                    onValueChange = { invitationEmail = it },
-                                    label = { Text("Correo electrónico") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(12.dp),
-                                )
-                                Button(
-                                    onClick = {
-                                        onAction(SharingAction.Invite(invitationEmail))
-                                        invitationEmail = ""
-                                    },
-                                    enabled = invitationEmail.isNotBlank(),
-                                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                                    shape = RoundedCornerShape(12.dp),
-                                ) { Text("Invitar persona") }
-                            }
-                        }
+                                if (state.isOwner) {
+                                    val pendingInvitations = state.invitations.filter { it.status == "pending" }
+                                    if (pendingInvitations.isNotEmpty()) {
+                                        SectionTitle("Invitaciones pendientes")
+                                        pendingInvitations.forEach { invitation ->
+                                            InvitationRow(
+                                                invitation = invitation,
+                                                onRevoke = { confirm = SharingAction.Revoke(invitation.id) },
+                                            )
+                                        }
+                                    }
 
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Button(
-                            onClick = onBack,
-                            modifier = Modifier.fillMaxWidth().height(50.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = LimeColor,
-                                contentColor = Color(0xFF10271E),
-                            ),
-                        ) {
-                            Text("Cerrar", fontWeight = FontWeight.Bold)
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    SectionTitle("Invitar persona")
+                                    OutlinedTextField(
+                                        value = invitationEmail,
+                                        onValueChange = { invitationEmail = it },
+                                        label = { Text("Correo electrónico") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp),
+                                    )
+                                    Button(
+                                        onClick = {
+                                            onAction(SharingAction.Invite(invitationEmail))
+                                            invitationEmail = ""
+                                        },
+                                        enabled = invitationEmail.isNotBlank(),
+                                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                    ) { Text("Invitar persona") }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = onBack,
+                                modifier = Modifier.fillMaxWidth().height(50.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = ShareLime,
+                                    contentColor = ShareText,
+                                ),
+                            ) {
+                                Text("Cerrar", fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -200,9 +239,9 @@ private fun SectionTitle(title: String) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Box(modifier = Modifier.weight(1f).height(1.dp).background(Color(0xFF1C7144).copy(alpha = 0.18f)))
-        Text(title, color = Color(0xFF1C7144), fontWeight = FontWeight.Black, fontSize = 13.sp)
-        Box(modifier = Modifier.weight(1f).height(1.dp).background(Color(0xFF1C7144).copy(alpha = 0.18f)))
+        Box(modifier = Modifier.weight(1f).height(1.dp).background(SharePrimary.copy(alpha = 0.18f)))
+        Text(title, color = SharePrimary, fontWeight = FontWeight.Black, fontSize = 13.sp)
+        Box(modifier = Modifier.weight(1f).height(1.dp).background(SharePrimary.copy(alpha = 0.18f)))
     }
 }
 
@@ -213,10 +252,10 @@ private fun OwnerRow(owner: MemberUiModel) {
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Outlined.Person, contentDescription = null, tint = Color(0xFF1C7144), modifier = Modifier.size(22.dp))
+        Icon(Icons.Outlined.Person, contentDescription = null, tint = SharePrimary, modifier = Modifier.size(22.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(owner.name, fontWeight = FontWeight.Bold, color = Color(0xFF10271E))
-            Text(owner.email, fontSize = 12.sp, color = Color(0xFF527062))
+            Text(owner.name, fontWeight = FontWeight.Bold, color = ShareText)
+            Text(owner.email, fontSize = 12.sp, color = ShareMuted)
         }
     }
 }
@@ -240,8 +279,8 @@ private fun MemberRow(member: MemberUiModel, showRemove: Boolean, onRemove: () -
             }
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text(member.name, fontWeight = FontWeight.Bold, color = Color(0xFF10271E))
-            Text(member.email, fontSize = 12.sp, color = Color(0xFF527062))
+            Text(member.name, fontWeight = FontWeight.Bold, color = ShareText)
+            Text(member.email, fontSize = 12.sp, color = ShareMuted)
         }
     }
 }
@@ -263,8 +302,8 @@ private fun InvitationRow(invitation: InvitationUiModel, onRevoke: () -> Unit) {
             Icon(Icons.Outlined.Close, contentDescription = "Revocar invitación", tint = SoftRed, modifier = Modifier.size(18.dp))
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text(invitation.email, fontWeight = FontWeight.Bold, color = Color(0xFF10271E))
-            Text("Invitación pendiente", fontSize = 12.sp, color = Color(0xFF527062))
+            Text(invitation.email, fontWeight = FontWeight.Bold, color = ShareText)
+            Text("Invitación pendiente", fontSize = 12.sp, color = ShareMuted)
         }
     }
 }

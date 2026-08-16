@@ -1533,7 +1533,7 @@ private fun CatalogPanel(
                         contentDescription = "Crear en catalogo",
                         onClick = { createDialogOpen = true },
                     ) {
-                        Icon(Icons.Outlined.Add, contentDescription = null, tint = WebPrimary, modifier = Modifier.size(25.dp))
+                        Icon(Icons.Outlined.Add, contentDescription = null, tint = OnLime, modifier = Modifier.size(25.dp))
                     }
                 } else {
                     Box {
@@ -1892,7 +1892,7 @@ private fun CatalogSearchBar(
             Icon(
                 imageVector = Icons.Outlined.Tune,
                 contentDescription = "Abrir filtros de búsqueda",
-                tint = WebPrimary,
+                tint = OnLime,
             )
         }
         trailingAction()
@@ -3730,14 +3730,14 @@ private fun HouseholdCard(
                     ) {
                         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             if (isOwner) {
-                                Text("Dueño del hogar", style = MaterialTheme.typography.titleLarge, color = WebPrimary, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("Dueño del hogar", style = MaterialTheme.typography.titleLarge, color = if (selected) OnLime else WebPrimary, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             } else {
-                                Text("Miembro del hogar", color = WebMuted, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Miembro del hogar", color = if (selected) OnLime else WebMuted, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                             }
-                            Text(if (selected) "Hogar abierto" else "Hogar disponible", color = WebMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text(if (selected) "Hogar abierto" else "Hogar disponible", color = if (selected) OnLime else WebMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
                         if (isOwner) {
-                            SquareSmallActionButton(Icons.Outlined.Edit, "Editar hogar", WebPrimary, onRename)
+                            SquareSmallActionButton(Icons.Outlined.Edit, "Editar hogar", if (selected) OnLime else WebPrimary, onRename)
                             SquareSmallActionButton(Icons.Outlined.Delete, "Eliminar hogar", Color(0xFFB91C1C), onDelete)
                         } else {
                             SquareSmallActionButton(Icons.Outlined.Edit, "Solo el dueño puede editar", WebMuted, {})

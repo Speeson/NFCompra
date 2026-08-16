@@ -1,0 +1,9 @@
+{
+  "components": ["android"],
+  "type": "patch",
+  "category": "fixed",
+  "summary": "Adapta la ventana de miembros del hogar al tema oscuro.",
+  "details": [
+    "Aplica colores del tema oscuro a la tarjeta, títulos, miembros, invitaciones y botón Cerrar de la ventana de miembros del hogar."
+  ]
+}
