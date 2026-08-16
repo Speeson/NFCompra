@@ -1,61 +1,16 @@
-import { useEffect, useMemo, useState, type JSX } from 'react';
+import type { JSX } from 'react';
 
 import logo from '../../assets/brand/nfcompra-logo.png';
+import { ThemeToggle, useTheme } from '../../theme/theme';
 
 type AuthMode = 'login' | 'register';
-type ThemePreference = 'system' | 'light' | 'dark';
-type ResolvedTheme = 'light' | 'dark';
 
 interface PublicLandingProps {
   onOpenAuth(mode: AuthMode): void;
 }
 
-const themeStorageKey = 'nfcompra.landing-theme';
-const themeOptions: ThemePreference[] = ['system', 'dark', 'light'];
-
-function readStoredTheme(): ThemePreference {
-  try {
-    const stored = localStorage.getItem(themeStorageKey);
-    return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
-  } catch {
-    return 'system';
-  }
-}
-
-function resolveTheme(preference: ThemePreference): ResolvedTheme {
-  if (preference !== 'system') return preference;
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
-
 export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
-  const [themePreference, setThemePreference] = useState(readStoredTheme);
-  const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(() => resolveTheme('system'));
-  const theme = themePreference === 'system' ? systemTheme : themePreference;
-  const nextThemePreference = useMemo(() => themeOptions[(themeOptions.indexOf(themePreference) + 1) % themeOptions.length], [themePreference]);
-  const themeLabel = themePreference === 'system' ? `Tema: sistema (${theme === 'dark' ? 'oscuro' : 'claro'})` : `Tema: ${themePreference === 'dark' ? 'oscuro' : 'claro'}`;
-  const themeIcon = themePreference === 'system' ? '◐' : themePreference === 'dark' ? '☾' : '☀';
-
-  useEffect(() => {
-    const media = window.matchMedia?.('(prefers-color-scheme: dark)');
-    if (!media) return;
-    const updateTheme = () => setSystemTheme(media.matches ? 'dark' : 'light');
-    updateTheme();
-    media.addEventListener('change', updateTheme);
-    return () => media.removeEventListener('change', updateTheme);
-  }, []);
-
-  useEffect(() => {
-    try {
-      if (themePreference === 'system') localStorage.removeItem(themeStorageKey);
-      else localStorage.setItem(themeStorageKey, themePreference);
-    } catch {
-      // Ignore private browsing storage failures; theme still works for the session.
-    }
-  }, [themePreference]);
-
-  function cycleTheme(): void {
-    setThemePreference(nextThemePreference);
-  }
+  const { theme } = useTheme();
 
   return <div className="public-landing" data-theme={theme}>
     <header className="public-landing__header">
@@ -72,9 +27,7 @@ export function PublicLanding({ onOpenAuth }: PublicLandingProps): JSX.Element {
           <a href="#nfc">NFC</a>
         </div>
         <div className="public-landing__access">
-          <button className="public-landing__theme-toggle" type="button" aria-label={`${themeLabel}. Cambiar a ${nextThemePreference === 'system' ? 'sistema' : nextThemePreference === 'dark' ? 'oscuro' : 'claro'}`} title={themeLabel} onClick={cycleTheme}>
-            <span aria-hidden="true">{themeIcon}</span>
-          </button>
+          <ThemeToggle />
           <button className="button button--quiet" type="button" onClick={() => onOpenAuth('login')}>Iniciar sesión</button>
           <button className="button" type="button" onClick={() => onOpenAuth('register')}>Registrarse</button>
         </div>

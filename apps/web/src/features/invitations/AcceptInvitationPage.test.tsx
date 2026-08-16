@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from '../../app/App';
 import { AuthProvider } from '../auth/AuthProvider';
+import { ThemeProvider } from '../../theme/theme';
 
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllGlobals(); window.history.replaceState({}, '', '/'); });
 
@@ -18,7 +19,7 @@ describe('invitation acceptance', () => {
       if (url.endsWith('/me')) return Promise.resolve(Response.json({ user: { id: 'user-1', name: 'Ana', email: 'ana@example.test', emailVerifiedAt: '2026-07-27T00:00:00.000Z', createdAt: '2026-07-27T00:00:00.000Z', updatedAt: '2026-07-27T00:00:00.000Z' } }));
       throw new Error(`Solicitud inesperada: ${url}`);
     }));
-    render(<AuthProvider><App /></AuthProvider>);
+    render(<ThemeProvider><AuthProvider><App /></AuthProvider></ThemeProvider>);
     expect(await screen.findByRole('heading', { name: 'Acepta tu invitación' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Iniciar sesión para continuar' })).toBeVisible();
     await waitFor(() => expect(sessionStorage.getItem('nfcompra.invitation-continuation')).toBe('/invitations/accept?token=invite-token'));
@@ -38,7 +39,7 @@ describe('invitation acceptance', () => {
       if (url.endsWith('/invitations/accept')) return Promise.resolve(Response.json({ error: { code: 'INVITATION_EMAIL_MISMATCH', message: 'La invitación no corresponde a esta cuenta.', details: {} } }, { status: 403 }));
       throw new Error(`Solicitud inesperada: ${url}`);
     }));
-    render(<AuthProvider><App /></AuthProvider>);
+    render(<ThemeProvider><AuthProvider><App /></AuthProvider></ThemeProvider>);
     fireEvent.click(await screen.findByRole('button', { name: 'Aceptar invitación' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('La invitación no corresponde a esta cuenta.');
     expect(screen.queryByText(/Casa de/)).not.toBeInTheDocument();
@@ -57,7 +58,7 @@ describe('invitation acceptance', () => {
       if (url.endsWith('/households/home-2/members')) return Promise.resolve(Response.json({ members: [] }));
       throw new Error(`Solicitud inesperada: ${url}`);
     }));
-    render(<AuthProvider><App /></AuthProvider>);
+    render(<ThemeProvider><AuthProvider><App /></AuthProvider></ThemeProvider>);
     fireEvent.click(await screen.findByRole('button', { name: 'Aceptar invitación' }));
     expect(await screen.findByRole('heading', { name: 'Compra' })).toBeVisible();
     expect(window.location.search).toBe('?household=home-2');
@@ -80,7 +81,7 @@ describe('invitation acceptance', () => {
       throw new Error(`Solicitud inesperada: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
-    render(<AuthProvider><App /></AuthProvider>);
+    render(<ThemeProvider><AuthProvider><App /></AuthProvider></ThemeProvider>);
     fireEvent.click(await screen.findByRole('button', { name: 'Aceptar invitación' }));
     expect(await screen.findByRole('heading', { name: 'Compra' })).toBeVisible();
     expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/invitations/invite-1/accept'))).toBe(true);

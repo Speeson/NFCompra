@@ -32,13 +32,22 @@ const user: User = {
 };
 
 describe('ProfilePage', () => {
-  it('shows a back button that returns to home', () => {
+  it('usa la cabecera de cuenta compartida y un botón de volver que regresa a inicio', () => {
     const onNavigate = vi.fn();
     renderProfile(undefined, onNavigate);
 
-    fireEvent.click(screen.getByRole('button', { name: '← Volver' }));
+    expect(screen.getByRole('heading', { name: 'Perfil' })).toBeVisible();
+    expect(screen.getByText('Datos personales')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Volver' }));
 
     expect(onNavigate).toHaveBeenCalledWith('/');
+  });
+
+  it('mantiene el email como solo lectura', () => {
+    renderProfile();
+    const emailRow = screen.getByText('ana@example.test').closest('.profile-field-row') as HTMLElement;
+    expect(within(emailRow).getByText('Solo lectura')).toBeVisible();
+    expect(within(emailRow).queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
   });
 
   it('updates editable profile fields and refreshes the session user', async () => {

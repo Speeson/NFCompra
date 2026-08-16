@@ -8,6 +8,7 @@ import { App } from '../../app/App';
 import { AuthProvider, useSession } from './AuthProvider';
 import { LoginPage } from './LoginPage';
 import { RegisterPage, VerifyEmailPage } from './RegisterPage';
+import { ThemeProvider } from '../../theme/theme';
 import { clearOfflineLists } from '../shopping-list/offline-cache';
 
 vi.mock('../shopping-list/offline-cache', () => ({
@@ -193,7 +194,7 @@ describe('RegisterPage', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<AuthProvider><App /></AuthProvider>);
+    render(<ThemeProvider><AuthProvider><App /></AuthProvider></ThemeProvider>);
     expect(await screen.findByRole('heading', { name: /Reenviar correo/ })).toBeVisible();
     fireEvent.change(screen.getByLabelText('Correo electrónico'), { target: { value: 'ana@example.test' } });
     fireEvent.click(screen.getByRole('button', { name: 'Enviar verificación' }));
@@ -241,7 +242,7 @@ describe('autenticaciÃ³n desde la landing', () => {
 
   it('abre un diÃ¡logo de inicio de sesiÃ³n etiquetado y devuelve el foco al cerrarlo', async () => {
     stubAnonymousSession();
-    render(<AuthProvider><App /></AuthProvider>);
+    render(<ThemeProvider><AuthProvider><App /></AuthProvider></ThemeProvider>);
 
     const opener = (await screen.findAllByRole('button', { name: /Iniciar sesi.n/ }))[0];
     opener.focus();
@@ -266,7 +267,7 @@ describe('autenticaciÃ³n desde la landing', () => {
 
   it('cambia a registro y permite cerrar el diÃ¡logo con Escape', async () => {
     stubAnonymousSession();
-    render(<AuthProvider><App /></AuthProvider>);
+    render(<ThemeProvider><AuthProvider><App /></AuthProvider></ThemeProvider>);
 
     const opener = (await screen.findAllByRole('button', { name: 'Registrarse' }))[0];
     opener.focus();
@@ -297,7 +298,7 @@ describe('autenticaciÃ³n desde la landing', () => {
     window.history.replaceState({}, '', path);
     stubAnonymousSession();
 
-    render(<AuthProvider><App /></AuthProvider>);
+    render(<ThemeProvider><AuthProvider><App /></AuthProvider></ThemeProvider>);
 
     expect(await screen.findByRole('heading', { name: heading })).toBeVisible();
   });
@@ -388,7 +389,7 @@ describe('logout', () => {
       throw new Error(`Solicitud inesperada: ${url}`);
     }));
 
-    render(<AuthProvider><App /></AuthProvider>);
+    render(<ThemeProvider><AuthProvider><App /></AuthProvider></ThemeProvider>);
 
     fireEvent.click(await screen.findByRole('button', { name: /Persona/ }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Cerrar sesión' }));
@@ -419,7 +420,7 @@ describe('logout', () => {
       throw new Error(`Solicitud inesperada: ${url}`);
     }));
 
-    render(<AuthProvider><App /></AuthProvider>);
+    render(<ThemeProvider><AuthProvider><App /></AuthProvider></ThemeProvider>);
     await screen.findByRole('button', { name: /Iniciar/ });
     fireEvent.change(screen.getByLabelText(/Correo/), { target: { value: 'a@example.com' } });
     fireEvent.change(screen.getByLabelText(/Contrase/), { target: { value: 'contraseña' } });

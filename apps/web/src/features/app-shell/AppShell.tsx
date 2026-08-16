@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type JSX, type PropsWithChildren } from 'r
 
 import logo from '../../assets/brand/nfcompra-logo.png';
 import type { User } from '../../api/session';
+import { ThemeToggle } from '../../theme/theme';
 import { NotificationBell } from '../notifications/NotificationBell';
 
 interface AppShellProps extends PropsWithChildren {
@@ -14,7 +15,7 @@ interface AppShellProps extends PropsWithChildren {
 
 const desktopNavigation = [['Inicio', '/'], ['Hogares', '/households'], ['Mis listas', '/lists'], ['Catálogo', '/catalog']] as const;
 const mobileNavigation = [['Inicio', '/'], ['Hogares', '/households'], ['Listas', '/lists'], ['Catálogo', '/catalog']] as const;
-const androidApkDownloadUrl = 'https://github.com/Speeson/NFCompra/releases/latest/download/NFCompra-release.apk';
+export const androidApkDownloadUrl = 'https://github.com/Speeson/NFCompra/releases/latest/download/NFCompra-release.apk';
 
 export function AppShell({ user, pathname, onNavigate, onLogout, onNotificationActionError, children }: AppShellProps): JSX.Element {
   const [profileOpen, setProfileOpen] = useState(false);
@@ -63,7 +64,7 @@ export function AppShell({ user, pathname, onNavigate, onLogout, onNotificationA
         {desktopNavigation.map(([label, path]) => <a key={path} href={path} aria-current={isCurrent(path) ? 'page' : undefined} onClick={(event) => { event.preventDefault(); go(path); }}>{label}</a>)}
       </nav>
       <div className="app-shell__actions">
-        <a className="app-shell__apk" href={androidApkDownloadUrl}>Descargar APK</a>
+        <ThemeToggle />
         <NotificationBell onNavigate={onNavigate} onActionError={onNotificationActionError} />
         <div className="app-shell__profile" ref={menuRef}>
           <button ref={triggerRef} className="app-shell__profile-trigger" type="button" aria-haspopup="menu" aria-expanded={profileOpen} onClick={() => setProfileOpen((open) => !open)}><span aria-hidden="true">{user.name.slice(0, 1).toUpperCase()}</span>{user.name}</button>

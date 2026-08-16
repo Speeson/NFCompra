@@ -4,6 +4,7 @@ import { ApiError } from '../../api/client';
 import { type User } from '../../api/session';
 import { useSession } from '../auth/AuthProvider';
 import { changePassword, updateProfile, type UpdateProfileInput } from './profile-api';
+import { AccountPageHeader } from './AccountPageHeader';
 
 type ProfileField = 'firstName' | 'lastName' | 'username';
 type DialogState = { kind: 'field'; field: ProfileField } | { kind: 'password' } | null;
@@ -29,25 +30,20 @@ export function ProfilePage({ user, onNavigate }: { user: User; onNavigate?(path
 
   const initials = profileUser.name.trim().slice(0, 1).toUpperCase() || 'N';
   return <section className="profile-page">
-    <button className="profile-back-button" type="button" onClick={() => onNavigate?.('/')}>← Volver</button>
-    <header className="profile-hero">
-      <span className="profile-hero__avatar" aria-hidden="true">{initials}</span>
-      <div>
-        <p className="eyebrow">Cuenta</p>
-        <h1>Perfil</h1>
-        <p>{profileUser.name}</p>
-      </div>
-    </header>
+    <AccountPageHeader title="Perfil" subtitle={profileUser.name} avatarLabel={initials} onBack={() => onNavigate?.('/')} />
 
     {status ? <p className="profile-page__status" role="status">{status}</p> : null}
 
-    <div className="profile-panel" aria-label="Datos del perfil">
-      <ProfileRow label="Email" value={profileUser.email} readonly />
-      <ProfileRow label="Nombre" value={profileUser.firstName ?? ''} onEdit={() => setDialog({ kind: 'field', field: 'firstName' })} />
-      <ProfileRow label="Apellidos" value={profileUser.lastName ?? ''} onEdit={() => setDialog({ kind: 'field', field: 'lastName' })} />
-      <ProfileRow label="Nombre de usuario" value={profileUser.username ?? ''} empty="Sin username" onEdit={() => setDialog({ kind: 'field', field: 'username' })} />
-      <ProfileRow label="Contraseña" value="********" onEdit={() => setDialog({ kind: 'password' })} actionLabel="Cambiar" />
-    </div>
+    <section className="settings-section">
+      <h2 className="settings-section__title">Datos personales</h2>
+      <div className="settings-card">
+        <ProfileFieldRow label="Email" value={profileUser.email} readonly />
+        <ProfileFieldRow label="Nombre" value={profileUser.firstName ?? ''} onEdit={() => setDialog({ kind: 'field', field: 'firstName' })} />
+        <ProfileFieldRow label="Apellidos" value={profileUser.lastName ?? ''} onEdit={() => setDialog({ kind: 'field', field: 'lastName' })} />
+        <ProfileFieldRow label="Usuario" value={profileUser.username ?? ''} empty="Sin username" onEdit={() => setDialog({ kind: 'field', field: 'username' })} />
+        <ProfileFieldRow label="Contraseña" value="••••••••" actionLabel="Cambiar" onEdit={() => setDialog({ kind: 'password' })} />
+      </div>
+    </section>
 
     {dialog?.kind === 'field' ? <ProfileFieldDialog
       user={profileUser}
@@ -65,7 +61,7 @@ export function ProfilePage({ user, onNavigate }: { user: User; onNavigate?(path
   </section>;
 }
 
-function ProfileRow({ label, value, empty = 'Sin datos', readonly = false, actionLabel = 'Editar', onEdit }: {
+function ProfileFieldRow({ label, value, empty = 'Sin datos', readonly = false, actionLabel = 'Editar', onEdit }: {
   label: string;
   value: string;
   empty?: string;
@@ -73,12 +69,10 @@ function ProfileRow({ label, value, empty = 'Sin datos', readonly = false, actio
   actionLabel?: string;
   onEdit?(): void;
 }): JSX.Element {
-  return <div className="profile-row">
-    <div>
-      <span>{label}</span>
-      <strong className={!value ? 'profile-row__empty' : undefined}>{value || empty}</strong>
-    </div>
-    {readonly ? <small>Solo lectura</small> : <button className="button button--quiet" type="button" onClick={onEdit}>{actionLabel}</button>}
+  return <div className="profile-field-row">
+    <span className="profile-field-row__label">{label}</span>
+    <strong className={!value ? 'profile-field-row__empty' : undefined}>{value || empty}</strong>
+    {readonly ? <small className="profile-field-row__readonly">Solo lectura</small> : <button className="button button--quiet profile-field-row__action" type="button" onClick={onEdit}>{actionLabel}</button>}
   </div>;
 }
 

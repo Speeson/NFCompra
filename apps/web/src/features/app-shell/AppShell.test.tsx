@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { ThemeProvider } from '../../theme/theme';
 import { AppShell } from './AppShell';
 
 vi.mock('../notifications/NotificationBell', () => ({
@@ -25,14 +26,14 @@ const user = {
 function renderShell(pathname = '/') {
   const onNavigate = vi.fn();
   const onLogout = vi.fn();
-  const view = render(<AppShell user={user} pathname={pathname} onNavigate={onNavigate} onLogout={onLogout}><h1>Contenido</h1></AppShell>);
+  const view = render(<ThemeProvider><AppShell user={user} pathname={pathname} onNavigate={onNavigate} onLogout={onLogout}><h1>Contenido</h1></AppShell></ThemeProvider>);
   return { onNavigate, onLogout, ...view };
 }
 
 afterEach(cleanup);
 
 describe('AppShell', () => {
-  it('muestra la marca, navegación principal, enlace de APK y notificaciones', () => {
+  it('muestra la marca, navegación principal, el selector de tema y notificaciones', () => {
     renderShell();
     const desktopNavigation = screen.getByRole('navigation', { name: 'Navegación principal' });
 
@@ -42,10 +43,8 @@ describe('AppShell', () => {
     expect(within(desktopNavigation).getByRole('link', { name: 'Mis listas' })).toHaveAttribute('href', '/lists');
     expect(within(desktopNavigation).getByRole('link', { name: 'Catálogo' })).toHaveAttribute('href', '/catalog');
     expect(within(desktopNavigation).queryByRole('link', { name: 'NFC' })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Descargar APK' })).toHaveAttribute(
-      'href',
-      'https://github.com/Speeson/NFCompra/releases/latest/download/NFCompra-release.apk',
-    );
+    expect(screen.getByRole('button', { name: /Tema:/ })).toBeVisible();
+    expect(screen.queryByRole('link', { name: 'Descargar APK' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Notificaciones' })).toBeVisible();
   });
 
@@ -89,7 +88,7 @@ describe('AppShell', () => {
     expect(within(desktopNavigation).getByRole('link', { name: 'Hogares' })).toHaveAttribute('aria-current', 'page');
     expect(within(mobileNavigation).getByRole('link', { name: 'Hogares' })).toHaveAttribute('aria-current', 'page');
 
-    rerender(<AppShell user={user} pathname="/lists/list-7" onNavigate={vi.fn()} onLogout={vi.fn()}><h1>Lista</h1></AppShell>);
+    rerender(<ThemeProvider><AppShell user={user} pathname="/lists/list-7" onNavigate={vi.fn()} onLogout={vi.fn()}><h1>Lista</h1></AppShell></ThemeProvider>);
 
     expect(screen.getByRole('main')).toHaveFocus();
     expect(within(desktopNavigation).getByRole('link', { name: 'Mis listas' })).toHaveAttribute('aria-current', 'page');
@@ -106,5 +105,14 @@ describe('AppShell', () => {
     expect(catalog).toHaveAttribute('href', '/catalog');
     fireEvent.click(catalog);
     expect(onNavigate).toHaveBeenCalledWith('/catalog');
+  });
+
+  it('el selector de tema del encabezado usa el mismo comportamiento compartido', () => {
+    renderShell();
+    const toggle = screen.getByRole('button', { name: /Tema:/ });
+    expect(toggle).toHaveAttribute('aria-label', expect.stringContaining('Tema: sistema'));
+    fireEvent.click(toggle);
+    expect(localStorage.getItem('nfcompra.theme')).toBe('dark');
+    expect(screen.getByRole('button', { name: /Tema: oscuro/ })).toBeVisible();
   });
 });

@@ -8,6 +8,7 @@ import { createWebQueryClient } from '../shopping-list/ShoppingListRoute';
 import { NotificationBell } from './NotificationBell';
 import { App } from '../../app/App';
 import { AuthProvider } from '../auth/AuthProvider';
+import { ThemeProvider } from '../../theme/theme';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -106,7 +107,7 @@ describe('NotificationBell', () => {
       if (url.endsWith('/notifications/notice-list/read') && init?.method === 'PATCH') return Promise.resolve(Response.json({ status: 'read' }));
       throw new Error(`Solicitud inesperada: ${url}`);
     }));
-    render(<AuthProvider><App /></AuthProvider>);
+    render(<ThemeProvider><AuthProvider><App /></AuthProvider></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Lista uno' });
     fireEvent.click(screen.getByRole('button', { name: 'Notificaciones (1 sin leer)' }));
     fireEvent.click(await screen.findByRole('button', { name: /Pan añadido/ }));
@@ -137,7 +138,7 @@ describe('NotificationBell', () => {
       if (url.endsWith('/notifications/notice-invite/read') && init?.method === 'PATCH') return Promise.resolve(Response.json({ error: { code: 'REQUEST_FAILED', message: 'No se pudo marcar la notificación.', details: {} } }, { status: 503 }));
       throw new Error(`Solicitud inesperada: ${url}`);
     }));
-    render(<AuthProvider><App /></AuthProvider>);
+    render(<ThemeProvider><AuthProvider><App /></AuthProvider></ThemeProvider>);
     await screen.findByRole('heading', { name: 'Compra' });
     fireEvent.click(screen.getByRole('button', { name: 'Notificaciones (1 sin leer)' }));
     fireEvent.click(await screen.findByRole('button', { name: /Nueva invitación/ }));

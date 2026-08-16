@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from '../../app/App';
 import { AuthProvider } from '../auth/AuthProvider';
+import { ThemeProvider } from '../../theme/theme';
 import { PublicLanding } from './PublicLanding';
 
 afterEach(() => {
@@ -12,6 +13,7 @@ afterEach(() => {
   localStorage.clear();
   vi.unstubAllGlobals();
   window.history.pushState({}, '', '/');
+  delete document.documentElement.dataset.theme;
 });
 
 describe('la landing pública', () => {
@@ -20,7 +22,7 @@ describe('la landing pública', () => {
       error: { code: 'UNAUTHORIZED', message: 'No hay sesión.', details: {} },
     }, { status: 401 })));
 
-    render(<AuthProvider><App /></AuthProvider>);
+    render(<ThemeProvider><AuthProvider><App /></AuthProvider></ThemeProvider>);
 
     expect(await screen.findByRole('heading', { name: 'NFCompra' })).toBeVisible();
     expect(screen.getByRole('link', { name: 'NFCompra' })).toHaveAttribute('href', '#inicio');
@@ -44,7 +46,7 @@ describe('la landing pública', () => {
       error: { code: 'UNAUTHORIZED', message: 'No hay sesión.', details: {} },
     }, { status: 401 })));
 
-    render(<AuthProvider><App /></AuthProvider>);
+    render(<ThemeProvider><AuthProvider><App /></AuthProvider></ThemeProvider>);
 
     expect(await screen.findByRole('heading', { name: 'NFC listo para tu hogar' })).toBeVisible();
     expect(screen.getByText(/Las pegatinas NFC usan un enlace HTTPS del hogar/)).toBeVisible();
@@ -52,7 +54,7 @@ describe('la landing pública', () => {
 
   it('menciona catálogo, favoritos y Android', () => {
     const onOpenAuth = vi.fn();
-    render(<PublicLanding onOpenAuth={onOpenAuth} />);
+    render(<ThemeProvider><PublicLanding onOpenAuth={onOpenAuth} /></ThemeProvider>);
 
     expect(screen.getByRole('heading', { name: 'La web también funciona como aplicación.' })).toBeVisible();
     expect(screen.getByText('Acceso desde iPhone')).toBeVisible();
@@ -63,22 +65,64 @@ describe('la landing pública', () => {
     expect(screen.getByText('Nueva APK disponible')).toBeVisible();
   });
 
-  it('permite alternar y persistir el tema de la landing', () => {
-    const onOpenAuth = vi.fn();
-    render(<PublicLanding onOpenAuth={onOpenAuth} />);
+  it('tiene sistema como tema por defecto y lo aplica globalmente', () => {
+    render(<ThemeProvider><PublicLanding onOpenAuth={vi.fn()} /></ThemeProvider>);
 
     const toggle = screen.getByRole('button', { name: /Tema:/ });
+    expect(toggle).toHaveAttribute('aria-label', expect.stringContaining('Tema: sistema'));
     expect(toggle).toHaveAttribute('aria-label', expect.stringContaining('Cambiar a oscuro'));
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
 
+  it('permite alternar, persistir y aplicar el tema explícito', () => {
+    render(<ThemeProvider><PublicLanding onOpenAuth={vi.fn()} /></ThemeProvider>);
+
+    const toggle = screen.getByRole('button', { name: /Tema:/ });
     fireEvent.click(toggle);
 
-    expect(localStorage.getItem('nfcompra.landing-theme')).toBe('dark');
+    expect(localStorage.getItem('nfcompra.theme')).toBe('dark');
+    expect(localStorage.getItem('nfcompra.landing-theme')).toBeNull();
+    expect(document.documentElement.dataset.theme).toBe('dark');
     expect(screen.getByRole('button', { name: /Tema: oscuro/ })).toBeVisible();
+
+    fireEvent.click(toggle);
+    expect(localStorage.getItem('nfcompra.theme')).toBe('light');
+    expect(document.documentElement.dataset.theme).toBe('light');
+    expect(screen.getByRole('button', { name: /Tema: claro/ })).toBeVisible();
+
+    fireEvent.click(toggle);
+    expect(localStorage.getItem('nfcompra.theme')).toBeNull();
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
+
+  it('migra la preferencia de tema de la antigua landing a la clave global', () => {
+    localStorage.setItem('nfcompra.landing-theme', 'dark');
+    render(<ThemeProvider><PublicLanding onOpenAuth={vi.fn()} /></ThemeProvider>);
+
+    expect(localStorage.getItem('nfcompra.theme')).toBe('dark');
+    expect(localStorage.getItem('nfcompra.landing-theme')).toBeNull();
+    expect(document.documentElement.dataset.theme).toBe('dark');
+  });
+
+  it('sigue la preferencia del sistema a través de prefers-color-scheme', () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
+      matches: true,
+      media: '(prefers-color-scheme: dark)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      onchange: null,
+    }));
+    render(<ThemeProvider><PublicLanding onOpenAuth={vi.fn()} /></ThemeProvider>);
+
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(screen.getByRole('button', { name: /Tema: sistema \(oscuro\)/ })).toBeVisible();
   });
 
   it('entrega el modo de autenticación elegido a la aplicación', () => {
     const onOpenAuth = vi.fn();
-    render(<PublicLanding onOpenAuth={onOpenAuth} />);
+    render(<ThemeProvider><PublicLanding onOpenAuth={onOpenAuth} /></ThemeProvider>);
 
     fireEvent.click(screen.getByRole('button', { name: 'Registrarse' }));
     fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión' }));

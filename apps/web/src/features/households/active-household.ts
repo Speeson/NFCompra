@@ -1,3 +1,5 @@
+import { readRememberHousehold } from '../preferences/preferences';
+
 export const activeHouseholdStorageKey = 'nfcompra.active-household-id';
 
 export function readActiveHouseholdId(): string | null {
@@ -10,9 +12,17 @@ export function readActiveHouseholdId(): string | null {
 
 export function writeActiveHouseholdId(householdId: string | null): void {
   try {
-    if (householdId) localStorage.setItem(activeHouseholdStorageKey, householdId);
+    if (householdId && readRememberHousehold()) localStorage.setItem(activeHouseholdStorageKey, householdId);
     else localStorage.removeItem(activeHouseholdStorageKey);
   } catch {
     // Browsers can block storage; the in-memory UI state still works.
+  }
+}
+
+export function clearPersistedActiveHouseholdId(): void {
+  try {
+    localStorage.removeItem(activeHouseholdStorageKey);
+  } catch {
+    // Browsers can block storage; nothing to clear.
   }
 }

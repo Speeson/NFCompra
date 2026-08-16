@@ -1,0 +1,13 @@
+{
+  "components": ["web"],
+  "type": "minor",
+  "category": "added",
+  "summary": "Añade tema oscuro global a la web, selector de tema compartido y rediseña Perfil y Ajustes.",
+  "details": [
+    "Extiende el tema Sistema/Oscuro/Claro de la landing a toda la aplicación web, con persistencia compartida y migración de la preferencia anterior.",
+    "Añade el mismo selector de tema a la cabecera de la aplicación autenticada.",
+    "Rediseña Perfil con la sección Datos personales y Ajustes con las secciones Preferencias de compra, Aplicación y Cuenta.",
+    "Añade preferencias locales de Vista de productos (Lista/Tarjetas) y Recordar último hogar.",
+    "Mueve la descarga de la APK a Ajustes > Aplicación y mejora el flujo de eliminación de cuenta."
+  ]
+}

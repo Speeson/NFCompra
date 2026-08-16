@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type FormEvent, type JSX, type PointerEven
 import { ProductCatalogCard, productDetails, productIcon } from '../catalog/ProductCatalogCards';
 import { catalogIconOptions, categoryOptionLabel } from '../catalog/catalog-icons';
 import { createProductCatalogItem, fetchProductCategories, searchProductCatalog, setProductFavorite, type ProductCatalogInput, type ProductCatalogItem, type ProductCategory } from '../catalog/product-catalog-api';
+import { readProductView, writeProductView, type ProductView } from '../preferences/preferences';
 import type { ShoppingItem } from './model';
 
 type ProductInput = { name: string; quantity: number; unit: string | null };
@@ -13,7 +14,6 @@ type PendingProduct = ProductInput & {
   packageSize: string | null;
   icon: string;
 };
-type ProductPickerMode = 'list' | 'cards';
 type ShoppingListScreenProps = {
   title: string;
   items: ShoppingItem[];
@@ -28,14 +28,12 @@ type ShoppingListScreenProps = {
   onDelete?: (item: ShoppingItem) => void;
 };
 
-const pickerModeStorageKey = 'nfcompra.product-picker-mode';
-
 export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameList, onClearChecked, onDeleteList, mobileSimpleActions = false, onToggle, onUpdate, onDelete }: ShoppingListScreenProps): JSX.Element {
   const pendingItems = items.filter((item) => !item.isChecked);
   const checkedItems = items.filter((item) => item.isChecked);
   const [name, setName] = useState('');
   const [suggestions, setSuggestions] = useState<ProductCatalogItem[]>([]);
-  const [pickerMode, setPickerMode] = useState<ProductPickerMode>(() => pickerModeFromStorage());
+  const [pickerMode, setPickerMode] = useState<ProductView>(readProductView);
   const [productQuantities, setProductQuantities] = useState<Record<string, number>>({});
   const [activeListProductId, setActiveListProductId] = useState<string | null>(null);
   const [waitlist, setWaitlist] = useState<PendingProduct[]>([]);
@@ -95,9 +93,9 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
     };
   }, [favoriteOverrides, isOffline, name, pickerMode]);
 
-  function changePickerMode(mode: ProductPickerMode): void {
+  function changePickerMode(mode: ProductView): void {
     setPickerMode(mode);
-    localStorage.setItem(pickerModeStorageKey, mode);
+    writeProductView(mode);
     setIsProductSearchOpen(true);
   }
 
@@ -310,7 +308,7 @@ function QuickProductCreateDialog({ initialName, categories, error, isSaving, on
   </div>;
 }
 
-function ProductPickerToggle({ pickerMode, onChange }: { pickerMode: ProductPickerMode; onChange(mode: ProductPickerMode): void }): JSX.Element {
+function ProductPickerToggle({ pickerMode, onChange }: { pickerMode: ProductView; onChange(mode: ProductView): void }): JSX.Element {
   return <div className="product-picker-toggle" role="group" aria-label="Vista del autocompletado">
     <button type="button" aria-label="Vista de lista" aria-pressed={pickerMode === 'list'} onClick={() => onChange('list')}>☰</button>
     <button type="button" aria-label="Vista de tarjetas" aria-pressed={pickerMode === 'cards'} onClick={() => onChange('cards')}>▦</button>
@@ -477,10 +475,6 @@ function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null 
 
 function applyFavoriteOverrides(products: ProductCatalogItem[], overrides: Record<string, boolean>): ProductCatalogItem[] {
   return products.map((product) => product.id in overrides ? { ...product, isFavorite: overrides[product.id] } : product);
-}
-
-function pickerModeFromStorage(): ProductPickerMode {
-  return localStorage.getItem(pickerModeStorageKey) === 'list' ? 'list' : 'cards';
 }
 
 function ShoppingSection({ title, items, emptyMessage, isOffline, onToggle, onUpdate, onDelete }: { title: string; items: ShoppingItem[]; emptyMessage: string; isOffline: boolean; onToggle?: (item: ShoppingItem) => void; onUpdate?: (item: ShoppingItem, input: ProductInput) => void; onDelete?: (item: ShoppingItem) => void }): JSX.Element {
