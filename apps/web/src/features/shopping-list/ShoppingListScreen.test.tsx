@@ -328,6 +328,19 @@ function stubCatalogSnapshot(): void {
 }
 
 function stubCatalogCreate(): ReturnType<typeof vi.fn> {
+  const waterProduct = {
+    id: 'prod-water',
+    name: 'Agua mineral',
+    normalizedName: 'agua mineral',
+    categoryId: 'cat-water',
+    categoryName: 'Bebidas',
+    iconKey: 'cart',
+    brand: null,
+    packageSize: '1 L',
+    source: 'user',
+    sourceProductId: null,
+    isFavorite: false,
+  };
   const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     if (url.includes('/product-catalog/snapshot')) {
@@ -353,21 +366,12 @@ function stubCatalogCreate(): ReturnType<typeof vi.fn> {
         }],
       }));
     }
+    if (url.includes('/product-catalog/search')) {
+      return Promise.resolve(Response.json({ products: [waterProduct] }));
+    }
     if (url.endsWith('/product-catalog') && init?.method === 'POST') {
       return Promise.resolve(Response.json({
-        product: {
-          id: 'prod-water',
-          name: 'Agua mineral',
-          normalizedName: 'agua mineral',
-          categoryId: 'cat-water',
-          categoryName: 'Bebidas',
-          iconKey: 'cart',
-          brand: null,
-          packageSize: '1 L',
-          source: 'user',
-          sourceProductId: null,
-          isFavorite: false,
-        },
+        product: waterProduct,
       }, { status: 201 }));
     }
     throw new Error(`Solicitud inesperada: ${url}`);
