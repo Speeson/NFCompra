@@ -1,0 +1,9 @@
+{
+  "components": ["web"],
+  "type": "patch",
+  "category": "added",
+  "summary": "Añadir creación rápida de productos desde la lista web.",
+  "details": [
+    "Añade una acción Crear producto a la búsqueda de la lista web en escritorio y móvil, crea el producto en el catálogo y lo deja listo para añadirlo a la lista actual."
+  ]
+}

@@ -35,6 +35,45 @@ it('keeps the compact list autocomplete mode with the header quantity stepper', 
   await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Leche entera', quantity: 3, unit: null }));
 });
 
+it('creates a catalog product from compact list mode and keeps it ready to add', async () => {
+  const onAdd = vi.fn();
+  const fetchMock = stubCatalogCreate();
+  localStorage.setItem('nfcompra.product-picker-mode', 'list');
+
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} />);
+  fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'Agua mineral' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Crear producto en catalogo' }));
+
+  expect(screen.getByRole('dialog', { name: 'Crear producto' })).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Tama\u00f1o del producto'), { target: { value: '1 L' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
+
+  await waitFor(() => expect(fetchMock.mock.calls.some(([input, init]) => String(input).endsWith('/product-catalog') && init?.method === 'POST')).toBe(true));
+  expect(screen.getByLabelText('Producto')).toHaveValue('Agua mineral');
+
+  fireEvent.click(screen.getByRole('button', { name: 'A\u00f1adir' }));
+  await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Agua mineral', quantity: 1, unit: null }));
+});
+
+it('creates a catalog product from card mode and queues it in the pending tray', async () => {
+  const onAdd = vi.fn();
+  stubCatalogCreate();
+  localStorage.setItem('nfcompra.product-picker-mode', 'cards');
+
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} />);
+  fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'Agua mineral' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad del producto' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Crear producto en catalogo' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
+
+  const pendingTray = await screen.findByLabelText('Productos pendientes de a\u00f1adir');
+  expect(within(pendingTray).getByText('Agua mineral')).toBeInTheDocument();
+  expect(within(pendingTray).getByText('x2')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'A\u00f1adir 1 producto' }));
+  await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Agua mineral', quantity: 2, unit: null }));
+});
+
 it('shows list suggestions with the favorite action integrated before the product text', async () => {
   stubCatalogSnapshot();
   localStorage.setItem('nfcompra.product-picker-mode', 'list');
@@ -213,4 +252,37 @@ function stubCatalogSnapshot(): void {
     }
     throw new Error(`Solicitud inesperada: ${url}`);
   }));
+}
+
+function stubCatalogCreate(): ReturnType<typeof vi.fn> {
+  const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes('/product-catalog/snapshot')) {
+      return Promise.resolve(Response.json({
+        version: 'v1',
+        productCount: 0,
+        products: [],
+      }));
+    }
+    if (url.endsWith('/product-catalog') && init?.method === 'POST') {
+      return Promise.resolve(Response.json({
+        product: {
+          id: 'prod-water',
+          name: 'Agua mineral',
+          normalizedName: 'agua mineral',
+          categoryId: null,
+          categoryName: null,
+          iconKey: 'shopping-basket',
+          brand: null,
+          packageSize: '1 L',
+          source: 'user',
+          sourceProductId: null,
+          isFavorite: false,
+        },
+      }, { status: 201 }));
+    }
+    throw new Error(`Solicitud inesperada: ${url}`);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
 }

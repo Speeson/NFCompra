@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type JSX, type PointerEvent } from 'react';
 
 import { ProductCatalogCard, ProductCatalogListItem, productIcon } from '../catalog/ProductCatalogCards';
-import { searchProductCatalog, setProductFavorite, type ProductCatalogItem } from '../catalog/product-catalog-api';
+import { createProductCatalogItem, searchProductCatalog, setProductFavorite, type ProductCatalogInput, type ProductCatalogItem } from '../catalog/product-catalog-api';
 import type { ShoppingItem } from './model';
 
 type ProductInput = { name: string; quantity: number; unit: string | null };
@@ -43,6 +43,10 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
   const [favoriteOverrides, setFavoriteOverrides] = useState<Record<string, boolean>>({});
   const [isRenamingList, setIsRenamingList] = useState(false);
   const [listNameDraft, setListNameDraft] = useState(title);
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const [quickCreateInitialName, setQuickCreateInitialName] = useState('');
+  const [quickCreateError, setQuickCreateError] = useState<string | null>(null);
+  const [isCreatingProduct, setIsCreatingProduct] = useState(false);
   const productSearchRef = useRef<HTMLDivElement>(null);
   const recentlyAddedTimeoutRef = useRef<number | null>(null);
 
@@ -116,6 +120,32 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
     setIsProductSearchOpen(false);
   }
 
+  function openQuickCreate(): void {
+    if (isOffline) return;
+    setQuickCreateInitialName(name.trim());
+    setQuickCreateError(null);
+    setQuickCreateOpen(true);
+  }
+
+  async function createQuickProduct(input: ProductCatalogInput): Promise<void> {
+    setIsCreatingProduct(true);
+    setQuickCreateError(null);
+    try {
+      const product = await createProductCatalogItem(input);
+      setSuggestions((current) => applyFavoriteOverrides([product, ...current.filter((entry) => entry.id !== product.id)], favoriteOverrides));
+      setQuickCreateOpen(false);
+      if (pickerMode === 'cards') {
+        addProductToWaitlist(product, Math.max(1, Math.round(Number(quantity) || 1)));
+      } else {
+        selectSuggestion(product);
+      }
+    } catch {
+      setQuickCreateError('No se pudo crear el producto.');
+    } finally {
+      setIsCreatingProduct(false);
+    }
+  }
+
   async function changeFavorite(product: ProductCatalogItem, favorite: boolean): Promise<void> {
     setFavoriteOverrides((current) => ({ ...current, [product.id]: favorite }));
     setSuggestions((current) => current.map((entry) => entry.id === product.id ? { ...entry, isFavorite: favorite } : entry));
@@ -138,6 +168,10 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
   function addSuggestionToWaitlist(suggestion: ProductCatalogItem): void {
     const selectedQuantity = cardQuantities[suggestion.id] ?? 0;
     if (selectedQuantity <= 0) return;
+    addProductToWaitlist(suggestion, selectedQuantity);
+  }
+
+  function addProductToWaitlist(suggestion: ProductCatalogItem, selectedQuantity: number): void {
     const icon = productIcon(suggestion);
     setWaitlist((current) => {
       const existing = current.find((product) => product.catalogProductId === suggestion.id);
@@ -207,17 +241,56 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
               {pickerMode === 'list' && isProductSearchOpen && suggestions.length ? <div className="product-suggestions" role="listbox" aria-label="Sugerencias de productos" onScroll={blurProductSearch}>{suggestions.map((suggestion) => <ProductCatalogListItem key={suggestion.id} product={suggestion} onSelect={selectSuggestion} onFavoriteChange={(product, favorite) => void changeFavorite(product, favorite)} />)}</div> : null}
             </div>
             <ManualQuantityStepper quantity={quantity} disabled={isOffline} onChange={updateManualQuantity} />
+            <button type="button" className="product-create-button" aria-label="Crear producto en catalogo" disabled={isOffline || !name.trim()} onClick={openQuickCreate}>Crear producto</button>
             <button type="submit" disabled={isOffline}>Añadir</button>
           </form>
           {pickerMode === 'cards' && isProductSearchOpen && suggestions.length ? <ProductCardResults suggestions={suggestions} quantities={cardQuantities} recentlyAddedId={recentlyAddedId} onQuantityChange={updateCardQuantity} onSelect={addSuggestionToWaitlist} onFavoriteChange={(product, favorite) => void changeFavorite(product, favorite)} onScroll={blurProductSearch} /> : null}
           {pickerMode === 'cards' && waitlist.length ? <PendingProductWaitlist products={waitlist} onRemove={removeFromWaitlist} onCommit={addWaitlist} /> : null}
         </div>
+        {quickCreateOpen ? <QuickProductCreateDialog initialName={quickCreateInitialName} error={quickCreateError} isSaving={isCreatingProduct} onSubmit={(input) => void createQuickProduct(input)} onClose={() => { if (!isCreatingProduct) setQuickCreateOpen(false); }} /> : null}
       </> : null}
     </header>
     {isOffline ? <p className="offline-notice" role="status">Sin conexión</p> : null}
     <ShoppingSection title="Pendientes" items={pendingItems} emptyMessage="No quedan productos pendientes." isOffline={isOffline} onToggle={onToggle} onUpdate={onUpdate} onDelete={onDelete} />
     <ShoppingSection title="Comprados" items={checkedItems} emptyMessage="Aún no has marcado ningún producto." isOffline={isOffline} onToggle={onToggle} onUpdate={onUpdate} onDelete={onDelete} />
   </main>;
+}
+
+function QuickProductCreateDialog({ initialName, error, isSaving, onSubmit, onClose }: { initialName: string; error: string | null; isSaving: boolean; onSubmit(input: ProductCatalogInput): void; onClose(): void }): JSX.Element {
+  const [productName, setProductName] = useState(initialName);
+  const [brand, setBrand] = useState('');
+  const [packageSize, setPackageSize] = useState('');
+
+  function submit(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    if (!productName.trim()) return;
+    onSubmit({
+      name: productName.trim(),
+      categoryId: null,
+      iconKey: 'shopping-basket',
+      brand: brand.trim() || null,
+      packageSize: packageSize.trim() || null,
+    });
+  }
+
+  return <div className="catalog-filter-backdrop" role="presentation" onClick={onClose}>
+    <form className="catalog-entry-dialog quick-product-dialog" role="dialog" aria-modal="true" aria-label="Crear producto" onSubmit={submit} onClick={(event) => event.stopPropagation()}>
+      <header className="catalog-filter-dialog__header">
+        <div><p className="eyebrow">Nuevo</p><h2>Crear producto</h2></div>
+        <button className="catalog-filter-dialog__close" type="button" aria-label="Cerrar" disabled={isSaving} onClick={onClose}>&times;</button>
+      </header>
+      <div className="catalog-entry-fields">
+        <label>Nombre del producto<input value={productName} onChange={(event) => setProductName(event.target.value)} required maxLength={120} autoFocus /></label>
+        <label>Marca del producto<input value={brand} onChange={(event) => setBrand(event.target.value)} maxLength={80} placeholder="Opcional" /></label>
+        <label>Tama&ntilde;o del producto<input value={packageSize} onChange={(event) => setPackageSize(event.target.value)} maxLength={60} placeholder="Opcional" /></label>
+      </div>
+      {error ? <p className="quick-product-dialog__error" role="alert">{error}</p> : null}
+      <div className="catalog-entry-dialog__actions">
+        <button className="button button--quiet" type="button" disabled={isSaving} onClick={onClose}>Cancelar</button>
+        <button className="button" type="submit" disabled={isSaving || !productName.trim()}>{isSaving ? 'Guardando...' : 'Crear'}</button>
+      </div>
+    </form>
+  </div>;
 }
 
 function ProductPickerToggle({ pickerMode, onChange }: { pickerMode: ProductPickerMode; onChange(mode: ProductPickerMode): void }): JSX.Element {
