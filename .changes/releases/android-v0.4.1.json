@@ -1,0 +1,33 @@
+{
+  "component": "android",
+  "versionName": "0.4.1",
+  "versionCode": 18,
+  "releasedAt": null,
+  "changesets": [
+    {
+      "file": "android-catalog-household-contrast.json",
+      "components": [
+        "android"
+      ],
+      "type": "patch",
+      "category": "fixed",
+      "summary": "Mejora el contraste de iconos y textos en el catálogo y el hogar activo.",
+      "details": [
+        "Pone en negro los iconos de filtro y crear en el catálogo para que se vean sobre el fondo lima.",
+        "En el hogar activo desplegado, muestra en negro el texto de rol (Dueño/Miembro del hogar), el estado del hogar y el botón de editar."
+      ]
+    },
+    {
+      "file": "android-members-popup-dark-mode.json",
+      "components": [
+        "android"
+      ],
+      "type": "patch",
+      "category": "fixed",
+      "summary": "Adapta la ventana de miembros del hogar al tema oscuro.",
+      "details": [
+        "Aplica colores del tema oscuro a la tarjeta, títulos, miembros, invitaciones y botón Cerrar de la ventana de miembros del hogar."
+      ]
+    }
+  ]
+}
