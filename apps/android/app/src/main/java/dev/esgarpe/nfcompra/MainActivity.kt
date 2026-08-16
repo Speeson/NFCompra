@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -43,8 +44,10 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import java.util.concurrent.Executor
+import dev.esgarpe.nfcompra.core.designsystem.BottomNavigationStylePreference
 import dev.esgarpe.nfcompra.core.designsystem.NFCompraTheme
 import dev.esgarpe.nfcompra.core.designsystem.NFCompraUiScaleProvider
+import dev.esgarpe.nfcompra.core.designsystem.ThemePreference
 import dev.esgarpe.nfcompra.core.designsystem.UiScalePreference
 import dev.esgarpe.nfcompra.core.network.KeystoreTokenStore
 import dev.esgarpe.nfcompra.core.network.NetworkClient
@@ -103,6 +106,10 @@ class MainActivity : FragmentActivity() {
         foregroundRefreshGate = AuthenticatedRefreshGate { tokenStore.current() != null }
         val profilePreferences = getSharedPreferences("nfcompra.ui", MODE_PRIVATE)
         val uiScaleSettings = UiScaleSettings(SharedPreferencesUiScaleStorage(applicationContext, profilePreferences))
+        val bottomNavigationStyleSettings = BottomNavigationStyleSettings(
+            SharedPreferencesBottomNavigationStyleStorage(applicationContext, profilePreferences),
+        )
+        val themeSettings = ThemeSettings(SharedPreferencesThemeStorage(applicationContext, profilePreferences))
         val authRepository = AuthRepository(
             NetworkClient.authApi(BuildConfig.AUTH_BASE_URL),
             tokenStore,
@@ -132,6 +139,14 @@ class MainActivity : FragmentActivity() {
             var automaticBiometricPromptAccountId by remember { mutableStateOf<String?>(null) }
             var biometricSettingsMessage by remember { mutableStateOf<String?>(null) }
             var uiScalePreference by remember { mutableStateOf(uiScaleSettings.preference) }
+            var bottomNavigationStylePreference by remember { mutableStateOf(bottomNavigationStyleSettings.preference) }
+            var themePreference by remember { mutableStateOf(themeSettings.preference) }
+            val systemDarkTheme = isSystemInDarkTheme()
+            val darkTheme = when (themePreference) {
+                ThemePreference.Light -> false
+                ThemePreference.Dark -> true
+                ThemePreference.System -> systemDarkTheme
+            }
             var rememberedEmail by remember {
                 mutableStateOf(profilePreferences.getString("remembered_email", null).orEmpty())
             }
@@ -139,6 +154,18 @@ class MainActivity : FragmentActivity() {
                 { preference: UiScalePreference ->
                     uiScaleSettings.preference = preference
                     uiScalePreference = preference
+                }
+            }
+            val onBottomNavigationStylePreferenceChange = remember {
+                { preference: BottomNavigationStylePreference ->
+                    bottomNavigationStyleSettings.preference = preference
+                    bottomNavigationStylePreference = preference
+                }
+            }
+            val onThemePreferenceChange = remember {
+                { preference: ThemePreference ->
+                    themeSettings.preference = preference
+                    themePreference = preference
                 }
             }
             val onRememberEmail: (String) -> Unit = remember {
@@ -328,8 +355,14 @@ class MainActivity : FragmentActivity() {
                 }
                 if (globalNavigation != null) globalNotifications.consumeNavigation()
             }
+            LaunchedEffect(darkTheme) {
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = false
+                    isAppearanceLightNavigationBars = false
+                }
+            }
             NFCompraUiScaleProvider(uiScalePreference) {
-            NFCompraTheme {
+            NFCompraTheme(darkTheme = darkTheme) {
                 if (!authenticatedContentUnlocked) {
                     AuthApp(
                         authViewModel,
@@ -420,6 +453,10 @@ class MainActivity : FragmentActivity() {
                                     onBiometricAccessChange = ::changeBiometricAccess,
                                     uiScalePreference = uiScalePreference,
                                     onUiScalePreferenceChange = onUiScalePreferenceChange,
+                                    bottomNavigationStylePreference = bottomNavigationStylePreference,
+                                    onBottomNavigationStylePreferenceChange = onBottomNavigationStylePreferenceChange,
+                                    themePreference = themePreference,
+                                    onThemePreferenceChange = onThemePreferenceChange,
                                 )
                                 }
                             }

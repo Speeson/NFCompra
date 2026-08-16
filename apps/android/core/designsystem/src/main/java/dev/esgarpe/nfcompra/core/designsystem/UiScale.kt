@@ -48,10 +48,6 @@ fun NFCompraUiScaleProvider(
     content: @Composable () -> Unit,
 ) {
     val systemDensity = LocalDensity.current
-    if (preference == UiScalePreference.System) {
-        content()
-        return
-    }
     val values = uiDensityValues(
         preference = preference,
         systemDensity = systemDensity.density,

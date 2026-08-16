@@ -1,5 +1,7 @@
 package dev.esgarpe.nfcompra
 
+import dev.esgarpe.nfcompra.core.designsystem.BottomNavigationStylePreference
+import dev.esgarpe.nfcompra.core.designsystem.ThemePreference
 import dev.esgarpe.nfcompra.core.designsystem.UiScalePreference
 import dev.esgarpe.nfcompra.core.designsystem.uiDensityValues
 import org.junit.Assert.assertEquals
@@ -61,8 +63,70 @@ class UiScaleSettingsTest {
         assertEquals(2.75f, values.density, 0.001f)
         assertEquals(1.85f, values.fontScale, 0.001f)
     }
+
+    @Test
+    fun `default bottom navigation style is original`() {
+        val settings = BottomNavigationStyleSettings(FakeBottomNavigationStyleStorage())
+
+        assertEquals(BottomNavigationStylePreference.Original, settings.preference)
+    }
+
+    @Test
+    fun `bottom navigation style values are restored`() {
+        val storage = FakeBottomNavigationStyleStorage("navbar")
+        val settings = BottomNavigationStyleSettings(storage)
+
+        assertEquals(BottomNavigationStylePreference.NavBar, settings.preference)
+
+        settings.preference = BottomNavigationStylePreference.Original
+
+        assertEquals("original", storage.persistedValue)
+        assertEquals(BottomNavigationStylePreference.Original, settings.preference)
+    }
+
+    @Test
+    fun `unknown bottom navigation style falls back to original`() {
+        val settings = BottomNavigationStyleSettings(FakeBottomNavigationStyleStorage("unexpected"))
+
+        assertEquals(BottomNavigationStylePreference.Original, settings.preference)
+    }
+
+    @Test
+    fun `default theme preference is system`() {
+        val settings = ThemeSettings(FakeThemeStorage())
+
+        assertEquals(ThemePreference.System, settings.preference)
+    }
+
+    @Test
+    fun `theme preference values are restored`() {
+        val storage = FakeThemeStorage("dark")
+        val settings = ThemeSettings(storage)
+
+        assertEquals(ThemePreference.Dark, settings.preference)
+
+        settings.preference = ThemePreference.Light
+
+        assertEquals("light", storage.persistedValue)
+        assertEquals(ThemePreference.Light, settings.preference)
+    }
+
+    @Test
+    fun `unknown theme preference falls back to system`() {
+        val settings = ThemeSettings(FakeThemeStorage("unexpected"))
+
+        assertEquals(ThemePreference.System, settings.preference)
+    }
 }
 
 private class FakeUiScaleStorage(
     override var persistedValue: String? = null,
 ) : UiScaleStorage
+
+private class FakeBottomNavigationStyleStorage(
+    override var persistedValue: String? = null,
+) : BottomNavigationStyleStorage
+
+private class FakeThemeStorage(
+    override var persistedValue: String? = null,
+) : ThemeStorage

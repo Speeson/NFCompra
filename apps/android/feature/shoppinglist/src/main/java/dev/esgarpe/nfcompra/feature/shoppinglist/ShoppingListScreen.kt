@@ -13,10 +13,13 @@ import android.speech.SpeechRecognizer
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.core.app.ActivityCompat
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -31,6 +34,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
@@ -97,15 +101,20 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -113,8 +122,15 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -140,33 +156,92 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.esgarpe.nfcompra.core.designsystem.BottomNavigationStylePreference
 import dev.esgarpe.nfcompra.core.designsystem.NFCompraTheme
 import dev.esgarpe.nfcompra.core.designsystem.NFCompraUiScaleProvider
+import dev.esgarpe.nfcompra.core.designsystem.ThemePreference
 import dev.esgarpe.nfcompra.core.designsystem.UiScalePreference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
+import kotlin.math.atan2
+import kotlin.math.sqrt
 
 private val GroceryPrimaryGradient = listOf(Color(0xFFAEDC81), Color(0xFF6CC51D))
 private val GroceryPrimaryStrong = Color(0xFF6CC51D)
-private val WebPage = Color(0xFFF8FCF9)
-private val WebSurface = Color.White
-private val WebText = Color(0xFF10271E)
-private val WebMuted = Color(0xFF527062)
-private val WebPrimary = Color(0xFF1C7144)
-private val WebLime = Color(0xFFDCFF72)
+private val OnLime = Color(0xFF10271E)
+private val OnLimeMuted = Color(0xFF1C7144)
+@Immutable
+private data class ShoppingScreenColors(
+    val page: Color,
+    val surface: Color,
+    val text: Color,
+    val muted: Color,
+    val primary: Color,
+    val lime: Color,
+    val subtleSurface: Color,
+    val border: Color,
+    val pendingSurface: Color,
+    val pendingAccent: Color,
+    val checkedSurface: Color,
+    val checkedAccent: Color,
+    val purchasedGreen: Color,
+)
+
+private val LightShoppingScreenColors = ShoppingScreenColors(
+    page = Color(0xFFF8FCF9),
+    surface = Color.White,
+    text = Color(0xFF10271E),
+    muted = Color(0xFF527062),
+    primary = Color(0xFF1C7144),
+    lime = Color(0xFFDCFF72),
+    subtleSurface = Color(0xFFF2F8F4),
+    border = Color(0xFFCFE4D7),
+    pendingSurface = Color(0xFFFFF7D7),
+    pendingAccent = Color(0xFFFFC83D),
+    checkedSurface = Color(0xFFFFE7E1),
+    checkedAccent = Color(0xFFE2533F),
+    purchasedGreen = Color(0xFF18864B),
+)
+
+private val DarkShoppingScreenColors = ShoppingScreenColors(
+    page = Color(0xFF07130D),
+    surface = Color(0xFF10231A),
+    text = Color(0xFFEAF7EE),
+    muted = Color(0xFFA6BDAF),
+    primary = Color(0xFF89E5AE),
+    lime = Color(0xFFC8F85A),
+    subtleSurface = Color(0xFF183426),
+    border = Color(0xFF2E5A42),
+    pendingSurface = Color(0xFF342A0E),
+    pendingAccent = Color(0xFFE9BE35),
+    checkedSurface = Color(0xFF351C19),
+    checkedAccent = Color(0xFFFF8A76),
+    purchasedGreen = Color(0xFF72DBA9),
+)
+
+private val LocalShoppingScreenColors = staticCompositionLocalOf { LightShoppingScreenColors }
+private val WebPage: Color @Composable get() = LocalShoppingScreenColors.current.page
+private val WebSurface: Color @Composable get() = LocalShoppingScreenColors.current.surface
+private val WebText: Color @Composable get() = LocalShoppingScreenColors.current.text
+private val WebMuted: Color @Composable get() = LocalShoppingScreenColors.current.muted
+private val WebPrimary: Color @Composable get() = LocalShoppingScreenColors.current.primary
+private val WebLime: Color @Composable get() = LocalShoppingScreenColors.current.lime
+private val WebSubtleSurface: Color @Composable get() = LocalShoppingScreenColors.current.subtleSurface
+private val WebBorder: Color @Composable get() = LocalShoppingScreenColors.current.border
+private val PendingSurface: Color @Composable get() = LocalShoppingScreenColors.current.pendingSurface
+private val PendingAccent: Color @Composable get() = LocalShoppingScreenColors.current.pendingAccent
+private val CheckedSurface: Color @Composable get() = LocalShoppingScreenColors.current.checkedSurface
+private val CheckedAccent: Color @Composable get() = LocalShoppingScreenColors.current.checkedAccent
+private val PurchasedGreen: Color @Composable get() = LocalShoppingScreenColors.current.purchasedGreen
 private val ProductEntryControlHeight = 52.dp
-private val PendingSurface = Color(0xFFFFF7D7)
-private val PendingAccent = Color(0xFFFFC83D)
-private val CheckedSurface = Color(0xFFFFE7E1)
-private val CheckedAccent = Color(0xFFE2533F)
-private val PurchasedGreen = Color(0xFF18864B)
 @Composable private fun screenTopPadding(): Dp = (LocalConfiguration.current.screenHeightDp * 0.02f).dp
 @Composable private fun screenBottomPadding(): Dp = (LocalConfiguration.current.screenHeightDp * 0.03f).dp
 @Composable private fun responsiveDp(fraction: Float): Dp = (LocalConfiguration.current.screenHeightDp * fraction).dp
 @Composable private fun responsiveWidthDp(fraction: Float): Dp = (LocalConfiguration.current.screenWidthDp * fraction).dp
+@Composable private fun bottomNavigationScrollReserve(): Dp = responsiveDp(0.105f)
 
 @Composable
 private fun LoadingLogoScreen() {
@@ -189,10 +264,12 @@ private fun LoadingLogoScreen() {
         ),
         label = "loading-logo-pulse",
     )
+    val pageColor = WebPage
+    val primaryColor = WebPrimary
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(WebPage),
+            .background(pageColor),
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -205,7 +282,7 @@ private fun LoadingLogoScreen() {
                     .graphicsLayer(rotationZ = rotation),
             ) {
                 drawCircle(
-                    color = WebPrimary.copy(alpha = 0.16f),
+                    color = primaryColor.copy(alpha = 0.16f),
                     radius = size.minDimension / 2.2f,
                     center = center,
                     style = Stroke(width = 10f),
@@ -250,6 +327,10 @@ fun ShoppingListApp(
     onBiometricAccessChange: ((Boolean) -> Unit)? = null,
     uiScalePreference: UiScalePreference = UiScalePreference.Default,
     onUiScalePreferenceChange: (UiScalePreference) -> Unit = {},
+    bottomNavigationStylePreference: BottomNavigationStylePreference = BottomNavigationStylePreference.Default,
+    onBottomNavigationStylePreferenceChange: (BottomNavigationStylePreference) -> Unit = {},
+    themePreference: ThemePreference = ThemePreference.Default,
+    onThemePreferenceChange: (ThemePreference) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
     LaunchedEffect(viewModel) { viewModel.load() }
@@ -287,6 +368,10 @@ fun ShoppingListApp(
             onBiometricAccessChange = onBiometricAccessChange,
             uiScalePreference = uiScalePreference,
             onUiScalePreferenceChange = onUiScalePreferenceChange,
+            bottomNavigationStylePreference = bottomNavigationStylePreference,
+            onBottomNavigationStylePreferenceChange = onBottomNavigationStylePreferenceChange,
+            themePreference = themePreference,
+            onThemePreferenceChange = onThemePreferenceChange,
         )
         is ShoppingListViewState.InitialHouseholdError -> {
             val error = state as ShoppingListViewState.InitialHouseholdError
@@ -322,6 +407,10 @@ fun ShoppingListApp(
                 onBiometricAccessChange = onBiometricAccessChange,
                 uiScalePreference = uiScalePreference,
                 onUiScalePreferenceChange = onUiScalePreferenceChange,
+                bottomNavigationStylePreference = bottomNavigationStylePreference,
+                onBottomNavigationStylePreferenceChange = onBottomNavigationStylePreferenceChange,
+                themePreference = themePreference,
+                onThemePreferenceChange = onThemePreferenceChange,
             )
         }
         is ShoppingListViewState.InitialHouseholdLoadError -> {
@@ -365,6 +454,10 @@ fun ShoppingListApp(
             onBiometricAccessChange = onBiometricAccessChange,
             uiScalePreference = uiScalePreference,
             onUiScalePreferenceChange = onUiScalePreferenceChange,
+            bottomNavigationStylePreference = bottomNavigationStylePreference,
+            onBottomNavigationStylePreferenceChange = onBottomNavigationStylePreferenceChange,
+            themePreference = themePreference,
+            onThemePreferenceChange = onThemePreferenceChange,
         )
     }
 }
@@ -402,6 +495,10 @@ internal fun ShoppingListContent(
     onBiometricAccessChange: ((Boolean) -> Unit)? = null,
     uiScalePreference: UiScalePreference = UiScalePreference.Default,
     onUiScalePreferenceChange: (UiScalePreference) -> Unit = {},
+    bottomNavigationStylePreference: BottomNavigationStylePreference = BottomNavigationStylePreference.Default,
+    onBottomNavigationStylePreferenceChange: (BottomNavigationStylePreference) -> Unit = {},
+    themePreference: ThemePreference = ThemePreference.Default,
+    onThemePreferenceChange: (ThemePreference) -> Unit = {},
 ) {
     var selectedTab by remember { mutableStateOf(DashboardTab.Home) }
     var creatingHousehold by remember { mutableStateOf(false) }
@@ -537,10 +634,20 @@ internal fun ShoppingListContent(
         onAction(ShoppingListAction.SelectHousehold(householdId))
     }
 
+    val contentBottomPadding = when (bottomNavigationStylePreference) {
+        BottomNavigationStylePreference.Original -> responsiveDp(0.055f)
+        BottomNavigationStylePreference.NavBar -> responsiveDp(0.055f)
+    }
+    val shoppingColors = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) {
+        DarkShoppingScreenColors
+    } else {
+        LightShoppingScreenColors
+    }
+    CompositionLocalProvider(LocalShoppingScreenColors provides shoppingColors) {
     Box(modifier = Modifier.fillMaxSize().background(Brush.linearGradient(GroceryPrimaryGradient))) {
-        Column(modifier = Modifier.fillMaxSize().statusBarsPadding().background(WebPage).padding(bottom = responsiveDp(0.114f))) {
+        Column(modifier = Modifier.fillMaxSize().statusBarsPadding().background(WebPage).padding(bottom = contentBottomPadding)) {
             ShoppingAppBanner(
-                title = if (isListDetailOpen) data.content.title else selectedTab.label,
+                title = if (isListDetailOpen) data.content.title else selectedTabLabel(selectedTab),
                 subtitle = if (isListDetailOpen) selectedListHouseholdName else null,
                 onTitleEdit = if (isListDetailOpen && openedListMode == ListOpenMode.Edit) ({ renamingList = true }) else null,
                 showBack = selectedTab != DashboardTab.Home || isListDetailOpen,
@@ -661,6 +768,10 @@ internal fun ShoppingListContent(
                                 onBiometricAccessChange = onBiometricAccessChange,
                                 uiScalePreference = uiScalePreference,
                                 onUiScalePreferenceChange = onUiScalePreferenceChange,
+                                bottomNavigationStylePreference = bottomNavigationStylePreference,
+                                onBottomNavigationStylePreferenceChange = onBottomNavigationStylePreferenceChange,
+                                themePreference = themePreference,
+                                onThemePreferenceChange = onThemePreferenceChange,
                             )
                         }
                     }
@@ -669,9 +780,10 @@ internal fun ShoppingListContent(
         }
 
         Box(modifier = Modifier.align(Alignment.BottomCenter)) {
-            FloatingDashboardNavigation(
+            DashboardBottomNavigation(
                 selected = selectedTab,
                 onSelect = ::openTabRoot,
+                style = bottomNavigationStylePreference,
             )
         }
     }
@@ -711,16 +823,36 @@ internal fun ShoppingListContent(
         deletingList = false
     }) { deletingList = false }
 }
+}
 
-private enum class DashboardTab(val label: String, val navLabel: String, val icon: ImageVector) {
-    Home("Inicio", "Inicio", Icons.Outlined.Home),
-    Households("Hogares", "Hogares", Icons.Outlined.HomeWork),
-    Lists("Listas", "Listas", Icons.AutoMirrored.Outlined.ListAlt),
-    Catalog("Catálogo", "Catálogo", Icons.Outlined.Category),
-    Profile("Perfil", "Perfil", Icons.Outlined.Person),
+private enum class DashboardTab { Home, Households, Lists, Catalog, Profile }
+
+private fun selectedTabLabel(tab: DashboardTab): String = when (tab) {
+    DashboardTab.Home -> "Inicio"
+    DashboardTab.Households -> "Hogares"
+    DashboardTab.Lists -> "Listas"
+    DashboardTab.Catalog -> "Catálogo"
+    DashboardTab.Profile -> "Perfil"
+}
+
+private fun selectedTabIcon(tab: DashboardTab): ImageVector = when (tab) {
+    DashboardTab.Home -> Icons.Outlined.Home
+    DashboardTab.Households -> Icons.Outlined.HomeWork
+    DashboardTab.Lists -> Icons.AutoMirrored.Outlined.ListAlt
+    DashboardTab.Catalog -> Icons.Outlined.Category
+    DashboardTab.Profile -> Icons.Outlined.Person
 }
 
 private enum class ListOpenMode { Edit, View }
+
+@Immutable
+private data class DashboardNavBarColors(
+    val bubble: Color,
+    val bubbleIcon: Color,
+    val active: Color,
+    val inactive: Color,
+    val shadow: Color,
+)
 
 @Composable
 private fun ShoppingAppBanner(
@@ -826,9 +958,22 @@ private fun ShoppingAppBanner(
 }
 
 @Composable
+private fun DashboardBottomNavigation(
+    selected: DashboardTab,
+    onSelect: (DashboardTab) -> Unit,
+    style: BottomNavigationStylePreference,
+) {
+    when (style) {
+        BottomNavigationStylePreference.Original -> FloatingDashboardNavigation(selected, onSelect)
+        BottomNavigationStylePreference.NavBar -> NotchedDashboardNavigation(selected, onSelect)
+    }
+}
+
+@Composable
 private fun FloatingDashboardNavigation(selected: DashboardTab, onSelect: (DashboardTab) -> Unit) {
-    val navItems = DashboardTab.entries
+    val navItems = enumValues<DashboardTab>().toList()
     val selectedIndex = navItems.indexOf(selected).coerceAtLeast(0)
+    val selectedContentDescription = selectedTabLabel(selected) + " seleccionado"
     val navH = responsiveDp(0.114f)
     val barH = responsiveDp(0.081f)
     val bubbleSz = responsiveDp(0.076f)
@@ -893,11 +1038,11 @@ private fun FloatingDashboardNavigation(selected: DashboardTab, onSelect: (Dashb
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                 ) { onSelect(selected) }
-                .semantics { contentDescription = "${selected.label} seleccionado" },
+                .semantics { contentDescription = selectedContentDescription },
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                imageVector = selected.icon,
+                imageVector = selectedTabIcon(selected),
                 contentDescription = null,
                 tint = GroceryPrimaryStrong,
                 modifier = Modifier.size(iconSz),
@@ -934,7 +1079,7 @@ private fun FloatingDashboardNavigationItem(
         ) {
             if (!selected) {
                 Icon(
-                    imageVector = tab.icon,
+                    imageVector = selectedTabIcon(tab),
                     contentDescription = null,
                     tint = inactiveColor,
                     modifier = Modifier.size(22.dp),
@@ -942,7 +1087,7 @@ private fun FloatingDashboardNavigationItem(
             }
         }
         Text(
-            text = tab.navLabel,
+            text = selectedTabLabel(tab),
             color = if (selected) activeColor else inactiveColor,
             fontSize = 11.sp,
             lineHeight = 12.sp,
@@ -1077,6 +1222,7 @@ private fun DashboardHome(
                 },
             )
         }
+        Spacer(modifier = Modifier.height(bottomNavigationScrollReserve()))
     }
 }
 
@@ -1134,6 +1280,7 @@ private fun HouseholdsPanel(
                 onLeave = { onAction(ShoppingListAction.LeaveHousehold(household.id)) },
             )
         }
+        Spacer(modifier = Modifier.height(bottomNavigationScrollReserve()))
     }
     renamingHousehold?.let { household ->
         CreateEntityDialog(
@@ -1245,6 +1392,7 @@ private fun ListsPanel(
                 }
             }
         }
+        Spacer(modifier = Modifier.height(bottomNavigationScrollReserve()))
     }
 }
 
@@ -1423,6 +1571,7 @@ private fun CatalogPanel(
                         loadProducts(category = category)
                     },
                 )
+                Spacer(modifier = Modifier.height(bottomNavigationScrollReserve()))
             }
         } else {
             CatalogProductsView(
@@ -1661,6 +1810,7 @@ private fun ZeroHouseholdsHome(
                 }
             }
         }
+        Spacer(modifier = Modifier.height(bottomNavigationScrollReserve()))
     }
 }
 
@@ -1898,7 +2048,7 @@ private fun CatalogMutationDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(MaterialTheme.shapes.large)
-                            .background(Color(0xFFF2F8F4))
+                            .background(WebSubtleSurface)
                             .padding(4.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
@@ -1992,7 +2142,7 @@ private fun CatalogTypeChip(text: String, selected: Boolean, modifier: Modifier 
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = WebPrimary, fontWeight = FontWeight.Bold)
+        Text(text, color = if (selected) OnLime else WebPrimary, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -2007,7 +2157,7 @@ private fun CatalogIconPicker(label: String, selectedIconKey: String, onSelected
                 onClick = { expanded = true },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = MaterialTheme.shapes.medium,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F8F4), contentColor = WebText),
+                colors = ButtonDefaults.buttonColors(containerColor = WebSubtleSurface, contentColor = WebText),
             ) {
                 Text("${selected.glyph}  ${selected.label}", maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -2041,7 +2191,7 @@ private fun CatalogCategoryPicker(
                 onClick = { expanded = true },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = MaterialTheme.shapes.medium,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F8F4), contentColor = WebText),
+                colors = ButtonDefaults.buttonColors(containerColor = WebSubtleSurface, contentColor = WebText),
             ) {
                 Text(selected?.let { "${categoryEmoji(it)}  ${it.name}" } ?: "Sin categoria", maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -2091,7 +2241,7 @@ private fun CatalogFilterDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                CatalogSearchFilter.entries.forEach { option ->
+                enumValues<CatalogSearchFilter>().forEach { option ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -2185,6 +2335,7 @@ private fun CatalogProductGrid(
                 if (rowProducts.size == 1) Box(modifier = Modifier.weight(1f))
             }
         }
+        Spacer(modifier = Modifier.height(bottomNavigationScrollReserve()))
     }
 }
 
@@ -2200,7 +2351,7 @@ private fun CatalogProductCard(
     Card(
         modifier = modifier
             .height(150.dp)
-            .border(1.dp, Color(0xFFCFE4D7), MaterialTheme.shapes.large),
+            .border(1.dp, WebBorder, MaterialTheme.shapes.large),
         colors = CardDefaults.cardColors(containerColor = WebSurface),
     ) {
         Row(
@@ -2213,7 +2364,7 @@ private fun CatalogProductCard(
                     modifier = Modifier
                         .size(44.dp)
                         .clip(MaterialTheme.shapes.medium)
-                        .background(Color(0xFFF2F8F4)),
+                        .background(WebSubtleSurface),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(productIcon(product), fontSize = 23.sp, lineHeight = 23.sp)
@@ -2299,7 +2450,7 @@ private fun MiniDashboardMetric(label: String, value: String, modifier: Modifier
     Column(
         modifier = modifier
             .clip(MaterialTheme.shapes.medium)
-            .background(Color(0xFFF2F8F4))
+            .background(WebSubtleSurface)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
@@ -2353,14 +2504,14 @@ private fun FavoriteCatalogCategoryCard(category: ProductCategoryUiModel, modifi
             modifier = Modifier
                 .size(54.dp)
                 .clip(MaterialTheme.shapes.large)
-                .background(WebPrimary),
+                .background(Color.White.copy(alpha = 0.44f)),
             contentAlignment = Alignment.Center,
         ) {
-            Text("\u2605", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Black)
+            Text("\u2605", color = OnLimeMuted, fontSize = 30.sp, fontWeight = FontWeight.Black)
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(category.name, color = WebText, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("Tus productos recurrentes", color = WebMuted, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+            Text(category.name, color = OnLime, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Tus productos recurrentes", color = OnLimeMuted, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
         }
     }
 }
@@ -2380,7 +2531,7 @@ private fun CatalogCategoryCard(category: ProductCategoryUiModel, modifier: Modi
         CategoryIllustration(category)
         Text(
             text = category.name,
-            color = WebText,
+            color = OnLime,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
@@ -2497,8 +2648,13 @@ private fun ProfilePanel(
     onBiometricAccessChange: ((Boolean) -> Unit)? = null,
     uiScalePreference: UiScalePreference = UiScalePreference.Default,
     onUiScalePreferenceChange: (UiScalePreference) -> Unit = {},
+    bottomNavigationStylePreference: BottomNavigationStylePreference = BottomNavigationStylePreference.Default,
+    onBottomNavigationStylePreferenceChange: (BottomNavigationStylePreference) -> Unit = {},
+    themePreference: ThemePreference = ThemePreference.Default,
+    onThemePreferenceChange: (ThemePreference) -> Unit = {},
 ) {
-    var showSettings by remember { mutableStateOf(false) }
+    var personalDataExpanded by remember { mutableStateOf(false) }
+    var settingsExpanded by remember { mutableStateOf(false) }
     var showLogoutConfirm by remember { mutableStateOf(false) }
     var editingField by remember { mutableStateOf<ProfileField?>(null) }
     var changingPassword by remember { mutableStateOf(false) }
@@ -2537,12 +2693,18 @@ private fun ProfilePanel(
             }
         }
 
-        Card(
-            colors = CardDefaults.cardColors(containerColor = WebSurface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-            shape = RoundedCornerShape(18.dp),
+        ProfileExpandableSection(
+            title = "Datos personales",
+            expanded = personalDataExpanded,
+            onToggle = { personalDataExpanded = !personalDataExpanded },
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(WebSubtleSurface)
+                    .border(1.dp, WebBorder, RoundedCornerShape(16.dp)),
+            ) {
                 ProfileRow("Email", profile?.email.orEmpty(), readOnly = true)
                 ProfileRow("Nombre", profile?.firstName.orEmpty(), emptyText = "Sin nombre") { editingField = ProfileField.FirstName }
                 ProfileRow("Apellidos", profile?.lastName.orEmpty(), emptyText = "Sin apellidos") { editingField = ProfileField.LastName }
@@ -2551,15 +2713,23 @@ private fun ProfilePanel(
             }
         }
 
-        Button(
-            onClick = { showSettings = true },
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            shape = MaterialTheme.shapes.medium,
-            colors = ButtonDefaults.buttonColors(containerColor = WebSurface, contentColor = WebText),
+        ProfileExpandableSection(
+            title = "Ajustes",
+            expanded = settingsExpanded,
+            onToggle = { settingsExpanded = !settingsExpanded },
         ) {
-            Icon(Icons.Outlined.Settings, contentDescription = null, modifier = Modifier.size(20.dp), tint = WebPrimary)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Ajustes", fontWeight = FontWeight.Bold)
+            SettingsInlineContent(
+                biometricAccessEnabled = biometricAccessEnabled,
+                biometricAccessMessage = biometricAccessMessage,
+                onBiometricAccessChange = onBiometricAccessChange,
+                uiScalePreference = uiScalePreference,
+                onUiScalePreferenceChange = onUiScalePreferenceChange,
+                bottomNavigationStylePreference = bottomNavigationStylePreference,
+                onBottomNavigationStylePreferenceChange = onBottomNavigationStylePreferenceChange,
+                themePreference = themePreference,
+                onThemePreferenceChange = onThemePreferenceChange,
+                onDeleteAccount = { deletingAccount = true },
+            )
         }
         Button(
             onClick = { showLogoutConfirm = true },
@@ -2571,6 +2741,7 @@ private fun ProfilePanel(
             Spacer(modifier = Modifier.width(8.dp))
             Text("Cerrar sesi\u00f3n", fontWeight = FontWeight.Bold)
         }
+        Spacer(modifier = Modifier.height(bottomNavigationScrollReserve()))
     }
 
     editingField?.let { field ->
@@ -2597,15 +2768,6 @@ private fun ProfilePanel(
             }
         },
     )
-    if (showSettings) SettingsDialog(
-        onDismiss = { showSettings = false },
-        biometricAccessEnabled = biometricAccessEnabled,
-        biometricAccessMessage = biometricAccessMessage,
-        onBiometricAccessChange = onBiometricAccessChange,
-        uiScalePreference = uiScalePreference,
-        onUiScalePreferenceChange = onUiScalePreferenceChange,
-        onDeleteAccount = { deletingAccount = true },
-    )
     if (deletingAccount) DeleteAccountDialog(
         onDismiss = { deletingAccount = false },
         onDelete = { currentPassword, done ->
@@ -2614,7 +2776,6 @@ private fun ProfilePanel(
                 done(deleted)
                 if (deleted) {
                     deletingAccount = false
-                    showSettings = false
                     onLogout()
                 }
             }
@@ -2668,7 +2829,7 @@ private fun ProfileRow(
         if (readOnly) Text("Solo lectura", color = WebMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         else Button(
             onClick = { onClick?.invoke() },
-            colors = ButtonDefaults.buttonColors(containerColor = WebLime, contentColor = WebText),
+            colors = ButtonDefaults.buttonColors(containerColor = WebLime, contentColor = OnLime),
             shape = RoundedCornerShape(10.dp),
         ) {
             Text(actionText, fontWeight = FontWeight.Bold)
@@ -2736,7 +2897,7 @@ private fun ProfileFieldDialog(
                         if (!ok) error = "No se pudo guardar."
                     }
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = WebLime, contentColor = WebText),
+                colors = ButtonDefaults.buttonColors(containerColor = WebLime, contentColor = OnLime),
                 shape = RoundedCornerShape(8.dp),
             ) { Text(if (saving) "Guardando..." else "Guardar", fontWeight = FontWeight.Bold) }
         },
@@ -2783,13 +2944,242 @@ private fun PasswordChangeDialog(
                         if (!ok) error = "No se pudo cambiar la contrase\u00f1a."
                     }
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = WebLime, contentColor = WebText),
+                colors = ButtonDefaults.buttonColors(containerColor = WebLime, contentColor = OnLime),
                 shape = RoundedCornerShape(8.dp),
             ) { Text(if (saving) "Guardando..." else "Cambiar", fontWeight = FontWeight.Bold) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
     )
 }
+
+@Composable
+private fun ProfileExpandableSection(
+    title: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = WebSurface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        shape = RoundedCornerShape(18.dp),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggle)
+                    .padding(horizontal = 16.dp, vertical = 15.dp),
+            ) {
+                Text(
+                    title,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.Center),
+                    color = WebText,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center,
+                )
+                Icon(
+                    imageVector = if (expanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = WebPrimary,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .align(Alignment.CenterEnd),
+                )
+            }
+            AnimatedVisibility(visible = expanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, WebBorder.copy(alpha = 0.65f), RoundedCornerShape(bottomStart = 18.dp, bottomEnd = 18.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    content()
+                }
+            }
+        }
+    }
+}
+
+private data class SelectorOption<T>(
+    val value: T,
+    val label: String,
+)
+
+@Composable
+private fun <T> SegmentedPreferenceSelector(
+    options: List<SelectorOption<T>>,
+    selected: T,
+    onSelected: (T) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(46.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .border(1.dp, WebBorder, RoundedCornerShape(14.dp))
+            .background(WebSubtleSurface)
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        options.forEach { option ->
+            val active = option.value == selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(if (active) WebLime else Color.Transparent)
+                    .clickable { onSelected(option.value) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    option.label,
+                    color = if (active) OnLime else WebText,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsSubsection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(WebSubtleSurface)
+            .border(1.dp, WebBorder, RoundedCornerShape(16.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(title, color = WebPrimary, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleSmall)
+        content()
+    }
+}
+
+@Composable
+private fun SettingsInlineContent(
+    biometricAccessEnabled: Boolean = false,
+    biometricAccessMessage: String? = null,
+    onBiometricAccessChange: ((Boolean) -> Unit)? = null,
+    uiScalePreference: UiScalePreference = UiScalePreference.Default,
+    onUiScalePreferenceChange: (UiScalePreference) -> Unit = {},
+    bottomNavigationStylePreference: BottomNavigationStylePreference = BottomNavigationStylePreference.Default,
+    onBottomNavigationStylePreferenceChange: (BottomNavigationStylePreference) -> Unit = {},
+    themePreference: ThemePreference = ThemePreference.Default,
+    onThemePreferenceChange: (ThemePreference) -> Unit = {},
+    onDeleteAccount: () -> Unit = {},
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SettingsSubsection("Tema") {
+            SegmentedPreferenceSelector(
+                options = listOf(
+                    SelectorOption(ThemePreference.Light, "Claro"),
+                    SelectorOption(ThemePreference.Dark, "Oscuro"),
+                    SelectorOption(ThemePreference.System, "Sistema"),
+                ),
+                selected = themePreference,
+                onSelected = onThemePreferenceChange,
+            )
+        }
+
+        SettingsSubsection("Accesibilidad visual") {
+            Text("Tama\u00f1o de la interfaz", color = WebText, fontWeight = FontWeight.Bold)
+            SegmentedPreferenceSelector(
+                options = listOf(
+                    SelectorOption(UiScalePreference.Small, "Peque\u00f1o"),
+                    SelectorOption(UiScalePreference.Normal, "Normal"),
+                    SelectorOption(UiScalePreference.Large, "Grande"),
+                ),
+                selected = uiScalePreference,
+                onSelected = onUiScalePreferenceChange,
+            )
+            Button(
+                onClick = { onUiScalePreferenceChange(UiScalePreference.System) },
+                modifier = Modifier.fillMaxWidth().height(46.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (uiScalePreference == UiScalePreference.System) WebLime else WebSurface,
+                    contentColor = if (uiScalePreference == UiScalePreference.System) OnLime else WebText,
+                ),
+            ) {
+                Text("Sistema - Tama\u00f1o Android", fontWeight = FontWeight.Black)
+            }
+            Text("Men\u00fa inferior", color = WebText, fontWeight = FontWeight.Bold)
+            SegmentedPreferenceSelector(
+                options = listOf(
+                    SelectorOption(BottomNavigationStylePreference.Original, "Original"),
+                    SelectorOption(BottomNavigationStylePreference.NavBar, "NavBar"),
+                ),
+                selected = bottomNavigationStylePreference,
+                onSelected = onBottomNavigationStylePreferenceChange,
+            )
+        }
+
+        if (onBiometricAccessChange != null) {
+            SettingsSubsection("Seguridad") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Outlined.Lock,
+                        contentDescription = null,
+                        tint = WebPrimary,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text("Acceso con biometr\u00eda", color = WebText, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (biometricAccessEnabled) "Activado para este dispositivo" else "Desactivado",
+                            color = WebMuted,
+                            fontSize = 12.sp,
+                        )
+                    }
+                    Switch(
+                        checked = biometricAccessEnabled,
+                        onCheckedChange = onBiometricAccessChange,
+                    )
+                }
+                biometricAccessMessage?.let {
+                    Text(it, color = WebMuted, fontSize = 12.sp)
+                }
+            }
+        }
+
+        SettingsSubsection("Cuenta") {
+            Button(
+                onClick = onDeleteAccount,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = CheckedAccent, contentColor = Color.White),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Icon(Icons.Outlined.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Eliminar cuenta", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
 @Composable
 private fun SettingsDialog(
     onDismiss: () -> Unit,
@@ -2798,9 +3188,13 @@ private fun SettingsDialog(
     onBiometricAccessChange: ((Boolean) -> Unit)? = null,
     uiScalePreference: UiScalePreference = UiScalePreference.Default,
     onUiScalePreferenceChange: (UiScalePreference) -> Unit = {},
+    bottomNavigationStylePreference: BottomNavigationStylePreference = BottomNavigationStylePreference.Default,
+    onBottomNavigationStylePreferenceChange: (BottomNavigationStylePreference) -> Unit = {},
+    themePreference: ThemePreference = ThemePreference.Default,
+    onThemePreferenceChange: (ThemePreference) -> Unit = {},
     onDeleteAccount: () -> Unit = {},
 ) {
-    val limeButtonColors = ButtonDefaults.buttonColors(containerColor = WebLime, contentColor = WebText)
+    val limeButtonColors = ButtonDefaults.buttonColors(containerColor = WebLime, contentColor = OnLime)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -2815,17 +3209,32 @@ private fun SettingsDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 SectionTitle("Tema")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    Button(onClick = {}, enabled = false, modifier = Modifier.weight(1f)) { Text("Claro") }
-                    Button(onClick = {}, enabled = false, modifier = Modifier.weight(1f)) { Text("Oscuro") }
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    enumValues<ThemePreference>().forEach { option ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { onThemePreferenceChange(option) }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = themePreference == option,
+                                onClick = { onThemePreferenceChange(option) },
+                                colors = RadioButtonDefaults.colors(selectedColor = WebPrimary),
+                            )
+                            Text(option.label, color = WebText, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
                 }
-                Text("Selector de tema disponible próximamente.", color = WebMuted, fontSize = 12.sp)
 
                 Spacer(modifier = Modifier.height(4.dp))
                 SectionTitle("Accesibilidad visual")
                 Text("Tamaño de la interfaz", color = WebText, fontWeight = FontWeight.Bold)
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    UiScalePreference.entries.forEach { option ->
+                    enumValues<UiScalePreference>().forEach { option ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -2846,6 +3255,27 @@ private fun SettingsDialog(
                                     Text(it, color = WebMuted, fontSize = 12.sp)
                                 }
                             }
+                        }
+                    }
+                }
+                Text("Menú inferior", color = WebText, fontWeight = FontWeight.Bold)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    enumValues<BottomNavigationStylePreference>().forEach { option ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { onBottomNavigationStylePreferenceChange(option) }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = bottomNavigationStylePreference == option,
+                                onClick = { onBottomNavigationStylePreferenceChange(option) },
+                                colors = RadioButtonDefaults.colors(selectedColor = WebPrimary),
+                            )
+                            Text(option.label, color = WebText, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -2910,6 +3340,171 @@ private fun SettingsDialog(
             }
         },
     )
+}
+
+@Composable
+private fun NotchedDashboardNavigation(selected: DashboardTab, onSelect: (DashboardTab) -> Unit) {
+    val navItems = enumValues<DashboardTab>().toList()
+    val selectedIndex = navItems.indexOf(selected).coerceAtLeast(0)
+    val selectedContentDescription = selectedTabLabel(selected) + " seleccionado"
+    val colors = DashboardNavBarColors(
+        bubble = WebSurface,
+        bubbleIcon = WebPrimary,
+        active = Color.White,
+        inactive = Color.White.copy(alpha = 0.82f),
+        shadow = Color(0x33000000),
+    )
+    val barH = 64.dp
+    val bubbleSize = 58.dp
+    val overhang = bubbleSize / 2
+    val navPad = responsiveWidthDp(0.047f)
+    val hPad = 8.dp
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .height(barH + overhang + 14.dp)
+            .padding(start = navPad, end = navPad, bottom = 10.dp)
+            .semantics { contentDescription = "Menú inferior principal" },
+    ) {
+        val slot = (maxWidth - hPad * 2) / navItems.size
+        fun centerOf(index: Int): Dp = hPad + slot * (index + 0.5f)
+        val activeCenterX by animateFloatAsState(
+            targetValue = centerOf(selectedIndex).value,
+            animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
+            label = "notched-nav-active-x",
+        )
+        val activeCenterXDp = activeCenterX.dp
+
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(barH)
+                .align(Alignment.BottomCenter),
+        ) {
+            val path = notchedDashboardBarPath(size, activeCenterXDp.toPx())
+            drawDashboardNavShadow(path, colors.shadow)
+            drawPath(path, Brush.linearGradient(GroceryPrimaryGradient))
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(barH)
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = hPad),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            navItems.forEachIndexed { index, tab ->
+                val active = index == selectedIndex
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) { onSelect(tab) }
+                        .padding(bottom = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Bottom,
+                ) {
+                    if (!active) {
+                        Icon(
+                            imageVector = selectedTabIcon(tab),
+                            contentDescription = null,
+                            tint = colors.inactive,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                    Text(
+                        text = selectedTabLabel(tab),
+                        color = if (active) colors.active else colors.inactive,
+                        fontSize = 11.sp,
+                        lineHeight = 12.sp,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Clip,
+                        softWrap = false,
+                    )
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .offset(x = activeCenterXDp - bubbleSize / 2)
+                .size(bubbleSize)
+                .shadow(10.dp, CircleShape, clip = false)
+                .clip(CircleShape)
+                .background(colors.bubble)
+                .border(1.dp, Brush.linearGradient(GroceryPrimaryGradient), CircleShape)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) { onSelect(selected) }
+                .semantics { contentDescription = selectedContentDescription },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = selectedTabIcon(selected),
+                contentDescription = null,
+                tint = colors.bubbleIcon,
+                modifier = Modifier.size(25.dp),
+            )
+        }
+    }
+}
+
+private fun DrawScope.notchedDashboardBarPath(size: Size, centerX: Float): Path {
+    val radius = 22.dp.toPx()
+    val cutRadius = 35.dp.toPx()
+    val fillet = 20.dp.toPx()
+    val bar = Path().apply {
+        addRoundRect(RoundRect(Rect(0f, 0f, size.width, size.height), CornerRadius(radius, radius)))
+    }
+    val tangentOffset = sqrt(cutRadius * cutRadius + 2f * cutRadius * fillet)
+    val tangentRatio = cutRadius / (cutRadius + fillet)
+    val tangentX = tangentRatio * tangentOffset
+    val tangentY = tangentRatio * fillet
+    val sweep = Math.toDegrees(atan2((tangentY - fillet).toDouble(), (tangentOffset - tangentX).toDouble())).toFloat() + 90f
+
+    val circle = Path().apply { addOval(Rect(Offset(centerX, 0f), cutRadius)) }
+    val left = Path().apply {
+        moveTo(centerX - tangentOffset, 0f)
+        arcTo(Rect(Offset(centerX - tangentOffset, fillet), fillet), -90f, sweep, false)
+        lineTo(centerX, tangentY)
+        lineTo(centerX, -fillet)
+        lineTo(centerX - tangentOffset, -fillet)
+        close()
+    }
+    val right = Path().apply {
+        moveTo(centerX + tangentOffset, 0f)
+        arcTo(Rect(Offset(centerX + tangentOffset, fillet), fillet), -90f, -sweep, false)
+        lineTo(centerX, tangentY)
+        lineTo(centerX, -fillet)
+        lineTo(centerX + tangentOffset, -fillet)
+        close()
+    }
+    val hole = Path().apply {
+        op(circle, left, PathOperation.Union)
+        op(this, right, PathOperation.Union)
+    }
+    return Path().apply { op(bar, hole, PathOperation.Difference) }
+}
+
+private fun DrawScope.drawDashboardNavShadow(path: Path, color: Color) {
+    drawIntoCanvas { canvas ->
+        val paint = Paint()
+        paint.asFrameworkPaint().apply {
+            isAntiAlias = true
+            this.color = android.graphics.Color.TRANSPARENT
+            setShadowLayer(9.dp.toPx(), 0f, 6.dp.toPx(), color.toArgb())
+        }
+        canvas.drawPath(path, paint)
+    }
 }
 
 @Composable
@@ -2978,7 +3573,7 @@ private fun webPrimaryButtonColors() = ButtonDefaults.buttonColors(
 @Composable
 private fun webLimeButtonColors() = ButtonDefaults.buttonColors(
     containerColor = WebLime,
-    contentColor = WebText,
+    contentColor = OnLime,
 )
 
 @Composable
@@ -2986,10 +3581,10 @@ private fun SummaryCard(title: String, value: String, detail: String) {
     Card(colors = CardDefaults.cardColors(containerColor = WebLime)) {
         Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
-                Text(title, style = MaterialTheme.typography.titleMedium, color = WebPrimary, fontWeight = FontWeight.Bold)
-                Text(detail, style = MaterialTheme.typography.bodySmall, color = WebMuted, fontWeight = FontWeight.SemiBold)
+                Text(title, style = MaterialTheme.typography.titleMedium, color = OnLimeMuted, fontWeight = FontWeight.Bold)
+                Text(detail, style = MaterialTheme.typography.bodySmall, color = OnLimeMuted, fontWeight = FontWeight.SemiBold)
             }
-            Text(value, style = MaterialTheme.typography.headlineMedium, color = WebText, fontWeight = FontWeight.Bold)
+            Text(value, style = MaterialTheme.typography.headlineMedium, color = OnLime, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -3044,8 +3639,8 @@ private fun PinnedListMetricCard(
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             Icon(Icons.Outlined.PushPin, contentDescription = null, tint = WebPrimary, modifier = Modifier.size(18.dp))
-            Text(list?.name ?: "Sin fijar", color = WebText, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(if (list == null) "Fija una lista" else householdName.ifBlank { "Hogar" }, color = WebMuted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(list?.name ?: "Sin fijar", color = if (list == null) WebText else OnLime, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(if (list == null) "Fija una lista" else householdName.ifBlank { "Hogar" }, color = if (list == null) WebMuted else OnLimeMuted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -3067,8 +3662,8 @@ private fun ContinueListCard(
                 Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PinButton(pinned = pinned, onClick = onTogglePinned)
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(list.name, style = MaterialTheme.typography.titleLarge, color = WebText, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(householdName.ifBlank { "Hogar" }, style = MaterialTheme.typography.bodyMedium, color = WebMuted, fontWeight = FontWeight.SemiBold)
+                        Text(list.name, style = MaterialTheme.typography.titleLarge, color = OnLime, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(householdName.ifBlank { "Hogar" }, style = MaterialTheme.typography.bodyMedium, color = OnLimeMuted, fontWeight = FontWeight.SemiBold)
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3110,8 +3705,8 @@ private fun HouseholdCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(household.name, style = MaterialTheme.typography.titleMedium, color = WebText, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("$listCount ${if (listCount == 1) "lista activa" else "listas activas"}", style = MaterialTheme.typography.bodySmall, color = WebMuted, fontWeight = FontWeight.SemiBold)
+                    Text(household.name, style = MaterialTheme.typography.titleMedium, color = if (selected) OnLime else WebText, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("$listCount ${if (listCount == 1) "lista activa" else "listas activas"}", style = MaterialTheme.typography.bodySmall, color = if (selected) OnLimeMuted else WebMuted, fontWeight = FontWeight.SemiBold)
                 }
                 Button(
                     onClick = if (selected) onOpenLists else onOpen,
@@ -3122,7 +3717,7 @@ private fun HouseholdCard(
                     Icon(
                         imageVector = if (expanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
                         contentDescription = if (expanded) "Compactar hogar" else "Desplegar hogar",
-                        tint = WebPrimary,
+                        tint = if (selected) OnLimeMuted else WebPrimary,
                     )
                 }
             }
@@ -3255,11 +3850,11 @@ private fun ShoppingListSummaryCard(
                 Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PinButton(pinned = pinned, onClick = onTogglePinned)
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(list.name, style = MaterialTheme.typography.titleMedium, color = WebText, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(householdName.ifBlank { "Hogar" }, style = MaterialTheme.typography.bodySmall, color = WebMuted, fontWeight = FontWeight.SemiBold)
+                        Text(list.name, style = MaterialTheme.typography.titleMedium, color = if (selected) OnLime else WebText, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(householdName.ifBlank { "Hogar" }, style = MaterialTheme.typography.bodySmall, color = if (selected) OnLimeMuted else WebMuted, fontWeight = FontWeight.SemiBold)
                     }
                 }
-                Text(if (selected) "Activa" else "", color = WebPrimary, fontWeight = FontWeight.Bold)
+                Text(if (selected) "Activa" else "", color = if (selected) OnLimeMuted else WebPrimary, fontWeight = FontWeight.Bold)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 WideIconActionButton(Icons.Outlined.Add, "Añadir", Modifier.weight(1f), onEdit)
@@ -3294,7 +3889,7 @@ private fun ShoppingListGridCard(
             Text(
                 text = list.name,
                 style = MaterialTheme.typography.titleMedium,
-                color = WebText,
+                color = if (pinned) OnLime else WebText,
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -3801,6 +4396,9 @@ fun ShoppingListScreen(
                 }
             }
         }
+        item {
+            Spacer(modifier = Modifier.height(bottomNavigationScrollReserve()))
+        }
     }
     if (createProductDialogOpen) {
         CatalogMutationDialog(
@@ -3989,7 +4587,7 @@ private fun ShoppingListWebHeader(
                 }
                 SquareHeaderButton(
                     contentDescription = if (voiceSearchListening) "Escuchando" else "Buscar producto por voz",
-                    background = if (voiceSearchListening) WebPrimary else Color(0xFFF2F8F4),
+                    background = if (voiceSearchListening) WebPrimary else WebSubtleSurface,
                     contentColor = if (voiceSearchListening) Color.White else WebPrimary,
                     enabled = voiceSearchAvailable && !isOffline,
                     size = ProductEntryControlHeight,
@@ -4010,8 +4608,8 @@ private fun ViewModeSwitch(cardMode: Boolean, onCardModeChange: (Boolean) -> Uni
             .width(88.dp)
             .height(42.dp)
             .clip(MaterialTheme.shapes.medium)
-            .background(Color(0xFFF2F8F4))
-            .border(1.dp, Color(0xFFCFE4D7), MaterialTheme.shapes.medium)
+            .background(WebSubtleSurface)
+            .border(1.dp, WebBorder, MaterialTheme.shapes.medium)
             .clickable { onCardModeChange(!cardMode) },
     ) {
         val thumbWidth = maxWidth / 2
@@ -4272,10 +4870,10 @@ private fun FavoriteButton(favorite: Boolean, onClick: () -> Unit) {
         modifier = Modifier
             .size(38.dp)
             .clip(MaterialTheme.shapes.medium)
-            .background(if (favorite) WebLime else Color(0xFFF2F8F4))
+            .background(if (favorite) WebLime else WebSubtleSurface)
             .border(
                 width = 1.dp,
-                color = if (favorite) PendingAccent else Color(0xFFCFE4D7),
+                color = if (favorite) OnLimeMuted else WebBorder,
                 shape = MaterialTheme.shapes.medium,
             )
             .clickable(onClick = onClick),
@@ -4283,7 +4881,7 @@ private fun FavoriteButton(favorite: Boolean, onClick: () -> Unit) {
     ) {
         Text(
             text = if (favorite) "\u2605" else "\u2606",
-            color = if (favorite) Color(0xFFC58400) else WebPrimary,
+            color = if (favorite) OnLimeMuted else WebPrimary,
             fontWeight = FontWeight.Black,
             fontSize = 21.sp,
             lineHeight = 21.sp,
@@ -4297,10 +4895,10 @@ private fun CompactFavoriteButton(favorite: Boolean, onClick: () -> Unit) {
         modifier = Modifier
             .size(30.dp)
             .clip(MaterialTheme.shapes.small)
-            .background(if (favorite) WebLime else Color(0xFFF2F8F4))
+            .background(if (favorite) WebLime else WebSubtleSurface)
             .border(
                 width = 1.dp,
-                color = if (favorite) PendingAccent else Color(0xFFCFE4D7),
+                color = if (favorite) OnLimeMuted else WebBorder,
                 shape = MaterialTheme.shapes.small,
             )
             .clickable(onClick = onClick),
@@ -4308,7 +4906,7 @@ private fun CompactFavoriteButton(favorite: Boolean, onClick: () -> Unit) {
     ) {
         Text(
             text = if (favorite) "\u2605" else "\u2606",
-            color = if (favorite) Color(0xFFC58400) else WebPrimary,
+            color = if (favorite) OnLimeMuted else WebPrimary,
             fontWeight = FontWeight.Black,
             fontSize = 16.sp,
             lineHeight = 16.sp,
@@ -4327,7 +4925,7 @@ private fun QuickCreateProductButton(onClick: () -> Unit, enabled: Boolean = tru
             .background(WebLime.copy(alpha = 0.95f))
             .semantics { contentDescription = "Crear producto" },
     ) {
-        Icon(Icons.Outlined.Add, contentDescription = null, tint = WebPrimary, modifier = Modifier.size(24.dp))
+        Icon(Icons.Outlined.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
     }
 }
 
@@ -4341,8 +4939,8 @@ private fun CatalogMiniActionButton(
         modifier = Modifier
             .size(30.dp)
             .clip(MaterialTheme.shapes.small)
-            .background(Color(0xFFF2F8F4))
-            .border(1.dp, Color(0xFFCFE4D7), MaterialTheme.shapes.small)
+            .background(WebSubtleSurface)
+            .border(1.dp, WebBorder, MaterialTheme.shapes.small)
             .clickable(onClick = onClick)
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center,
@@ -4361,7 +4959,7 @@ private fun ProductResultCard(
     onSelect: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val borderColor = if (recentlyAdded) WebPrimary else Color(0xFFCFE4D7)
+    val borderColor = if (recentlyAdded) WebPrimary else WebBorder
     Card(
         modifier = modifier
             .defaultMinSize(minHeight = 210.dp)
@@ -4374,7 +4972,7 @@ private fun ProductResultCard(
         ) {
             Text(
                 text = suggestion.name,
-                color = WebText,
+                color = if (recentlyAdded) OnLime else WebText,
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -4383,7 +4981,7 @@ private fun ProductResultCard(
             )
             Text(
                 suggestion.metaLabel(),
-                color = WebMuted,
+                color = if (recentlyAdded) OnLimeMuted else WebMuted,
                 fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -4687,7 +5285,7 @@ private fun ShoppingItem(
                 SquareHeaderButton(
                     contentDescription = "Editar ${item.name}",
                     background = WebLime,
-                    contentColor = WebText,
+                    contentColor = OnLime,
                     onClick = { editing = true },
                 ) {
                     Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(18.dp))

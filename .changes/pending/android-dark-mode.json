@@ -1,0 +1,11 @@
+{
+  "components": ["android"],
+  "type": "minor",
+  "category": "added",
+  "summary": "Añade modo oscuro configurable en Android.",
+  "details": [
+    "Permite elegir tema Claro, Oscuro o Sistema desde Ajustes.",
+    "Integra Ajustes y Datos personales como secciones desplegables dentro de Perfil.",
+    "Mejora el contraste de textos e iconos sobre botones, tarjetas y controles de color lima o verde suave."
+  ]
+}
