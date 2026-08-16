@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type JSX, type PointerEvent } from 'react';
 
 import { ProductCatalogCard, ProductCatalogListItem, productIcon } from '../catalog/ProductCatalogCards';
-import { createProductCatalogItem, searchProductCatalog, setProductFavorite, type ProductCatalogInput, type ProductCatalogItem } from '../catalog/product-catalog-api';
+import { createProductCatalogItem, fetchProductCategories, searchProductCatalog, setProductFavorite, type ProductCatalogInput, type ProductCatalogItem, type ProductCategory } from '../catalog/product-catalog-api';
 import type { ShoppingItem } from './model';
 
 type ProductInput = { name: string; quantity: number; unit: string | null };
@@ -28,6 +28,21 @@ type ShoppingListScreenProps = {
 };
 
 const pickerModeStorageKey = 'nfcompra.product-picker-mode';
+const quickProductIconOptions = [
+  { value: 'cart', label: 'General' },
+  { value: 'milk', label: 'Lacteos' },
+  { value: 'bread', label: 'Panaderia' },
+  { value: 'fish', label: 'Pescado' },
+  { value: 'meat', label: 'Carne' },
+  { value: 'fruit', label: 'Fruta' },
+  { value: 'vegetable', label: 'Verdura' },
+  { value: 'water', label: 'Agua' },
+  { value: 'drink', label: 'Bebidas' },
+  { value: 'frozen', label: 'Congelados' },
+  { value: 'hygiene', label: 'Higiene' },
+  { value: 'paper', label: 'Papel' },
+  { value: 'pet', label: 'Mascotas' },
+] as const;
 
 export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameList, onClearChecked, onDeleteList, mobileSimpleActions = false, onToggle, onUpdate, onDelete }: ShoppingListScreenProps): JSX.Element {
   const pendingItems = items.filter((item) => !item.isChecked);
@@ -47,6 +62,7 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
   const [quickCreateInitialName, setQuickCreateInitialName] = useState('');
   const [quickCreateError, setQuickCreateError] = useState<string | null>(null);
   const [isCreatingProduct, setIsCreatingProduct] = useState(false);
+  const [quickCreateCategories, setQuickCreateCategories] = useState<ProductCategory[]>([]);
   const productSearchRef = useRef<HTMLDivElement>(null);
   const recentlyAddedTimeoutRef = useRef<number | null>(null);
 
@@ -125,6 +141,9 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
     setQuickCreateInitialName(name.trim());
     setQuickCreateError(null);
     setQuickCreateOpen(true);
+    void fetchProductCategories()
+      .then((categories) => setQuickCreateCategories(categories.filter((category) => !category.isFavorite)))
+      .catch(() => setQuickCreateCategories([]));
   }
 
   async function createQuickProduct(input: ProductCatalogInput): Promise<void> {
@@ -231,6 +250,7 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
           <h1>{title}</h1>
           {onRenameList ? <button type="button" className="list-action-button" aria-label={`Cambiar nombre de ${title}`} disabled={isOffline} onClick={() => setIsRenamingList(true)}>✎</button> : null}
         </div>}
+        {onAdd && mobileSimpleActions ? <button type="button" className="product-create-button product-create-button--header" aria-label="Crear producto" disabled={isOffline} onClick={openQuickCreate}>+</button> : null}
         {onAdd ? <ProductPickerToggle pickerMode={pickerMode} onChange={changePickerMode} /> : null}
       </div>
       {onAdd ? <>
@@ -241,13 +261,13 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
               {pickerMode === 'list' && isProductSearchOpen && suggestions.length ? <div className="product-suggestions" role="listbox" aria-label="Sugerencias de productos" onScroll={blurProductSearch}>{suggestions.map((suggestion) => <ProductCatalogListItem key={suggestion.id} product={suggestion} onSelect={selectSuggestion} onFavoriteChange={(product, favorite) => void changeFavorite(product, favorite)} />)}</div> : null}
             </div>
             <ManualQuantityStepper quantity={quantity} disabled={isOffline} onChange={updateManualQuantity} />
-            <button type="button" className="product-create-button" aria-label="Crear producto en catalogo" disabled={isOffline || !name.trim()} onClick={openQuickCreate}>Crear producto</button>
+            {!mobileSimpleActions ? <button type="button" className="product-create-button product-create-button--inline" aria-label="Crear producto" disabled={isOffline} onClick={openQuickCreate}>+</button> : null}
             <button type="submit" disabled={isOffline}>Añadir</button>
           </form>
           {pickerMode === 'cards' && isProductSearchOpen && suggestions.length ? <ProductCardResults suggestions={suggestions} quantities={cardQuantities} recentlyAddedId={recentlyAddedId} onQuantityChange={updateCardQuantity} onSelect={addSuggestionToWaitlist} onFavoriteChange={(product, favorite) => void changeFavorite(product, favorite)} onScroll={blurProductSearch} /> : null}
           {pickerMode === 'cards' && waitlist.length ? <PendingProductWaitlist products={waitlist} onRemove={removeFromWaitlist} onCommit={addWaitlist} /> : null}
         </div>
-        {quickCreateOpen ? <QuickProductCreateDialog initialName={quickCreateInitialName} error={quickCreateError} isSaving={isCreatingProduct} onSubmit={(input) => void createQuickProduct(input)} onClose={() => { if (!isCreatingProduct) setQuickCreateOpen(false); }} /> : null}
+        {quickCreateOpen ? <QuickProductCreateDialog initialName={quickCreateInitialName} categories={quickCreateCategories} error={quickCreateError} isSaving={isCreatingProduct} onSubmit={(input) => void createQuickProduct(input)} onClose={() => { if (!isCreatingProduct) setQuickCreateOpen(false); }} /> : null}
       </> : null}
     </header>
     {isOffline ? <p className="offline-notice" role="status">Sin conexión</p> : null}
@@ -256,18 +276,24 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
   </main>;
 }
 
-function QuickProductCreateDialog({ initialName, error, isSaving, onSubmit, onClose }: { initialName: string; error: string | null; isSaving: boolean; onSubmit(input: ProductCatalogInput): void; onClose(): void }): JSX.Element {
+function QuickProductCreateDialog({ initialName, categories, error, isSaving, onSubmit, onClose }: { initialName: string; categories: ProductCategory[]; error: string | null; isSaving: boolean; onSubmit(input: ProductCatalogInput): void; onClose(): void }): JSX.Element {
   const [productName, setProductName] = useState(initialName);
+  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? '');
+  const [iconKey, setIconKey] = useState('cart');
   const [brand, setBrand] = useState('');
   const [packageSize, setPackageSize] = useState('');
+
+  useEffect(() => {
+    setCategoryId((current) => current || categories[0]?.id || '');
+  }, [categories]);
 
   function submit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     if (!productName.trim()) return;
     onSubmit({
       name: productName.trim(),
-      categoryId: null,
-      iconKey: 'shopping-basket',
+      categoryId: categoryId || null,
+      iconKey,
       brand: brand.trim() || null,
       packageSize: packageSize.trim() || null,
     });
@@ -281,8 +307,18 @@ function QuickProductCreateDialog({ initialName, error, isSaving, onSubmit, onCl
       </header>
       <div className="catalog-entry-fields">
         <label>Nombre del producto<input value={productName} onChange={(event) => setProductName(event.target.value)} required maxLength={120} autoFocus /></label>
-        <label>Marca del producto<input value={brand} onChange={(event) => setBrand(event.target.value)} maxLength={80} placeholder="Opcional" /></label>
-        <label>Tama&ntilde;o del producto<input value={packageSize} onChange={(event) => setPackageSize(event.target.value)} maxLength={60} placeholder="Opcional" /></label>
+        <label>Categoria<span className="catalog-select-field catalog-select-field--category">
+          <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
+            {categories.length ? categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>) : <option value="">Sin categoria</option>}
+          </select>
+        </span></label>
+        <label>Icono<span className="catalog-select-field">
+          <select value={iconKey} onChange={(event) => setIconKey(event.target.value)}>
+            {quickProductIconOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </span></label>
+        <label>Marca<input value={brand} onChange={(event) => setBrand(event.target.value)} maxLength={80} placeholder="Opcional" /></label>
+        <label>Tama&ntilde;o<input value={packageSize} onChange={(event) => setPackageSize(event.target.value)} maxLength={60} placeholder="Opcional" /></label>
       </div>
       {error ? <p className="quick-product-dialog__error" role="alert">{error}</p> : null}
       <div className="catalog-entry-dialog__actions">

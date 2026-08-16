@@ -42,13 +42,17 @@ it('creates a catalog product from compact list mode and keeps it ready to add',
 
   render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} />);
   fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'Agua mineral' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Crear producto en catalogo' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
 
   expect(screen.getByRole('dialog', { name: 'Crear producto' })).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('Tama\u00f1o del producto'), { target: { value: '1 L' } });
+  await waitFor(() => expect(screen.getByLabelText('Categoria')).toHaveValue('cat-water'));
+  expect(screen.getByLabelText('Icono')).toHaveValue('cart');
+  fireEvent.change(screen.getByLabelText('Tama\u00f1o'), { target: { value: '1 L' } });
   fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
 
   await waitFor(() => expect(fetchMock.mock.calls.some(([input, init]) => String(input).endsWith('/product-catalog') && init?.method === 'POST')).toBe(true));
+  const productRequest = fetchMock.mock.calls.find(([input, init]) => String(input).endsWith('/product-catalog') && init?.method === 'POST')?.[1] as RequestInit;
+  expect(JSON.parse(String(productRequest.body))).toMatchObject({ categoryId: 'cat-water', iconKey: 'cart', packageSize: '1 L' });
   expect(screen.getByLabelText('Producto')).toHaveValue('Agua mineral');
 
   fireEvent.click(screen.getByRole('button', { name: 'A\u00f1adir' }));
@@ -63,7 +67,7 @@ it('creates a catalog product from card mode and queues it in the pending tray',
   render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} />);
   fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'Agua mineral' } });
   fireEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad del producto' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Crear producto en catalogo' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
   fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
 
   const pendingTray = await screen.findByLabelText('Productos pendientes de a\u00f1adir');
@@ -72,6 +76,19 @@ it('creates a catalog product from card mode and queues it in the pending tray',
 
   fireEvent.click(screen.getByRole('button', { name: 'A\u00f1adir 1 producto' }));
   await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Agua mineral', quantity: 2, unit: null }));
+});
+
+it('places the mobile quick product button in the shopping list header', async () => {
+  stubCatalogCreate();
+
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={vi.fn()} onClearChecked={vi.fn()} mobileSimpleActions />);
+
+  const createButton = screen.getByRole('button', { name: 'Crear producto' });
+  expect(createButton).toHaveClass('product-create-button--header');
+  expect(createButton).toHaveTextContent('+');
+  fireEvent.click(createButton);
+
+  expect(screen.getByRole('dialog', { name: 'Crear producto' })).toBeInTheDocument();
 });
 
 it('shows list suggestions with the favorite action integrated before the product text', async () => {
@@ -264,15 +281,31 @@ function stubCatalogCreate(): ReturnType<typeof vi.fn> {
         products: [],
       }));
     }
+    if (url.endsWith('/product-categories')) {
+      return Promise.resolve(Response.json({
+        categories: [{
+          id: 'cat-water',
+          name: 'Bebidas',
+          normalizedName: 'bebidas',
+          parentId: null,
+          iconKey: 'drink',
+          source: 'user',
+          sourceCategoryId: null,
+          createdAt: '',
+          updatedAt: '',
+          isFavorite: false,
+        }],
+      }));
+    }
     if (url.endsWith('/product-catalog') && init?.method === 'POST') {
       return Promise.resolve(Response.json({
         product: {
           id: 'prod-water',
           name: 'Agua mineral',
           normalizedName: 'agua mineral',
-          categoryId: null,
-          categoryName: null,
-          iconKey: 'shopping-basket',
+          categoryId: 'cat-water',
+          categoryName: 'Bebidas',
+          iconKey: 'cart',
           brand: null,
           packageSize: '1 L',
           source: 'user',
