@@ -7,6 +7,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,6 +52,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,6 +68,15 @@ private data class SharingColors(
     val text: Color,
     val muted: Color,
     val lime: Color,
+    val primaryButton: Color,
+    val primaryButtonContent: Color,
+    val softDangerSurface: Color,
+    val softDangerContent: Color,
+    val neutralSurface: Color,
+    val neutralContent: Color,
+    val readSurface: Color,
+    val unreadSurface: Color,
+    val timestamp: Color,
 )
 
 private val LightSharingColors = SharingColors(
@@ -74,6 +85,15 @@ private val LightSharingColors = SharingColors(
     text = Color(0xFF10271E),
     muted = Color(0xFF527062),
     lime = Color(0xFFDCFF72),
+    primaryButton = Color(0xFF1C7144),
+    primaryButtonContent = Color.White,
+    softDangerSurface = Color(0xFFFEF2F2),
+    softDangerContent = Color(0xFFDC2626),
+    neutralSurface = Color(0xFFF2F3F2),
+    neutralContent = Color(0xFF10271E),
+    readSurface = Color(0xFFF8FCF9),
+    unreadSurface = Color(0xFFF0FFF4),
+    timestamp = Color(0xFF9CA3AF),
 )
 
 private val DarkSharingColors = SharingColors(
@@ -82,6 +102,15 @@ private val DarkSharingColors = SharingColors(
     text = Color(0xFFEAF7EE),
     muted = Color(0xFFA6BDAF),
     lime = Color(0xFFC8F85A),
+    primaryButton = Color(0xFF89E5AE),
+    primaryButtonContent = Color(0xFF10271E),
+    softDangerSurface = Color(0xFF3B2120),
+    softDangerContent = Color(0xFFFF8A76),
+    neutralSurface = Color(0xFF24382C),
+    neutralContent = Color(0xFFEAF7EE),
+    readSurface = Color(0xFF183426),
+    unreadSurface = Color(0xFF1E3B2B),
+    timestamp = Color(0xFF7A8F82),
 )
 
 private val LocalSharingColors = staticCompositionLocalOf { LightSharingColors }
@@ -90,6 +119,15 @@ private val SharePrimary: Color @Composable get() = LocalSharingColors.current.p
 private val ShareText: Color @Composable get() = LocalSharingColors.current.text
 private val ShareMuted: Color @Composable get() = LocalSharingColors.current.muted
 private val ShareLime: Color @Composable get() = LocalSharingColors.current.lime
+private val SharePrimaryButton: Color @Composable get() = LocalSharingColors.current.primaryButton
+private val SharePrimaryButtonContent: Color @Composable get() = LocalSharingColors.current.primaryButtonContent
+private val ShareSoftDangerSurface: Color @Composable get() = LocalSharingColors.current.softDangerSurface
+private val ShareSoftDangerContent: Color @Composable get() = LocalSharingColors.current.softDangerContent
+private val ShareNeutralSurface: Color @Composable get() = LocalSharingColors.current.neutralSurface
+private val ShareNeutralContent: Color @Composable get() = LocalSharingColors.current.neutralContent
+private val ShareReadSurface: Color @Composable get() = LocalSharingColors.current.readSurface
+private val ShareUnreadSurface: Color @Composable get() = LocalSharingColors.current.unreadSurface
+private val ShareTimestamp: Color @Composable get() = LocalSharingColors.current.timestamp
 
 @Composable
 fun SharingRoute(
@@ -368,156 +406,166 @@ fun NotificationPopup(
     var confirmDeleteAll by remember { mutableStateOf(false) }
     var expandedId by remember { mutableStateOf<String?>(null) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.5f))
-            .clickable(onClick = onDismiss),
-        contentAlignment = Alignment.Center,
+    CompositionLocalProvider(
+        LocalSharingColors provides if (MaterialTheme.colorScheme.background.luminance() < 0.5f) DarkSharingColors else LightSharingColors,
     ) {
-        Card(
+        Box(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .clickable(onClick = {}, indication = null, interactionSource = remember { MutableInteractionSource() }),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center,
         ) {
-            Column(
+            Card(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
+                    .fillMaxWidth(0.92f)
+                    .clickable(onClick = {}, indication = null, interactionSource = remember { MutableInteractionSource() }),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = ShareCard),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
                 ) {
-                    Text("Notificaciones", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color(0xFF1C7144))
-                    TextButton(onClick = onDismiss) { Text("Cerrar") }
-                }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Notificaciones", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = SharePrimary)
+                        TextButton(onClick = onDismiss) { Text("Cerrar") }
+                    }
 
-                when (state) {
-                    NotificationUiState.Loading -> Text("Cargando notificaciones...", modifier = Modifier.padding(vertical = 24.dp))
-                    is NotificationUiState.Error -> Text(state.message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 24.dp))
-                    is NotificationUiState.Ready -> {
-                        val ready = state
-                        if (ready.notifications.isEmpty()) {
-                            Text("No hay notificaciones", modifier = Modifier.padding(vertical = 24.dp), color = Color(0xFF527062))
-                        } else {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f, fill = false)
-                                    .padding(vertical = 8.dp)
-                                    .verticalScroll(rememberScrollState()),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                ready.notifications.forEach { notification ->
-                                    val isExpanded = expandedId == notification.id
-                                    val bgColor = if (notification.isRead) Color(0xFFF8FCF9) else Color(0xFFF0FFF4)
-                                    Card(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable { expandedId = if (isExpanded) null else notification.id },
-                                        colors = CardDefaults.cardColors(containerColor = bgColor),
-                                        shape = RoundedCornerShape(10.dp),
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.fillMaxWidth().padding(10.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                    when (state) {
+                        NotificationUiState.Loading -> Text("Cargando notificaciones...", modifier = Modifier.padding(vertical = 24.dp))
+                        is NotificationUiState.Error -> Text(state.message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 24.dp))
+                        is NotificationUiState.Ready -> {
+                            val ready = state
+                            if (ready.notifications.isEmpty()) {
+                                Text("No hay notificaciones", modifier = Modifier.padding(vertical = 24.dp), color = ShareMuted)
+                            } else {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .weight(1f, fill = false)
+                                        .padding(vertical = 8.dp)
+                                        .verticalScroll(rememberScrollState()),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    ready.notifications.forEach { notification ->
+                                        val isExpanded = expandedId == notification.id
+                                        val bgColor = if (notification.isRead) ShareReadSurface else ShareUnreadSurface
+                                        Card(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { expandedId = if (isExpanded) null else notification.id },
+                                            colors = CardDefaults.cardColors(containerColor = bgColor),
+                                            shape = RoundedCornerShape(10.dp),
                                         ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                verticalAlignment = Alignment.CenterVertically,
+                                            Column(
+                                                modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                                verticalArrangement = Arrangement.spacedBy(4.dp),
                                             ) {
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        notification.title,
-                                                        fontWeight = if (notification.isRead) FontWeight.Medium else FontWeight.Bold,
-                                                        color = Color(0xFF10271E),
-                                                        fontSize = 14.sp,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis,
-                                                    )
-                                                    Row(
-                                                        modifier = Modifier.padding(top = 2.dp),
-                                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                    ) {
-                                                        notification.createdAt?.let { iso ->
-                                                            val parsed = runCatching { java.time.Instant.parse(iso).atZone(java.time.ZoneId.systemDefault()).toLocalDateTime() }.getOrNull()
-                                                            if (parsed != null) {
-                                                                val formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
-                                                                Text(parsed.format(formatter), color = Color(0xFF9CA3AF), fontSize = 10.sp)
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            notification.title,
+                                                            fontWeight = if (notification.isRead) FontWeight.Medium else FontWeight.Bold,
+                                                            color = ShareText,
+                                                            fontSize = 14.sp,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                        )
+                                                        Row(
+                                                            modifier = Modifier.padding(top = 2.dp),
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                        ) {
+                                                            notification.createdAt?.let { iso ->
+                                                                val parsed = runCatching { java.time.Instant.parse(iso).atZone(java.time.ZoneId.systemDefault()).toLocalDateTime() }.getOrNull()
+                                                                if (parsed != null) {
+                                                                    val formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+                                                                    Text(parsed.format(formatter), color = ShareTimestamp, fontSize = 10.sp)
+                                                                }
+                                                            }
+                                                            if (!notification.isRead) {
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .size(6.dp)
+                                                                        .clip(CircleShape)
+                                                                        .background(SharePrimary),
+                                                                )
                                                             }
                                                         }
-                                                        if (!notification.isRead) {
-                                                            Box(
-                                                                modifier = Modifier
-                                                                    .size(6.dp)
-                                                                    .clip(CircleShape)
-                                                                    .background(Color(0xFF1C7144)),
-                                                            )
-                                                        }
+                                                    }
+                                                    IconButton(
+                                                        onClick = { onAction(SharingAction.DeleteNotification(notification.id)); expandedId = null },
+                                                        modifier = Modifier
+                                                            .size(30.dp)
+                                                            .border(1.dp, SoftRed.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                                                            .background(SoftRed.copy(alpha = 0.08f), RoundedCornerShape(6.dp)),
+                                                    ) {
+                                                        Icon(Icons.Outlined.Close, contentDescription = "Eliminar", tint = SoftRed, modifier = Modifier.size(14.dp))
                                                     }
                                                 }
-                                                IconButton(
-                                                    onClick = { onAction(SharingAction.DeleteNotification(notification.id)); expandedId = null },
-                                                    modifier = Modifier
-                                                        .size(30.dp)
-                                                        .border(1.dp, Color(0xFFE57373).copy(alpha = 0.3f), RoundedCornerShape(6.dp))
-                                                        .background(Color(0xFFE57373).copy(alpha = 0.08f), RoundedCornerShape(6.dp)),
-                                                ) {
-                                                    Icon(Icons.Outlined.Close, contentDescription = "Eliminar", tint = Color(0xFFE57373), modifier = Modifier.size(14.dp))
-                                                }
-                                            }
-                                            if (isExpanded) {
-                                                Text(notification.body, color = Color(0xFF527062), fontSize = 12.sp)
-                                                if (notification.invitationId != null) {
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                    ) {
-                                                        Button(
-                                                            onClick = {
-                                                                notification.invitationId?.let { onAction(SharingAction.AcceptInvitationById(it)) }
-                                                                expandedId = null
-                                                            },
-                                                            modifier = Modifier.weight(1f).height(36.dp),
-                                                            shape = RoundedCornerShape(8.dp),
-                                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C7144), contentColor = Color.White),
-                                                        ) { Text("Aceptar", fontSize = 12.sp) }
-                                                        Button(
-                                                            onClick = { onAction(SharingAction.DeleteNotification(notification.id)); expandedId = null },
-                                                            modifier = Modifier.weight(1f).height(36.dp),
-                                                            shape = RoundedCornerShape(8.dp),
-                                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFEF2F2), contentColor = Color(0xFFDC2626)),
-                                                        ) { Text("Rechazar", fontSize = 12.sp) }
+                                                if (isExpanded) {
+                                                    Text(notification.body, color = ShareMuted, fontSize = 12.sp)
+                                                    if (notification.invitationId != null) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                        ) {
+                                                            Button(
+                                                                onClick = {
+                                                                    notification.invitationId?.let { onAction(SharingAction.AcceptInvitationById(it)) }
+                                                                    expandedId = null
+                                                                },
+                                                                modifier = Modifier.weight(1f).height(36.dp),
+                                                                shape = RoundedCornerShape(8.dp),
+                                                                colors = ButtonDefaults.buttonColors(containerColor = SharePrimaryButton, contentColor = SharePrimaryButtonContent),
+                                                            ) { Text("Aceptar", fontSize = 12.sp, textAlign = TextAlign.Center) }
+                                                            Button(
+                                                                onClick = { onAction(SharingAction.DeleteNotification(notification.id)); expandedId = null },
+                                                                modifier = Modifier.weight(1f).height(36.dp),
+                                                                shape = RoundedCornerShape(8.dp),
+                                                                colors = ButtonDefaults.buttonColors(containerColor = ShareSoftDangerSurface, contentColor = ShareSoftDangerContent),
+                                                            ) { Text("Rechazar", fontSize = 12.sp, textAlign = TextAlign.Center) }
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
                                     }
                                 }
-                            }
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Button(
-                                    onClick = { onAction(SharingAction.MarkAllRead) },
-                                    modifier = Modifier.weight(1f).height(44.dp),
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C7144), contentColor = Color.White),
-                                ) { Text("Marcar todas leídas", fontSize = 13.sp) }
-                                Button(
-                                    onClick = { confirmDeleteAll = true },
-                                    modifier = Modifier.weight(1f).height(44.dp),
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFEF2F2), contentColor = Color(0xFFDC2626)),
-                                ) { Text("Eliminar todas", fontSize = 13.sp) }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Button(
+                                        onClick = { onAction(SharingAction.MarkAllRead) },
+                                        modifier = Modifier.weight(1f).height(52.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = SharePrimaryButton, contentColor = SharePrimaryButtonContent),
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                                    ) {
+                                        Text("Marcar todas leídas", fontSize = 13.sp, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    Button(
+                                        onClick = { confirmDeleteAll = true },
+                                        modifier = Modifier.weight(1f).height(52.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = ShareSoftDangerSurface, contentColor = ShareSoftDangerContent),
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                                    ) {
+                                        Text("Eliminar todas", fontSize = 13.sp, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
                             }
                         }
                     }
@@ -534,14 +582,14 @@ fun NotificationPopup(
             confirmButton = {
                 Button(
                     onClick = { confirmDeleteAll = false; onAction(SharingAction.DeleteAll) },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626), contentColor = Color.White),
+                    colors = ButtonDefaults.buttonColors(containerColor = DangerRed, contentColor = Color.White),
                     shape = RoundedCornerShape(8.dp),
                 ) { Text("Eliminar", fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
                 Button(
                     onClick = { confirmDeleteAll = false },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F3F2), contentColor = Color(0xFF10271E)),
+                    colors = ButtonDefaults.buttonColors(containerColor = ShareNeutralSurface, contentColor = ShareNeutralContent),
                     shape = RoundedCornerShape(8.dp),
                 ) { Text("Cancelar") }
             },
