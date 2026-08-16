@@ -328,6 +328,7 @@ function stubCatalogSnapshot(): void {
 }
 
 function stubCatalogCreate(): ReturnType<typeof vi.fn> {
+  let created = false;
   const waterProduct = {
     id: 'prod-water',
     name: 'Agua mineral',
@@ -346,8 +347,8 @@ function stubCatalogCreate(): ReturnType<typeof vi.fn> {
     if (url.includes('/product-catalog/snapshot')) {
       return Promise.resolve(Response.json({
         version: 'v1',
-        productCount: 0,
-        products: [],
+        productCount: created ? 1 : 0,
+        products: created ? [waterProduct] : [],
       }));
     }
     if (url.endsWith('/product-categories')) {
@@ -366,10 +367,11 @@ function stubCatalogCreate(): ReturnType<typeof vi.fn> {
         }],
       }));
     }
-    if (url.includes('/product-catalog/search')) {
+    if (url.includes('/product-catalog?')) {
       return Promise.resolve(Response.json({ products: [waterProduct] }));
     }
     if (url.endsWith('/product-catalog') && init?.method === 'POST') {
+      created = true;
       return Promise.resolve(Response.json({
         product: waterProduct,
       }, { status: 201 }));
