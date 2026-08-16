@@ -141,6 +141,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.esgarpe.nfcompra.core.designsystem.NFCompraTheme
+import dev.esgarpe.nfcompra.core.designsystem.NFCompraUiScaleProvider
+import dev.esgarpe.nfcompra.core.designsystem.UiScalePreference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -246,6 +248,8 @@ fun ShoppingListApp(
     biometricAccessEnabled: Boolean = false,
     biometricAccessMessage: String? = null,
     onBiometricAccessChange: ((Boolean) -> Unit)? = null,
+    uiScalePreference: UiScalePreference = UiScalePreference.Default,
+    onUiScalePreferenceChange: (UiScalePreference) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
     LaunchedEffect(viewModel) { viewModel.load() }
@@ -281,6 +285,8 @@ fun ShoppingListApp(
             biometricAccessEnabled = biometricAccessEnabled,
             biometricAccessMessage = biometricAccessMessage,
             onBiometricAccessChange = onBiometricAccessChange,
+            uiScalePreference = uiScalePreference,
+            onUiScalePreferenceChange = onUiScalePreferenceChange,
         )
         is ShoppingListViewState.InitialHouseholdError -> {
             val error = state as ShoppingListViewState.InitialHouseholdError
@@ -314,6 +320,8 @@ fun ShoppingListApp(
                 biometricAccessEnabled = biometricAccessEnabled,
                 biometricAccessMessage = biometricAccessMessage,
                 onBiometricAccessChange = onBiometricAccessChange,
+                uiScalePreference = uiScalePreference,
+                onUiScalePreferenceChange = onUiScalePreferenceChange,
             )
         }
         is ShoppingListViewState.InitialHouseholdLoadError -> {
@@ -355,6 +363,8 @@ fun ShoppingListApp(
             biometricAccessEnabled = biometricAccessEnabled,
             biometricAccessMessage = biometricAccessMessage,
             onBiometricAccessChange = onBiometricAccessChange,
+            uiScalePreference = uiScalePreference,
+            onUiScalePreferenceChange = onUiScalePreferenceChange,
         )
     }
 }
@@ -390,6 +400,8 @@ internal fun ShoppingListContent(
     biometricAccessEnabled: Boolean = false,
     biometricAccessMessage: String? = null,
     onBiometricAccessChange: ((Boolean) -> Unit)? = null,
+    uiScalePreference: UiScalePreference = UiScalePreference.Default,
+    onUiScalePreferenceChange: (UiScalePreference) -> Unit = {},
 ) {
     var selectedTab by remember { mutableStateOf(DashboardTab.Home) }
     var creatingHousehold by remember { mutableStateOf(false) }
@@ -647,6 +659,8 @@ internal fun ShoppingListContent(
                                 biometricAccessEnabled = biometricAccessEnabled,
                                 biometricAccessMessage = biometricAccessMessage,
                                 onBiometricAccessChange = onBiometricAccessChange,
+                                uiScalePreference = uiScalePreference,
+                                onUiScalePreferenceChange = onUiScalePreferenceChange,
                             )
                         }
                     }
@@ -2481,6 +2495,8 @@ private fun ProfilePanel(
     biometricAccessEnabled: Boolean = false,
     biometricAccessMessage: String? = null,
     onBiometricAccessChange: ((Boolean) -> Unit)? = null,
+    uiScalePreference: UiScalePreference = UiScalePreference.Default,
+    onUiScalePreferenceChange: (UiScalePreference) -> Unit = {},
 ) {
     var showSettings by remember { mutableStateOf(false) }
     var showLogoutConfirm by remember { mutableStateOf(false) }
@@ -2586,6 +2602,8 @@ private fun ProfilePanel(
         biometricAccessEnabled = biometricAccessEnabled,
         biometricAccessMessage = biometricAccessMessage,
         onBiometricAccessChange = onBiometricAccessChange,
+        uiScalePreference = uiScalePreference,
+        onUiScalePreferenceChange = onUiScalePreferenceChange,
         onDeleteAccount = { deletingAccount = true },
     )
     if (deletingAccount) DeleteAccountDialog(
@@ -2778,15 +2796,20 @@ private fun SettingsDialog(
     biometricAccessEnabled: Boolean = false,
     biometricAccessMessage: String? = null,
     onBiometricAccessChange: ((Boolean) -> Unit)? = null,
+    uiScalePreference: UiScalePreference = UiScalePreference.Default,
+    onUiScalePreferenceChange: (UiScalePreference) -> Unit = {},
     onDeleteAccount: () -> Unit = {},
 ) {
     val limeButtonColors = ButtonDefaults.buttonColors(containerColor = WebLime, contentColor = WebText)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("Ajustes", color = WebPrimary, fontWeight = FontWeight.Bold)
+            NFCompraUiScaleProvider(uiScalePreference) {
+                Text("Ajustes", color = WebPrimary, fontWeight = FontWeight.Bold)
+            }
         },
         text = {
+            NFCompraUiScaleProvider(uiScalePreference) {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -2800,12 +2823,32 @@ private fun SettingsDialog(
 
                 Spacer(modifier = Modifier.height(4.dp))
                 SectionTitle("Accesibilidad visual")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    Button(onClick = {}, enabled = false, modifier = Modifier.weight(1f)) { Text("Normal") }
-                    Button(onClick = {}, enabled = false, modifier = Modifier.weight(1f)) { Text("Grande") }
+                Text("Tamaño de la interfaz", color = WebText, fontWeight = FontWeight.Bold)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    UiScalePreference.entries.forEach { option ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { onUiScalePreferenceChange(option) }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = uiScalePreference == option,
+                                onClick = { onUiScalePreferenceChange(option) },
+                                colors = RadioButtonDefaults.colors(selectedColor = WebPrimary),
+                            )
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(option.label, color = WebText, fontWeight = FontWeight.SemiBold)
+                                option.supportingText?.let {
+                                    Text(it, color = WebMuted, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
                 }
-                Text("Ajuste de tamaño disponible próximamente.", color = WebMuted, fontSize = 12.sp)
-
                 if (onBiometricAccessChange != null) {
                     Spacer(modifier = Modifier.height(4.dp))
                     SectionTitle("Seguridad")
@@ -2854,13 +2897,16 @@ private fun SettingsDialog(
                     Text("Eliminar cuenta", fontWeight = FontWeight.Bold)
                 }
             }
+            }
         },
         confirmButton = {
+            NFCompraUiScaleProvider(uiScalePreference) {
             Button(
                 onClick = onDismiss,
                 colors = limeButtonColors,
             ) {
                 Text("Cerrar", fontWeight = FontWeight.Bold)
+            }
             }
         },
     )

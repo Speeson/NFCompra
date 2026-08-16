@@ -44,6 +44,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import java.util.concurrent.Executor
 import dev.esgarpe.nfcompra.core.designsystem.NFCompraTheme
+import dev.esgarpe.nfcompra.core.designsystem.NFCompraUiScaleProvider
+import dev.esgarpe.nfcompra.core.designsystem.UiScalePreference
 import dev.esgarpe.nfcompra.core.network.KeystoreTokenStore
 import dev.esgarpe.nfcompra.core.network.NetworkClient
 import dev.esgarpe.nfcompra.feature.auth.AuthApp
@@ -100,6 +102,7 @@ class MainActivity : FragmentActivity() {
         )
         foregroundRefreshGate = AuthenticatedRefreshGate { tokenStore.current() != null }
         val profilePreferences = getSharedPreferences("nfcompra.ui", MODE_PRIVATE)
+        val uiScaleSettings = UiScaleSettings(SharedPreferencesUiScaleStorage(applicationContext, profilePreferences))
         val authRepository = AuthRepository(
             NetworkClient.authApi(BuildConfig.AUTH_BASE_URL),
             tokenStore,
@@ -128,8 +131,15 @@ class MainActivity : FragmentActivity() {
             var biometricPromptRunning by remember { mutableStateOf(false) }
             var automaticBiometricPromptAccountId by remember { mutableStateOf<String?>(null) }
             var biometricSettingsMessage by remember { mutableStateOf<String?>(null) }
+            var uiScalePreference by remember { mutableStateOf(uiScaleSettings.preference) }
             var rememberedEmail by remember {
                 mutableStateOf(profilePreferences.getString("remembered_email", null).orEmpty())
+            }
+            val onUiScalePreferenceChange = remember {
+                { preference: UiScalePreference ->
+                    uiScaleSettings.preference = preference
+                    uiScalePreference = preference
+                }
             }
             val onRememberEmail: (String) -> Unit = remember {
                 { email ->
@@ -318,6 +328,7 @@ class MainActivity : FragmentActivity() {
                 }
                 if (globalNavigation != null) globalNotifications.consumeNavigation()
             }
+            NFCompraUiScaleProvider(uiScalePreference) {
             NFCompraTheme {
                 if (!authenticatedContentUnlocked) {
                     AuthApp(
@@ -407,6 +418,8 @@ class MainActivity : FragmentActivity() {
                                     biometricAccessEnabled = biometricAccessEnabled,
                                     biometricAccessMessage = biometricSettingsMessage,
                                     onBiometricAccessChange = ::changeBiometricAccess,
+                                    uiScalePreference = uiScalePreference,
+                                    onUiScalePreferenceChange = onUiScalePreferenceChange,
                                 )
                                 }
                             }
@@ -479,6 +492,7 @@ class MainActivity : FragmentActivity() {
                         },
                     )
                 }
+            }
             }
         }
     }

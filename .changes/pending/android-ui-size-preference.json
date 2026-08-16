@@ -1,0 +1,9 @@
+{
+  "components": ["android"],
+  "type": "minor",
+  "category": "added",
+  "summary": "Añade control del tamaño de la interfaz en Android.",
+  "details": [
+    "Permite elegir tamaño Pequeño, Normal, Grande o Sistema desde Ajustes, con Normal como valor predeterminado y Sistema respetando el tamaño configurado en Android."
+  ]
+}
