@@ -46,7 +46,9 @@ it('creates a catalog product from compact list mode and keeps it ready to add',
 
   expect(screen.getByRole('dialog', { name: 'Crear producto' })).toBeInTheDocument();
   await waitFor(() => expect(screen.getByLabelText('Categoria')).toHaveValue('cat-water'));
+  expect(within(screen.getByLabelText('Categoria')).getByRole('option', { name: /\uD83E\uDD64 Bebidas/ })).toBeInTheDocument();
   expect(screen.getByLabelText('Icono')).toHaveValue('cart');
+  expect(within(screen.getByLabelText('Icono')).getByRole('option', { name: /\uD83E\uDDF7 Panales/ })).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Tama\u00f1o'), { target: { value: '1 L' } });
   fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
 

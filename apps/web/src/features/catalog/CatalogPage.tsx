@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent, type JSX } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ProductCatalogCard } from './ProductCatalogCards';
+import { catalogIconLabel, catalogIconOptions } from './catalog-icons';
 import {
   createProductCatalogItem,
   createProductCategory,
@@ -22,61 +23,6 @@ const catalogProductsQueryKey = ['product-catalog', 'snapshot'] as const;
 const catalogCategoriesQueryKey = ['product-categories'] as const;
 type CatalogSearchFilter = 'all' | 'favorites' | 'category';
 type CatalogCreateMode = 'category' | 'product';
-const catalogIconOptions = [
-  { value: 'shopping-basket', label: '\uD83D\uDED2 General' },
-  { value: 'milk', label: '\uD83E\uDD5B Lácteos' },
-  { value: 'bread', label: '\uD83E\uDD56 Panadería' },
-  { value: 'fish', label: '\uD83D\uDC1F Pescado' },
-  { value: 'meat', label: '\uD83E\uDD69 Carne' },
-  { value: 'fruit', label: '\uD83C\uDF4E Fruta' },
-  { value: 'vegetable', label: '\uD83E\uDD55 Verdura' },
-  { value: 'water', label: '\uD83D\uDCA7 Agua' },
-  { value: 'soft-drink', label: '\uD83E\uDD64 Refrescos' },
-  { value: 'drink', label: '\uD83E\uDD64 Bebidas' },
-  { value: 'juice', label: '\uD83E\uDDC3 Zumos' },
-  { value: 'coffee', label: '\u2615 Café e infusiones' },
-  { value: 'wine', label: '\uD83C\uDF77 Bodega' },
-  { value: 'beer', label: '\uD83C\uDF7A Cerveza' },
-  { value: 'frozen', label: '\uD83E\uDDCA Congelados' },
-  { value: 'cheese', label: '\uD83E\uDDC0 Quesos' },
-  { value: 'butter', label: '\uD83E\uDDC8 Mantequilla' },
-  { value: 'egg', label: '\uD83E\uDD5A Huevos' },
-  { value: 'flour', label: '\uD83C\uDF3E Harina' },
-  { value: 'spices', label: '\uD83E\uDDC2 Sal y especias' },
-  { value: 'rice-pasta', label: '\uD83C\uDF5A Arroz y pasta' },
-  { value: 'pasta', label: '\uD83C\uDF5D Pasta' },
-  { value: 'beans', label: '\uD83E\uDED8 Legumbres' },
-  { value: 'canned', label: '\uD83E\uDD6B Conservas' },
-  { value: 'snacks', label: '\uD83E\uDD68 Aperitivos' },
-  { value: 'sauce', label: '\uD83E\uDED9 Salsas' },
-  { value: 'oil', label: '\uD83E\uDED2 Aceite y aceitunas' },
-  { value: 'sweet', label: '\uD83C\uDF6B Dulces' },
-  { value: 'cookies', label: '\uD83C\uDF6A Galletas y cereales' },
-  { value: 'soup', label: '\uD83E\uDD63 Caldos y cremas' },
-  { value: 'dessert', label: '\uD83C\uDF6E Postres' },
-  { value: 'pizza', label: '\uD83C\uDF55 Platos preparados' },
-  { value: 'pet', label: '\uD83D\uDC3E Mascotas' },
-  { value: 'hygiene', label: '\uD83E\uDDF4 Higiene' },
-  { value: 'hair-care', label: '\uD83E\uDDF4 Cuidado capilar' },
-  { value: 'soap', label: '\uD83E\uDDFC Detergente' },
-  { value: 'paper', label: '\uD83E\uDDFB Papel' },
-  { value: 'baby', label: '\uD83C\uDF7C Bebé' },
-  { value: 'diaper', label: '\uD83E\uDDF7 Pañales' },
-  { value: 'first-aid', label: '\uD83E\uDE79 Parafarmacia' },
-  { value: 'supplement', label: '\uD83D\uDC8A Suplementos' },
-  { value: 'eye-care', label: '\uD83D\uDC41 Ojos' },
-  { value: 'condom', label: '\uD83D\uDEE1 Protección' },
-  { value: 'repellent', label: '\uD83E\uDD9F Repelente' },
-  { value: 'antiseptic', label: '\uD83E\uDDEA Antiséptico' },
-  { value: 'bandage', label: '\uD83E\uDE79 Curas' },
-  { value: 'cotton', label: '\u2601 Algodón' },
-  { value: 'tomato', label: '\uD83C\uDF45 Tomate' },
-  { value: 'potato', label: '\uD83E\uDD54 Patata' },
-  { value: 'onion', label: '\uD83E\uDDC5 Cebolla' },
-  { value: 'garlic', label: '\uD83E\uDDC4 Ajo' },
-  { value: 'banana', label: '\uD83C\uDF4C Plátano' },
-  { value: 'citrus', label: '\uD83C\uDF4A Cítricos' },
-] as const;
 type CatalogDialogState =
   | { kind: 'create'; mode: CatalogCreateMode }
   | { kind: 'edit-category'; category: ProductCategory }
@@ -399,6 +345,8 @@ function normalize(value: string): string {
 }
 
 function categoryIcon(iconKey: string): string {
+  const iconLabel = catalogIconLabel(iconKey);
+  if (iconLabel) return iconLabel.split(' ')[0];
   const key = normalize(iconKey);
   if (key.includes('milk')) return '\uD83E\uDD5B';
   if (key.includes('bread')) return '\uD83E\uDD56';

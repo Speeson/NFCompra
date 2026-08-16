@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type JSX, type PointerEvent } from 'react';
 
 import { ProductCatalogCard, ProductCatalogListItem, productIcon } from '../catalog/ProductCatalogCards';
+import { catalogIconOptions, categoryOptionLabel } from '../catalog/catalog-icons';
 import { createProductCatalogItem, fetchProductCategories, searchProductCatalog, setProductFavorite, type ProductCatalogInput, type ProductCatalogItem, type ProductCategory } from '../catalog/product-catalog-api';
 import type { ShoppingItem } from './model';
 
@@ -28,21 +29,6 @@ type ShoppingListScreenProps = {
 };
 
 const pickerModeStorageKey = 'nfcompra.product-picker-mode';
-const quickProductIconOptions = [
-  { value: 'cart', label: 'General' },
-  { value: 'milk', label: 'Lacteos' },
-  { value: 'bread', label: 'Panaderia' },
-  { value: 'fish', label: 'Pescado' },
-  { value: 'meat', label: 'Carne' },
-  { value: 'fruit', label: 'Fruta' },
-  { value: 'vegetable', label: 'Verdura' },
-  { value: 'water', label: 'Agua' },
-  { value: 'drink', label: 'Bebidas' },
-  { value: 'frozen', label: 'Congelados' },
-  { value: 'hygiene', label: 'Higiene' },
-  { value: 'paper', label: 'Papel' },
-  { value: 'pet', label: 'Mascotas' },
-] as const;
 
 export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameList, onClearChecked, onDeleteList, mobileSimpleActions = false, onToggle, onUpdate, onDelete }: ShoppingListScreenProps): JSX.Element {
   const pendingItems = items.filter((item) => !item.isChecked);
@@ -309,12 +295,12 @@ function QuickProductCreateDialog({ initialName, categories, error, isSaving, on
         <label>Nombre del producto<input value={productName} onChange={(event) => setProductName(event.target.value)} required maxLength={120} autoFocus /></label>
         <label>Categoria<span className="catalog-select-field catalog-select-field--category">
           <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-            {categories.length ? categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>) : <option value="">Sin categoria</option>}
+            {categories.length ? categories.map((category) => <option key={category.id} value={category.id}>{categoryOptionLabel(category)}</option>) : <option value="">Sin categoria</option>}
           </select>
         </span></label>
         <label>Icono<span className="catalog-select-field">
           <select value={iconKey} onChange={(event) => setIconKey(event.target.value)}>
-            {quickProductIconOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            {catalogIconOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </span></label>
         <label>Marca<input value={brand} onChange={(event) => setBrand(event.target.value)} maxLength={80} placeholder="Opcional" /></label>
