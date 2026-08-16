@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.sp
 
 private val DangerRed = Color(0xFFDC2626)
 private val SoftRed = Color(0xFFE57373)
+private val OnLime = Color(0xFF10271E)
 
 @Immutable
 private data class SharingColors(
@@ -209,7 +210,7 @@ fun MembersPopupContent(state: SharingUiState, onAction: (SharingAction) -> Unit
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = ShareLime,
-                                    contentColor = ShareText,
+                                    contentColor = OnLime,
                                 ),
                             ) {
                                 Text("Cerrar", fontWeight = FontWeight.Bold)
