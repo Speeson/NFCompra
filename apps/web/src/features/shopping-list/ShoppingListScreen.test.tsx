@@ -69,7 +69,7 @@ it('creates a catalog product from compact list mode and keeps it ready to queue
   expect(screen.getByLabelText('Producto')).toHaveValue('Agua mineral');
 
   fireEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad de Agua mineral' }));
-  fireEvent.click(screen.getByRole('button', { name: /A.adir Agua mineral x1/ }));
+  fireEvent.click(await screen.findByRole('button', { name: /A.adir Agua mineral x1/ }));
   fireEvent.click(await screen.findByRole('button', { name: /A.adir 1 producto/ }));
   await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Agua mineral', quantity: 1, unit: null }));
 });
@@ -84,7 +84,7 @@ it('creates a catalog product from card mode and queues it in the pending tray',
   fireEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
   fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Aumentar cantidad de Agua mineral' }));
-  fireEvent.click(screen.getByRole('button', { name: /Seleccionar Agua mineral/i }));
+  fireEvent.click(await screen.findByRole('button', { name: /Seleccionar Agua mineral/i }));
 
   const pendingTray = await screen.findByLabelText(/Productos pendientes de a.adir/);
   expect(within(pendingTray).getByText('Agua mineral')).toBeInTheDocument();
