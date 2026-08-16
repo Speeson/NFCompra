@@ -1,0 +1,21 @@
+{
+  "component": "android",
+  "versionName": "0.4.3",
+  "versionCode": 20,
+  "releasedAt": null,
+  "changesets": [
+    {
+      "file": "android-notifications-window-fixes.json",
+      "components": [
+        "android"
+      ],
+      "type": "patch",
+      "category": "fixed",
+      "summary": "Ajusta la ventana de notificaciones y la adapta al tema oscuro.",
+      "details": [
+        "Aumenta la altura de los botones 'Marcar todas leídas' y 'Eliminar todas' y centra su texto para que entre completo.",
+        "Aplica colores del tema oscuro a la ventana de notificaciones, sus tarjetas, textos y botones."
+      ]
+    }
+  ]
+}
