@@ -1,0 +1,21 @@
+{
+  "component": "android",
+  "versionName": "0.2.0",
+  "versionCode": 15,
+  "releasedAt": null,
+  "changesets": [
+    {
+      "file": "shopping-list-voice-pending-flow.json",
+      "components": [
+        "web",
+        "android"
+      ],
+      "type": "minor",
+      "category": "added",
+      "summary": "Mejorar la búsqueda y selección de productos en listas.",
+      "details": [
+        "Añade búsqueda por voz en Android y Web, unifica la selección de productos con cantidades por resultado y pide confirmación antes de vaciar los productos comprados."
+      ]
+    }
+  ]
+}
