@@ -1,8 +1,18 @@
 package dev.esgarpe.nfcompra.feature.shoppinglist
 
+import android.Manifest
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.core.app.ActivityCompat
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
@@ -54,6 +64,7 @@ import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Logout
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Add
@@ -77,6 +88,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Switch
@@ -84,6 +96,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -132,6 +145,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 private val GroceryPrimaryGradient = listOf(Color(0xFFAEDC81), Color(0xFF6CC51D))
 private val GroceryPrimaryStrong = Color(0xFF6CC51D)
@@ -141,6 +155,7 @@ private val WebText = Color(0xFF10271E)
 private val WebMuted = Color(0xFF527062)
 private val WebPrimary = Color(0xFF1C7144)
 private val WebLime = Color(0xFFDCFF72)
+private val ProductEntryControlHeight = 52.dp
 private val PendingSurface = Color(0xFFFFF7D7)
 private val PendingAccent = Color(0xFFFFC83D)
 private val CheckedSurface = Color(0xFFFFE7E1)
@@ -253,6 +268,7 @@ fun ShoppingListApp(
             viewModel::refreshProfile,
             viewModel::refreshProductCategories,
             viewModel::warmProductCatalog,
+            viewModel::load,
             onLogout,
             onMembers,
             onOpenNotifications = onOpenNotifications,
@@ -285,6 +301,7 @@ fun ShoppingListApp(
                 viewModel::refreshProfile,
                 viewModel::refreshProductCategories,
                 viewModel::warmProductCatalog,
+                viewModel::load,
                 onLogout,
                 onMembers,
                 onOpenNotifications = onOpenNotifications,
@@ -325,6 +342,7 @@ fun ShoppingListApp(
             viewModel::refreshProfile,
             viewModel::refreshProductCategories,
             viewModel::warmProductCatalog,
+            viewModel::load,
             onLogout,
             onMembers,
             onOpenNotifications = onOpenNotifications,
@@ -359,6 +377,7 @@ internal fun ShoppingListContent(
     onRefreshProfile: () -> Unit = {},
     onRefreshProductCategories: () -> Unit = {},
     onWarmProductCatalog: () -> Unit = {},
+    onReloadHouseholds: () -> Unit = {},
     onLogout: () -> Unit,
     onMembers: (String) -> Unit,
     onOpenNotifications: (() -> Unit)? = null,
@@ -385,6 +404,7 @@ internal fun ShoppingListContent(
     var householdsRootRequestKey by remember { mutableStateOf(0) }
     var navigationMessage by remember { mutableStateOf<String?>(null) }
     var pendingOpenHouseholdId by remember { mutableStateOf<String?>(null) }
+    var listTabReloadRequested by remember { mutableStateOf(false) }
     LaunchedEffect(openListsRequestKey) {
         if (openListsRequestKey > 0) {
             selectedTab = DashboardTab.Lists
@@ -421,6 +441,11 @@ internal fun ShoppingListContent(
         }.apply()
     }
     val hasHouseholds = data.households.isNotEmpty()
+    LaunchedEffect(hasHouseholds) {
+        if (hasHouseholds) {
+            listTabReloadRequested = false
+        }
+    }
     val isListDetailOpen = selectedTab == DashboardTab.Lists && data.selectedListId != null && openedListId == data.selectedListId
     val selectedListHouseholdName = data.lists.firstOrNull { it.id == data.selectedListId }
         ?.let { selectedList -> data.households.firstOrNull { it.id == selectedList.householdId }?.name }
@@ -444,7 +469,13 @@ internal fun ShoppingListContent(
     fun openTabRoot(tab: DashboardTab) {
         if (tab == DashboardTab.Lists && !hasHouseholds) {
             openedListId = null
-            navigationMessage = "Necesitas pertenecer a un hogar para acceder a tus listas."
+            selectedTab = DashboardTab.Lists
+            if (!listTabReloadRequested) {
+                listTabReloadRequested = true
+                onReloadHouseholds()
+            } else {
+                navigationMessage = "Necesitas pertenecer a un hogar para acceder a tus listas."
+            }
             return
         }
         selectedTab = tab
@@ -3425,6 +3456,18 @@ private fun ConfirmDialog(title: String, message: String, onConfirm: () -> Unit,
 }
 
 @Composable
+private fun ClearShoppingListConfirmDialog(title: String, message: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = WebSurface,
+        title = { DialogTitle(title) },
+        text = { Text(message, color = WebMuted, fontWeight = FontWeight.SemiBold) },
+        confirmButton = { Button(onClick = onConfirm, shape = MaterialTheme.shapes.medium, colors = webPrimaryButtonColors()) { Text("Vaciar") } },
+        dismissButton = { TextButton(onClick = onDismiss, colors = ButtonDefaults.textButtonColors(contentColor = WebMuted)) { Text("Cancelar") } },
+    )
+}
+
+@Composable
 private fun CreateListDialog(
     households: List<HouseholdUiModel>,
     selectedHouseholdId: String?,
@@ -3522,15 +3565,42 @@ fun ShoppingListScreen(
     onDelete: () -> Unit = {},
 ) {
     var addName by remember { mutableStateOf("") }
-    var quantity by remember { mutableStateOf(1) }
     var cardMode by remember { mutableStateOf(true) }
     var suggestions by remember { mutableStateOf(emptyList<ProductCatalogUiModel>()) }
     var isProductSearchOpen by remember { mutableStateOf(false) }
     var cardQuantities by remember { mutableStateOf(emptyMap<String, Int>()) }
+    var activeListProductId by remember { mutableStateOf<String?>(null) }
     var waitlist by remember { mutableStateOf(emptyList<PendingProductUiModel>()) }
     var recentlyAddedId by remember { mutableStateOf<String?>(null) }
     var createProductDialogOpen by remember { mutableStateOf(false) }
+    var clearListDialogOpen by remember { mutableStateOf(false) }
     val searchScope = rememberCoroutineScope()
+    val voiceSearch = rememberProductVoiceSearch(
+        enabled = !state.isOffline,
+        onResult = {
+            addName = it
+            isProductSearchOpen = true
+        },
+    )
+    fun queueProduct(suggestion: ProductCatalogUiModel) {
+        val selectedQuantity = cardQuantities[suggestion.id] ?: 0
+        if (selectedQuantity <= 0) return
+        val pending = PendingProductUiModel(
+            catalogProductId = suggestion.id,
+            name = suggestion.name,
+            quantity = selectedQuantity,
+            categoryName = suggestion.categoryName,
+            packageSize = suggestion.packageSize,
+            icon = productIcon(suggestion),
+        )
+        waitlist = waitlist.upsert(pending)
+        recentlyAddedId = suggestion.id
+        cardQuantities = cardQuantities + (suggestion.id to 0)
+        activeListProductId = null
+        suggestions = emptyList()
+        addName = ""
+        isProductSearchOpen = false
+    }
     suspend fun refreshSuggestions(query: String = addName, mode: Boolean = cardMode, createdProduct: ProductCatalogUiModel? = null) {
         val search = query.trim()
         if (state.isOffline || search.length < 2) {
@@ -3588,32 +3658,21 @@ fun ShoppingListScreen(
                 ShoppingListWebHeader(
                     isOffline = state.isOffline,
                     productName = addName,
-                    quantity = quantity,
                     cardMode = cardMode,
+                    voiceSearchAvailable = voiceSearch.available,
+                    voiceSearchListening = voiceSearch.listening,
                     onProductNameChange = {
                         addName = it
                         isProductSearchOpen = true
                     },
                     onProductFocus = { isProductSearchOpen = true },
-                    onQuantityDecrease = { if (quantity > 1) quantity-- },
-                    onQuantityIncrease = { quantity++ },
+                    onVoiceSearch = voiceSearch.start,
                     onCardModeChange = {
                         cardMode = it
-                        suggestions = emptyList()
-                        cardQuantities = emptyMap()
                         isProductSearchOpen = true
                     },
                     onCreateProduct = { createProductDialogOpen = true },
-                    onAdd = {
-                        if (addName.isNotBlank()) {
-                            onAction(ShoppingListAction.AddItem(addName.trim(), quantity.toDouble()))
-                            addName = ""
-                            quantity = 1
-                            suggestions = emptyList()
-                            isProductSearchOpen = false
-                        }
-                    },
-                    onClearChecked = onClearChecked,
+                    onClearChecked = { clearListDialogOpen = true },
                 )
             }
         }
@@ -3621,11 +3680,18 @@ fun ShoppingListScreen(
             item {
                 ProductSuggestionDropdown(
                     suggestions = suggestions,
+                    quantities = cardQuantities,
+                    activeProductId = activeListProductId,
                     onToggleFavorite = toggleFavorite,
+                    onQuantityChange = { productId, delta ->
+                        cardQuantities = cardQuantities + (productId to ((cardQuantities[productId] ?: 0) + delta).coerceAtLeast(0))
+                    },
                     onSelect = { suggestion ->
-                        addName = suggestion.name
-                        suggestions = emptyList()
-                        isProductSearchOpen = false
+                        if (activeListProductId != suggestion.id) {
+                            activeListProductId = suggestion.id
+                        } else {
+                            queueProduct(suggestion)
+                        }
                     },
                 )
             }
@@ -3640,29 +3706,11 @@ fun ShoppingListScreen(
                     onQuantityChange = { productId, delta ->
                         cardQuantities = cardQuantities + (productId to ((cardQuantities[productId] ?: 0) + delta).coerceAtLeast(0))
                     },
-                    onSelect = { suggestion ->
-                        val selectedQuantity = cardQuantities[suggestion.id] ?: 0
-                        if (selectedQuantity > 0) {
-                            val pending = PendingProductUiModel(
-                                catalogProductId = suggestion.id,
-                                name = suggestion.name,
-                                quantity = selectedQuantity,
-                                categoryName = suggestion.categoryName,
-                                packageSize = suggestion.packageSize,
-                                icon = productIcon(suggestion),
-                            )
-                            waitlist = waitlist.upsert(pending)
-                            recentlyAddedId = suggestion.id
-                            cardQuantities = emptyMap()
-                            suggestions = emptyList()
-                            addName = ""
-                            isProductSearchOpen = false
-                        }
-                    },
+                    onSelect = { suggestion -> queueProduct(suggestion) },
                 )
             }
         }
-        if (!readOnly && cardMode && waitlist.isNotEmpty()) {
+        if (!readOnly && waitlist.isNotEmpty()) {
             item {
                 PendingProductWaitlist(
                     products = waitlist,
@@ -3674,6 +3722,7 @@ fun ShoppingListScreen(
                         waitlist = emptyList()
                         suggestions = emptyList()
                         cardQuantities = emptyMap()
+                        activeListProductId = null
                         addName = ""
                         isProductSearchOpen = false
                     },
@@ -3720,28 +3769,151 @@ fun ShoppingListScreen(
                     val created = onCreateProduct(name, categoryId, icon, brand, packageSize)
                     if (created != null) {
                         createProductDialogOpen = false
+                        addName = created.name
+                        activeListProductId = created.id
+                        cardQuantities = cardQuantities + (created.id to (cardQuantities[created.id] ?: 0))
                         isProductSearchOpen = true
-                        refreshSuggestions(createdProduct = created)
+                        refreshSuggestions(query = created.name, createdProduct = created)
                     }
                 }
             },
         )
     }
+    if (clearListDialogOpen) {
+        ClearShoppingListConfirmDialog(
+            title = "Vaciar lista",
+            message = "¿Seguro que quieres vaciar esta lista? Se eliminarán los productos comprados.",
+            onConfirm = {
+                clearListDialogOpen = false
+                onClearChecked()
+            },
+            onDismiss = { clearListDialogOpen = false },
+        )
+    }
 }
+
+private data class ProductVoiceSearchState(
+    val available: Boolean,
+    val listening: Boolean,
+    val start: () -> Unit,
+)
+
+object ProductVoiceSearchPermissionRegistry {
+    private const val RECORD_AUDIO_PERMISSION_REQUEST_CODE = 73
+    private var onPermissionGranted: (() -> Unit)? = null
+
+    fun request(activity: Activity, onGranted: () -> Unit) {
+        onPermissionGranted = onGranted
+        ActivityCompat.requestPermissions(
+            activity,
+            arrayOf(Manifest.permission.RECORD_AUDIO),
+            RECORD_AUDIO_PERMISSION_REQUEST_CODE,
+        )
+    }
+
+    fun onRequestPermissionsResult(requestCode: Int, grantResults: IntArray): Boolean {
+        if (requestCode != RECORD_AUDIO_PERMISSION_REQUEST_CODE) return false
+        val onGranted = onPermissionGranted
+        onPermissionGranted = null
+        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            onGranted?.invoke()
+        }
+        return true
+    }
+
+    fun clearPending() {
+        onPermissionGranted = null
+    }
+}
+
+@Composable
+private fun rememberProductVoiceSearch(
+    enabled: Boolean,
+    onResult: (String) -> Unit,
+): ProductVoiceSearchState {
+    val context = LocalContext.current
+    var listening by remember { mutableStateOf(false) }
+    var recognizer by remember { mutableStateOf<SpeechRecognizer?>(null) }
+    val available = remember(context) { SpeechRecognizer.isRecognitionAvailable(context) }
+    fun stopRecognizer() {
+        recognizer?.cancel()
+        recognizer?.destroy()
+        recognizer = null
+        listening = false
+    }
+    fun startListening() {
+        if (!enabled || !available || listening || recognizer != null) return
+        val speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
+        recognizer = speechRecognizer
+        speechRecognizer.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) = Unit
+            override fun onBeginningOfSpeech() = Unit
+            override fun onRmsChanged(rmsdB: Float) = Unit
+            override fun onBufferReceived(buffer: ByteArray?) = Unit
+            override fun onEndOfSpeech() = Unit
+            override fun onPartialResults(partialResults: Bundle?) = Unit
+            override fun onEvent(eventType: Int, params: Bundle?) = Unit
+            override fun onError(error: Int) {
+                stopRecognizer()
+            }
+            override fun onResults(results: Bundle?) {
+                val text = results
+                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()
+                    ?.trim()
+                if (!text.isNullOrBlank()) onResult(text)
+                stopRecognizer()
+            }
+        })
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+            .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        listening = true
+        speechRecognizer.startListening(intent)
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            stopRecognizer()
+            ProductVoiceSearchPermissionRegistry.clearPending()
+        }
+    }
+    val start: () -> Unit = {
+        if (!enabled || !available || listening) {
+            Unit
+        } else if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            startListening()
+        } else {
+            val activity = context.findActivity()
+            if (activity != null) {
+                ProductVoiceSearchPermissionRegistry.request(activity, ::startListening)
+            } else {
+                Toast.makeText(context, "No se pudo pedir permiso para usar el micrófono.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    return ProductVoiceSearchState(available = available, listening = listening, start = start)
+}
+
+private tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
 
 @Composable
 private fun ShoppingListWebHeader(
     isOffline: Boolean,
     productName: String,
-    quantity: Int,
     cardMode: Boolean,
+    voiceSearchAvailable: Boolean,
+    voiceSearchListening: Boolean,
     onProductNameChange: (String) -> Unit,
     onProductFocus: () -> Unit,
-    onQuantityDecrease: () -> Unit,
-    onQuantityIncrease: () -> Unit,
+    onVoiceSearch: () -> Unit,
     onCardModeChange: (Boolean) -> Unit,
     onCreateProduct: () -> Unit,
-    onAdd: () -> Unit,
     onClearChecked: () -> Unit,
 ) {
     Card(colors = CardDefaults.cardColors(containerColor = WebSurface)) {
@@ -3757,9 +3929,7 @@ private fun ShoppingListWebHeader(
                         Text("Vaciar")
                     }
                 }
-                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    QuickCreateProductButton(onClick = onCreateProduct)
-                }
+                Spacer(modifier = Modifier.weight(1f))
                 Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
                     ViewModeSwitch(cardMode = cardMode, onCardModeChange = onCardModeChange)
                 }
@@ -3767,47 +3937,21 @@ private fun ShoppingListWebHeader(
             if (isOffline) {
                 Text("Sin conexión", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
             }
-            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val compact = maxWidth < 420.dp
-                if (compact) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            CompactInputBlock(label = "Producto", modifier = Modifier.weight(1f)) {
-                                CompactProductField(productName, onProductNameChange, Modifier.fillMaxWidth(), onFocus = onProductFocus)
-                            }
-                            CompactInputBlock(label = "Cantidad", modifier = Modifier.width(118.dp)) {
-                                QuantityStepper(quantity, onQuantityDecrease, onQuantityIncrease, modifier = Modifier.fillMaxWidth())
-                            }
-                        }
-                        Button(
-                            onClick = onAdd,
-                            enabled = productName.isNotBlank(),
-                            modifier = Modifier.fillMaxWidth().height(42.dp),
-                            shape = MaterialTheme.shapes.medium,
-                            colors = webPrimaryButtonColors(),
-                        ) {
-                            Text("Añadir")
-                        }
-                    }
-                } else {
-                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        CompactInputBlock(label = "Producto", modifier = Modifier.weight(1f)) {
-                            CompactProductField(productName, onProductNameChange, Modifier.fillMaxWidth(), onFocus = onProductFocus)
-                        }
-                        CompactInputBlock(label = "Cantidad", modifier = Modifier.width(126.dp)) {
-                            QuantityStepper(quantity, onQuantityDecrease, onQuantityIncrease, modifier = Modifier.fillMaxWidth())
-                        }
-                        Button(
-                            onClick = onAdd,
-                            enabled = productName.isNotBlank(),
-                            modifier = Modifier.width(92.dp).height(42.dp),
-                            shape = MaterialTheme.shapes.medium,
-                            colors = webPrimaryButtonColors(),
-                        ) {
-                            Text("Añadir")
-                        }
-                    }
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CompactInputBlock(label = "Producto", modifier = Modifier.weight(1f)) {
+                    CompactProductField(productName, onProductNameChange, Modifier.fillMaxWidth(), onFocus = onProductFocus)
                 }
+                SquareHeaderButton(
+                    contentDescription = if (voiceSearchListening) "Escuchando" else "Buscar producto por voz",
+                    background = if (voiceSearchListening) WebPrimary else Color(0xFFF2F8F4),
+                    contentColor = if (voiceSearchListening) Color.White else WebPrimary,
+                    enabled = voiceSearchAvailable && !isOffline,
+                    size = ProductEntryControlHeight,
+                    onClick = onVoiceSearch,
+                ) {
+                    Icon(Icons.Outlined.Mic, contentDescription = null, modifier = Modifier.size(20.dp))
+                }
+                QuickCreateProductButton(onClick = onCreateProduct, enabled = !isOffline, size = ProductEntryControlHeight)
             }
         }
     }
@@ -3895,9 +4039,19 @@ private fun CompactProductField(value: String, onValueChange: (String) -> Unit, 
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier.heightIn(min = 50.dp).onFocusChanged { if (it.isFocused) onFocus() },
+        modifier = modifier.height(ProductEntryControlHeight).onFocusChanged { if (it.isFocused) onFocus() },
         singleLine = true,
         textStyle = TextStyle(fontSize = 16.sp, lineHeight = 20.sp),
+        shape = MaterialTheme.shapes.medium,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = WebLime,
+            unfocusedBorderColor = WebLime,
+            disabledBorderColor = WebLime.copy(alpha = 0.45f),
+            cursorColor = WebPrimary,
+            focusedContainerColor = WebPage,
+            unfocusedContainerColor = WebPage,
+            disabledContainerColor = WebPage.copy(alpha = 0.65f),
+        ),
     )
 }
 
@@ -3959,7 +4113,10 @@ private fun List<PendingProductUiModel>.upsert(product: PendingProductUiModel): 
 @Composable
 private fun ProductSuggestionDropdown(
     suggestions: List<ProductCatalogUiModel>,
+    quantities: Map<String, Int>,
+    activeProductId: String?,
     onToggleFavorite: (ProductCatalogUiModel) -> Unit,
+    onQuantityChange: (String, Int) -> Unit,
     onSelect: (ProductCatalogUiModel) -> Unit,
 ) {
     val keyboardDismissScroll = keyboardDismissNestedScroll()
@@ -3975,22 +4132,35 @@ private fun ProductSuggestionDropdown(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         items(suggestions, key = { it.id }) { suggestion ->
+            val active = activeProductId == suggestion.id
+            val quantity = quantities[suggestion.id] ?: 0
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(MaterialTheme.shapes.medium)
                     .clickable { onSelect(suggestion) }
+                    .background(if (active) WebLime.copy(alpha = 0.28f) else Color.Transparent)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                CompactFavoriteButton(
-                    favorite = suggestion.isFavorite,
-                    onClick = { onToggleFavorite(suggestion) },
-                )
-                Column(modifier = Modifier.weight(1f)) {
+                if (!active) {
+                    CompactFavoriteButton(
+                        favorite = suggestion.isFavorite,
+                        onClick = { onToggleFavorite(suggestion) },
+                    )
+                }
+                Column(modifier = Modifier.weight(1f, fill = true)) {
                     Text(suggestion.name, color = WebText, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(suggestion.metaLabel(), color = WebMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (active) {
+                    QuantityStepper(
+                        quantity = quantity,
+                        onDecrease = { onQuantityChange(suggestion.id, -1) },
+                        onIncrease = { onQuantityChange(suggestion.id, 1) },
+                        modifier = Modifier.width(132.dp).height(42.dp),
+                    )
                 }
             }
         }
@@ -4101,11 +4271,12 @@ private fun CompactFavoriteButton(favorite: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun QuickCreateProductButton(onClick: () -> Unit) {
+private fun QuickCreateProductButton(onClick: () -> Unit, enabled: Boolean = true, size: Dp = 42.dp) {
     IconButton(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier
-            .size(42.dp)
+            .size(size)
             .clip(MaterialTheme.shapes.medium)
             .background(WebLime.copy(alpha = 0.95f))
             .semantics { contentDescription = "Crear producto" },
@@ -4393,15 +4564,17 @@ private fun SquareHeaderButton(
     contentDescription: String,
     background: Color,
     contentColor: Color,
+    enabled: Boolean = true,
+    size: Dp = 42.dp,
     onClick: () -> Unit,
     content: @Composable () -> Unit,
 ) {
     Box(
         modifier = Modifier
-            .size(42.dp)
+            .size(size)
             .clip(MaterialTheme.shapes.medium)
-            .background(background)
-            .clickable(onClick = onClick)
+            .background(if (enabled) background else background.copy(alpha = 0.45f))
+            .clickable(enabled = enabled, onClick = onClick)
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center,
     ) {

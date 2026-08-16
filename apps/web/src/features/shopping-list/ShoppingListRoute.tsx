@@ -285,6 +285,7 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
 
   const currentHousehold = householdsQuery.data.find((household) => household.id === householdId);
   const currentList = listsQuery.data?.find((list) => list.id === listId);
+  const currentListTitle = currentList?.name ?? 'Lista';
   const hasLists = Boolean(listsQuery.data?.length);
   const householdListsPath = currentHousehold ? `/lists?household=${encodeURIComponent(currentHousehold.id)}` : '/lists';
   function navigateBackToHouseholdLists(): void {
@@ -303,6 +304,10 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
   if (itemsQuery.isError) return <main><p role="alert">No se pudo cargar la lista.</p></main>;
   return <div className="shopping-list-route shopping-list-route--detail">
     {onNavigate ? <button className="back-link back-link--route" type="button" onClick={navigateBackToHouseholdLists}>← Volver a {currentHousehold?.name ?? 'listas'}</button> : null}
+    <div className="mobile-list-detail-heading">
+      {onNavigate ? <button className="mobile-list-back-button" type="button" aria-label={`Volver a ${currentHousehold?.name ?? 'listas'}`} onClick={navigateBackToHouseholdLists}>←</button> : null}
+      <p>{currentListTitle}</p>
+    </div>
     <section className="list-selectors" aria-label="Seleccionar hogar y lista">
       <label>Hogar<select disabled={isOffline} value={householdId} onChange={(event) => { setHouseholdId(event.target.value); setListId(undefined); }}>{householdsQuery.data.map((household) => <option key={household.id} value={household.id}>{household.name}</option>)}</select></label>
       <label>Lista<select disabled={isOffline} value={listId} onChange={(event) => setListId(event.target.value)}>{listsQuery.data?.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}</select></label>
@@ -310,11 +315,11 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
     </section>
     {message ? <p role="alert">{message}</p> : null}
     {conflict ? <aside role="alert">El producto ha cambiado en el servidor: {conflict.current.name} (versión {conflict.current.version}). <button type="button" disabled={isOffline} onClick={() => { if (!isOffline) conflict.retry(); }}>Reintentar</button></aside> : null}
-    <ShoppingListScreen title={currentList?.name ?? 'Lista'} items={(itemsQuery.data ?? []).map((item) => ({ ...item, unit: item.unit ?? undefined }))} isOffline={isOffline}
+    <ShoppingListScreen title={currentListTitle} items={(itemsQuery.data ?? []).map((item) => ({ ...item, unit: item.unit ?? undefined }))} isOffline={isOffline}
       mobileSimpleActions
       onAdd={(input) => { if (!isOffline) createItemMutation.mutate({ listId, ...input }); }}
       onRenameList={(name) => { if (!isOffline && currentList) renameListMutation.mutate({ list: currentList, name }); }}
-      onClearChecked={() => { if (!isOffline && window.confirm('Se eliminarán los productos comprados de esta lista.')) clearCheckedMutation.mutate(listId); }}
+      onClearChecked={() => { if (!isOffline) clearCheckedMutation.mutate(listId); }}
       onDeleteList={currentList ? () => { if (!isOffline && window.confirm('Se eliminará esta lista y sus productos.')) deleteListMutation.mutate(currentList); } : undefined}
       onToggle={(item) => { if (!isOffline) updateMutation.mutate({ item: item as ApiShoppingItem, patch: { isChecked: !item.isChecked } }); }}
       onUpdate={(item, input) => { if (!isOffline) updateMutation.mutate({ item: item as ApiShoppingItem, patch: input }); }}

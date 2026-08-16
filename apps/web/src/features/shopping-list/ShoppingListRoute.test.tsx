@@ -4,10 +4,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { clearProductCatalogCacheForTests } from '../catalog/product-catalog-api';
+import { NotificationBell } from '../notifications/NotificationBell';
 import { loadOfflineList, saveOfflineList } from './offline-cache';
 
 import { createWebQueryClient, ShoppingListRoute } from './ShoppingListRoute';
-import { NotificationBell } from '../notifications/NotificationBell';
 
 vi.mock('./offline-cache', () => ({
   loadOfflineList: vi.fn().mockResolvedValue(null),
@@ -16,6 +17,7 @@ vi.mock('./offline-cache', () => ({
 
 afterEach(() => {
   cleanup();
+  clearProductCatalogCacheForTests();
   vi.unstubAllGlobals();
 });
 
@@ -25,6 +27,22 @@ function shoppingList() {
 
 function shoppingItem(name: string) {
   return { id: 'item-1', listId: 'list-1', name, normalizedName: name.toLocaleLowerCase(), quantity: 1, unit: null, category: null, note: null, isChecked: false, position: 0, version: 1, createdBy: 'user-1', updatedBy: 'user-1', createdAt: '2026-07-27T00:00:00.000Z', updatedAt: '2026-07-27T00:00:00.000Z' };
+}
+
+function catalogProduct(name = 'Pan') {
+  return { id: `catalog-${name.toLocaleLowerCase()}`, name, normalizedName: name.toLocaleLowerCase(), categoryId: null, categoryName: null, iconKey: 'bread', brand: null, packageSize: null, source: 'user', sourceProductId: null, isFavorite: false };
+}
+
+function catalogSnapshot(name = 'Pan') {
+  const product = catalogProduct(name);
+  return { version: 'test', productCount: 1, products: [product] };
+}
+
+async function queueCatalogProduct(name = 'Pan'): Promise<void> {
+  fireEvent.change(screen.getByLabelText('Producto'), { target: { value: name } });
+  fireEvent.click(await screen.findByRole('button', { name: `Aumentar cantidad de ${name}` }));
+  fireEvent.click(screen.getByRole('button', { name: `Seleccionar ${name}` }));
+  fireEvent.click(await screen.findByRole('button', { name: /Añadir 1 producto/ }));
 }
 
 describe('ShoppingListRoute', () => {
@@ -79,7 +97,9 @@ describe('ShoppingListRoute', () => {
     expect(await screen.findByText('Leche guardada')).toBeVisible();
     expect(screen.getByRole('status')).toHaveTextContent('Sin conexi\u00f3n');
     expect(screen.getByLabelText('Producto')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'A\u00f1adir' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Añadir' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Buscar producto por voz' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Crear producto' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Marcar Leche guardada' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Editar Leche guardada' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Eliminar Leche guardada' })).toBeDisabled();
@@ -108,13 +128,15 @@ describe('ShoppingListRoute', () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/lists/list-a/items'))).toBe(true));
     rerender(<QueryClientProvider client={client}><ShoppingListRoute currentUserId="user-b" requestedHouseholdId="household-b" requestedListId="list-b" /></QueryClientProvider>);
     expect(await screen.findByText('Producto de Bea')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Añadir' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Añadir' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Buscar producto por voz' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Crear producto' })).toBeDisabled();
 
     resolveAItems(Response.json({ items: [shoppingItem('Producto de Ana')] }));
 
     await waitFor(() => expect(saveOfflineList).toHaveBeenCalledWith('user-a', 'list-a', [shoppingItem('Producto de Ana')]));
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Sin conexión'));
-    fireEvent.click(screen.getByRole('button', { name: 'Añadir' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
     expect(fetchMock.mock.calls.filter(([, init]) => ['POST', 'PATCH', 'DELETE'].includes(init?.method ?? '')).length).toBe(0);
   });
 
@@ -147,9 +169,9 @@ describe('ShoppingListRoute', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(screen.getByText('Sin conexión')).toBeVisible();
-    const add = screen.getByRole('button', { name: 'Añadir' });
-    expect(add).toBeDisabled();
-    fireEvent.click(add);
+    const createProduct = screen.getByRole('button', { name: 'Crear producto' });
+    expect(createProduct).toBeDisabled();
+    fireEvent.click(createProduct);
     expect(fetchMock.mock.calls.filter(([, init]) => ['POST', 'PATCH', 'DELETE'].includes(init?.method ?? '')).length).toBe(0);
   });
 
@@ -198,13 +220,14 @@ describe('ShoppingListRoute', () => {
     render(<QueryClientProvider client={createWebQueryClient()}><ShoppingListRoute currentUserId="user-1" /></QueryClientProvider>);
 
     expect(await screen.findByText('Pan guardado')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'A\u00f1adir' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Añadir' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Crear producto' })).toBeDisabled();
 
     Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
     window.dispatchEvent(new Event('online'));
 
     expect(await screen.findByText('Pan del servidor')).toBeVisible();
-    await waitFor(() => expect(screen.getByRole('button', { name: 'A\u00f1adir' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Crear producto' })).toBeEnabled());
   });
 
   it('refreshes notification queries after a local product mutation', async () => {
@@ -214,6 +237,7 @@ describe('ShoppingListRoute', () => {
       const url = String(input);
       if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'household-1', name: 'Casa' }] }));
       if (url.endsWith('/households/household-1/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-1', householdId: 'household-1', name: 'Compra', isDefault: true, version: 1, createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' }] }));
+      if (url.endsWith('/product-catalog/snapshot')) return Promise.resolve(Response.json(catalogSnapshot()));
       if (url.endsWith('/lists/list-1/items') && init?.method === 'POST') return Promise.resolve(Response.json({ item: { id: 'item-2', listId: 'list-1', name: 'Pan', normalizedName: 'pan', quantity: 1, unit: null, category: null, note: null, isChecked: false, position: 0, version: 1, createdBy: 'user-1', updatedBy: 'user-1', createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' } }));
       if (url.endsWith('/lists/list-1/items')) return Promise.resolve(Response.json({ items: [] }));
       if (url.endsWith('/notifications') || url.endsWith('/notifications/unread-count')) { notificationReads += 1; return Promise.resolve(Response.json(url.endsWith('/unread-count') ? { count: 0 } : { notifications: [] })); }
@@ -223,8 +247,7 @@ describe('ShoppingListRoute', () => {
     render(<QueryClientProvider client={client}><ShoppingListRoute /><NotificationBell onNavigate={vi.fn()} /></QueryClientProvider>);
     await screen.findByRole('heading', { name: 'Compra' });
     await waitFor(() => expect(notificationReads).toBe(2));
-    fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'Pan' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Añadir' }));
+    await queueCatalogProduct('Pan');
     await waitFor(() => expect(notificationReads).toBe(4));
   });
 
@@ -251,7 +274,7 @@ describe('ShoppingListRoute', () => {
       expect(screen.getByRole('button', { name: 'Desmarcar Leche' })).toHaveAttribute('aria-pressed', 'true');
     });
 
-    rejectToggle(new Error('Sin conexiÃ³n'));
+    rejectToggle(new Error('Sin conexión'));
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Marcar Leche' })).toHaveAttribute('aria-pressed', 'false');
@@ -404,6 +427,7 @@ describe('ShoppingListRoute', () => {
       const url = String(input);
       if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'household-1', name: 'Casa' }] }));
       if (url.endsWith('/households/household-1/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-1', householdId: 'household-1', name: 'Compra', isDefault: true, version: 1, createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' }] }));
+      if (url.endsWith('/product-catalog/snapshot')) return Promise.resolve(Response.json(catalogSnapshot()));
       if (url.endsWith('/lists/list-1/items') && init?.method === 'POST') return add;
       if (url.endsWith('/lists/list-1/items')) return Promise.resolve(Response.json({ items: [item] }));
       if (url.endsWith('/items/item-1') && init?.method === 'PATCH') return edit;
@@ -413,8 +437,7 @@ describe('ShoppingListRoute', () => {
 
     render(<QueryClientProvider client={createWebQueryClient()}><ShoppingListRoute /></QueryClientProvider>);
     await screen.findByText('Leche');
-    fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'Pan' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Añadir' }));
+    await queueCatalogProduct('Pan');
     expect(await screen.findByText('Pan')).toBeVisible();
     rejectAdd(new Error('Sin conexión'));
     await waitFor(() => expect(screen.queryByText('Pan')).not.toBeInTheDocument());

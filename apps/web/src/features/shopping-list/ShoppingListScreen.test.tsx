@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { clearProductCatalogCacheForTests } from '../catalog/product-catalog-api';
@@ -13,7 +13,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('keeps the compact list autocomplete mode with the header quantity stepper', async () => {
+it('uses the shared pending workflow from compact list autocomplete mode', async () => {
   const onAdd = vi.fn();
   stubCatalogSnapshot();
   localStorage.setItem('nfcompra.product-picker-mode', 'list');
@@ -21,21 +21,32 @@ it('keeps the compact list autocomplete mode with the header quantity stepper', 
   render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} />);
   expect(screen.getByRole('heading', { name: 'Compra' })).toBeInTheDocument();
   expect(screen.queryByText('Lista de la compra')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /A.adir/ })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Buscar producto por voz' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Crear producto' })).toBeInTheDocument();
 
   fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'lech' } });
 
-  const suggestion = await screen.findByRole('button', { name: 'Leche entera · Lacteos · 1 L' });
+  const suggestion = await screen.findByRole('button', { name: 'Seleccionar Leche entera' });
   fireEvent.click(suggestion);
-  fireEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad del producto' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad del producto' }));
+  expect(screen.getByLabelText('Cantidad seleccionada de Leche entera')).toHaveTextContent('0');
+  fireEvent.click(suggestion);
+  expect(screen.queryByText(/Pendientes de a.adir/)).not.toBeInTheDocument();
 
-  expect(screen.getByLabelText('Cantidad seleccionada')).toHaveTextContent('3');
-  fireEvent.click(screen.getByRole('button', { name: 'Añadir' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad de Leche entera' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad de Leche entera' }));
+  expect(screen.getByLabelText('Cantidad seleccionada de Leche entera')).toHaveTextContent('2');
+  fireEvent.click(suggestion);
 
-  await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Leche entera', quantity: 3, unit: null }));
+  const pendingTray = await screen.findByLabelText(/Productos pendientes de a.adir/);
+  expect(within(pendingTray).getByText('Leche entera')).toBeInTheDocument();
+  expect(within(pendingTray).getByText('x2')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /A.adir 1 producto/ }));
+
+  await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Leche entera', quantity: 2, unit: null }));
 });
 
-it('creates a catalog product from compact list mode and keeps it ready to add', async () => {
+it('creates a catalog product from compact list mode and keeps it ready to queue', async () => {
   const onAdd = vi.fn();
   const fetchMock = stubCatalogCreate();
   localStorage.setItem('nfcompra.product-picker-mode', 'list');
@@ -45,11 +56,11 @@ it('creates a catalog product from compact list mode and keeps it ready to add',
   fireEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
 
   expect(screen.getByRole('dialog', { name: 'Crear producto' })).toBeInTheDocument();
-  await waitFor(() => expect(screen.getByLabelText('Categoria')).toHaveValue('cat-water'));
-  expect(within(screen.getByLabelText('Categoria')).getByRole('option', { name: /\uD83E\uDD64 Bebidas/ })).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByLabelText('Categoría')).toHaveValue('cat-water'));
+  expect(within(screen.getByLabelText('Categoría')).getByRole('option', { name: /\uD83E\uDD64 Bebidas/ })).toBeInTheDocument();
   expect(screen.getByLabelText('Icono')).toHaveValue('cart');
   expect(within(screen.getByLabelText('Icono')).getByRole('option', { name: /\uD83E\uDDF7 Panales/ })).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('Tama\u00f1o'), { target: { value: '1 L' } });
+  fireEvent.change(screen.getByLabelText(/Tama.o/), { target: { value: '1 L' } });
   fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
 
   await waitFor(() => expect(fetchMock.mock.calls.some(([input, init]) => String(input).endsWith('/product-catalog') && init?.method === 'POST')).toBe(true));
@@ -57,7 +68,9 @@ it('creates a catalog product from compact list mode and keeps it ready to add',
   expect(JSON.parse(String(productRequest.body))).toMatchObject({ categoryId: 'cat-water', iconKey: 'cart', packageSize: '1 L' });
   expect(screen.getByLabelText('Producto')).toHaveValue('Agua mineral');
 
-  fireEvent.click(screen.getByRole('button', { name: 'A\u00f1adir' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad de Agua mineral' }));
+  fireEvent.click(screen.getByRole('button', { name: /A.adir Agua mineral x1/ }));
+  fireEvent.click(await screen.findByRole('button', { name: /A.adir 1 producto/ }));
   await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Agua mineral', quantity: 1, unit: null }));
 });
 
@@ -68,16 +81,17 @@ it('creates a catalog product from card mode and queues it in the pending tray',
 
   render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} />);
   fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'Agua mineral' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad del producto' }));
   fireEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
   fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Aumentar cantidad de Agua mineral' }));
+  fireEvent.click(screen.getByRole('button', { name: /Seleccionar Agua mineral/i }));
 
-  const pendingTray = await screen.findByLabelText('Productos pendientes de a\u00f1adir');
+  const pendingTray = await screen.findByLabelText(/Productos pendientes de a.adir/);
   expect(within(pendingTray).getByText('Agua mineral')).toBeInTheDocument();
-  expect(within(pendingTray).getByText('x2')).toBeInTheDocument();
+  expect(within(pendingTray).getByText('x1')).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole('button', { name: 'A\u00f1adir 1 producto' }));
-  await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Agua mineral', quantity: 2, unit: null }));
+  fireEvent.click(screen.getByRole('button', { name: /A.adir 1 producto/ }));
+  await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Agua mineral', quantity: 1, unit: null }));
 });
 
 it('places the mobile quick product button in the shopping list header', async () => {
@@ -86,7 +100,7 @@ it('places the mobile quick product button in the shopping list header', async (
   render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={vi.fn()} onClearChecked={vi.fn()} mobileSimpleActions />);
 
   const createButton = screen.getByRole('button', { name: 'Crear producto' });
-  expect(createButton).toHaveClass('product-create-button--header');
+  expect(createButton).toHaveClass('product-create-button--inline');
   expect(createButton).toHaveTextContent('+');
   fireEvent.click(createButton);
 
@@ -104,7 +118,13 @@ it('shows list suggestions with the favorite action integrated before the produc
   const rowButtons = within(row).getAllByRole('button');
 
   expect(rowButtons[0]).toHaveAccessibleName('Añadir Leche entera de favoritos');
-  expect(rowButtons[1]).toHaveAccessibleName('Leche entera · Lacteos · 1 L');
+  expect(rowButtons[1]).toHaveAccessibleName('Seleccionar Leche entera');
+
+  fireEvent.click(rowButtons[1]);
+
+  expect(within(row).queryByRole('button', { name: 'Añadir Leche entera de favoritos' })).not.toBeInTheDocument();
+  expect(within(row).getByRole('button', { name: 'Seleccionar Leche entera' })).toBeInTheDocument();
+  expect(within(row).getByRole('group', { name: 'Cantidad de Leche entera' })).toBeInTheDocument();
 });
 
 it('adds product cards to a removable waitlist before committing them to pending items', async () => {
@@ -159,6 +179,34 @@ it('blurs the product field when scrolling search results', async () => {
   expect(productInput).not.toHaveFocus();
 });
 
+it('uses final web speech recognition text as product search without adding directly', async () => {
+  const onAdd = vi.fn();
+  const speech = stubSpeechRecognition();
+  stubCatalogSnapshot();
+
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} />);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Buscar producto por voz' }));
+  expect(screen.getByRole('button', { name: 'Escuchando' })).toBeInTheDocument();
+  act(() => speech.emitResult('Leche entera'));
+
+  expect(screen.getByLabelText('Producto')).toHaveValue('Leche entera');
+  expect(await screen.findByRole('button', { name: 'Seleccionar Leche entera' })).toBeInTheDocument();
+  expect(onAdd).not.toHaveBeenCalled();
+});
+
+it('keeps the existing product search text when web speech recognition fails', async () => {
+  const speech = stubSpeechRecognition();
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={vi.fn()} />);
+
+  fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'pan' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Buscar producto por voz' }));
+  act(() => speech.emitError());
+
+  expect(screen.getByLabelText('Producto')).toHaveValue('pan');
+  expect(await screen.findByRole('button', { name: 'Buscar producto por voz' })).toBeInTheDocument();
+});
+
 it('closes and reopens product search results when focus leaves and returns to the product field', async () => {
   const onAdd = vi.fn();
   stubCatalogSnapshot();
@@ -176,12 +224,12 @@ it('closes and reopens product search results when focus leaves and returns to t
   expect(screen.getByRole('button', { name: /Seleccionar Atun claro al natural Hacendado/i })).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: 'Vista de lista' }));
-  expect(await screen.findByRole('button', { name: 'Atun claro al natural Hacendado · Conservas, caldos y cremas · 0.48 kg' })).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: 'Seleccionar Atun claro al natural Hacendado' })).toBeInTheDocument();
   fireEvent.pointerDown(document.body);
-  expect(screen.queryByRole('button', { name: 'Atun claro al natural Hacendado · Conservas, caldos y cremas · 0.48 kg' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Seleccionar Atun claro al natural Hacendado' })).not.toBeInTheDocument();
 
   fireEvent.focus(productInput);
-  expect(screen.getByRole('button', { name: 'Atun claro al natural Hacendado · Conservas, caldos y cremas · 0.48 kg' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Seleccionar Atun claro al natural Hacendado' })).toBeInTheDocument();
 });
 
 it('edits a shopping item with the compact name and quantity stepper layout', async () => {
@@ -231,6 +279,12 @@ it('exposes list header actions for renaming, emptying checked products and dele
   expect(onRenameList).toHaveBeenCalledWith('Mercadona');
 
   fireEvent.click(screen.getByRole('button', { name: 'Vaciar lista Compra semanal' }));
+  expect(onClearChecked).not.toHaveBeenCalled();
+  expect(screen.getByRole('dialog', { name: 'Vaciar lista' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+  expect(onClearChecked).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Vaciar lista Compra semanal' }));
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Vaciar lista' })).getByRole('button', { name: 'Vaciar' }));
   expect(onClearChecked).toHaveBeenCalledTimes(1);
 
   fireEvent.click(screen.getByRole('button', { name: 'Eliminar lista Compra semanal' }));
@@ -320,4 +374,44 @@ function stubCatalogCreate(): ReturnType<typeof vi.fn> {
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
+}
+
+function stubSpeechRecognition(): { emitResult(text: string): void; emitError(): void } {
+  let instance: {
+    onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+    onerror: (() => void) | null;
+    onend: (() => void) | null;
+  } | null = null;
+  class FakeSpeechRecognition {
+    lang = '';
+    interimResults = false;
+    maxAlternatives = 1;
+    continuous = false;
+    onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null = null;
+    onerror: (() => void) | null = null;
+    onend: (() => void) | null = null;
+    constructor() {
+      instance = this;
+    }
+    start(): void {
+      return undefined;
+    }
+    stop(): void {
+      this.onend?.();
+    }
+    abort(): void {
+      this.onend?.();
+    }
+  }
+  vi.stubGlobal('SpeechRecognition', FakeSpeechRecognition);
+  return {
+    emitResult(text) {
+      instance?.onresult?.({ results: [[{ transcript: text }]] });
+      instance?.onend?.();
+    },
+    emitError() {
+      instance?.onerror?.();
+      instance?.onend?.();
+    },
+  };
 }

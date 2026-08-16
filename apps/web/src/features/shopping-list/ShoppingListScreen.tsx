@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type JSX, type PointerEvent } from 'react';
 
-import { ProductCatalogCard, ProductCatalogListItem, productIcon } from '../catalog/ProductCatalogCards';
+import { ProductCatalogCard, productDetails, productIcon } from '../catalog/ProductCatalogCards';
 import { catalogIconOptions, categoryOptionLabel } from '../catalog/catalog-icons';
 import { createProductCatalogItem, fetchProductCategories, searchProductCatalog, setProductFavorite, type ProductCatalogInput, type ProductCatalogItem, type ProductCategory } from '../catalog/product-catalog-api';
 import type { ShoppingItem } from './model';
@@ -34,10 +34,10 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
   const pendingItems = items.filter((item) => !item.isChecked);
   const checkedItems = items.filter((item) => item.isChecked);
   const [name, setName] = useState('');
-  const [quantity, setQuantity] = useState('1');
   const [suggestions, setSuggestions] = useState<ProductCatalogItem[]>([]);
   const [pickerMode, setPickerMode] = useState<ProductPickerMode>(() => pickerModeFromStorage());
-  const [cardQuantities, setCardQuantities] = useState<Record<string, number>>({});
+  const [productQuantities, setProductQuantities] = useState<Record<string, number>>({});
+  const [activeListProductId, setActiveListProductId] = useState<string | null>(null);
   const [waitlist, setWaitlist] = useState<PendingProduct[]>([]);
   const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
   const [isProductSearchOpen, setIsProductSearchOpen] = useState(true);
@@ -49,8 +49,16 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
   const [quickCreateError, setQuickCreateError] = useState<string | null>(null);
   const [isCreatingProduct, setIsCreatingProduct] = useState(false);
   const [quickCreateCategories, setQuickCreateCategories] = useState<ProductCategory[]>([]);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const productSearchRef = useRef<HTMLDivElement>(null);
   const recentlyAddedTimeoutRef = useRef<number | null>(null);
+  const voiceSearch = useVoiceProductSearch({
+    disabled: isOffline || !onAdd,
+    onResult: (result) => {
+      setName(result);
+      setIsProductSearchOpen(true);
+    },
+  });
 
   useEffect(() => {
     if (!isRenamingList) setListNameDraft(title);
@@ -90,20 +98,7 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
   function changePickerMode(mode: ProductPickerMode): void {
     setPickerMode(mode);
     localStorage.setItem(pickerModeStorageKey, mode);
-    setSuggestions([]);
-    setCardQuantities({});
     setIsProductSearchOpen(true);
-  }
-
-  function addItem(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
-    const parsedQuantity = Number(quantity);
-    if (isOffline || !name.trim() || !Number.isFinite(parsedQuantity) || parsedQuantity <= 0) return;
-    onAdd?.({ name: name.trim(), quantity: parsedQuantity, unit: null });
-    setName('');
-    setQuantity('1');
-    setSuggestions([]);
-    setIsProductSearchOpen(false);
   }
 
   function addWaitlist(): void {
@@ -111,14 +106,9 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
     waitlist.forEach(({ name: productName, quantity: productQuantity, unit }) => onAdd?.({ name: productName, quantity: productQuantity, unit }));
     setWaitlist([]);
     setSuggestions([]);
-    setCardQuantities({});
+    setProductQuantities({});
+    setActiveListProductId(null);
     setName('');
-    setIsProductSearchOpen(false);
-  }
-
-  function selectSuggestion(suggestion: ProductCatalogItem): void {
-    setName(suggestion.name);
-    setSuggestions([]);
     setIsProductSearchOpen(false);
   }
 
@@ -139,11 +129,10 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
       const product = await createProductCatalogItem(input);
       setSuggestions((current) => applyFavoriteOverrides([product, ...current.filter((entry) => entry.id !== product.id)], favoriteOverrides));
       setQuickCreateOpen(false);
-      if (pickerMode === 'cards') {
-        addProductToWaitlist(product, Math.max(1, Math.round(Number(quantity) || 1)));
-      } else {
-        selectSuggestion(product);
-      }
+      setName(product.name);
+      setActiveListProductId(product.id);
+      setProductQuantities((current) => ({ ...current, [product.id]: current[product.id] ?? 0 }));
+      setIsProductSearchOpen(true);
     } catch {
       setQuickCreateError('No se pudo crear el producto.');
     } finally {
@@ -162,18 +151,22 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
     }
   }
 
-  function updateCardQuantity(productId: string, delta: number): void {
-    setCardQuantities((current) => ({ ...current, [productId]: Math.max(0, (current[productId] ?? 0) + delta) }));
-  }
-
-  function updateManualQuantity(delta: number): void {
-    setQuantity((current) => String(Math.max(1, Math.round((Number(current) || 1) + delta))));
+  function updateProductQuantity(productId: string, delta: number): void {
+    setProductQuantities((current) => ({ ...current, [productId]: Math.max(0, (current[productId] ?? 0) + delta) }));
   }
 
   function addSuggestionToWaitlist(suggestion: ProductCatalogItem): void {
-    const selectedQuantity = cardQuantities[suggestion.id] ?? 0;
+    const selectedQuantity = productQuantities[suggestion.id] ?? 0;
     if (selectedQuantity <= 0) return;
     addProductToWaitlist(suggestion, selectedQuantity);
+  }
+
+  function activateListSuggestion(suggestion: ProductCatalogItem): void {
+    if (activeListProductId !== suggestion.id) {
+      setActiveListProductId(suggestion.id);
+      return;
+    }
+    addSuggestionToWaitlist(suggestion);
   }
 
   function addProductToWaitlist(suggestion: ProductCatalogItem, selectedQuantity: number): void {
@@ -198,7 +191,8 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
       setRecentlyAddedId((current) => current === suggestion.id ? null : current);
       recentlyAddedTimeoutRef.current = null;
     }, 450);
-    setCardQuantities((current) => ({ ...current, [suggestion.id]: 0 }));
+    setProductQuantities((current) => ({ ...current, [suggestion.id]: 0 }));
+    setActiveListProductId(null);
     setName('');
     setSuggestions([]);
     setIsProductSearchOpen(false);
@@ -225,7 +219,7 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
       <div className="shopping-list__title">
         <div className="shopping-list__title-actions">
           {onDeleteList ? <button type="button" className="list-action-button list-action-button--danger" aria-label={`Eliminar lista ${title}`} disabled={isOffline} onClick={onDeleteList}>🗑</button> : null}
-          {onClearChecked ? <button type="button" className="list-empty-button" aria-label={`Vaciar lista ${title}`} disabled={isOffline} onClick={onClearChecked}>Vaciar</button> : null}
+          {onClearChecked ? <button type="button" className="list-empty-button" aria-label={`Vaciar lista ${title}`} disabled={isOffline} onClick={() => setClearConfirmOpen(true)}>Vaciar</button> : null}
         </div>
         {isRenamingList ? <form className="list-title-form" onSubmit={renameList}>
           <label className="sr-only" htmlFor="list-title-name">Nombre de la lista</label>
@@ -236,27 +230,28 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
           <h1>{title}</h1>
           {onRenameList ? <button type="button" className="list-action-button" aria-label={`Cambiar nombre de ${title}`} disabled={isOffline} onClick={() => setIsRenamingList(true)}>✎</button> : null}
         </div>}
-        {onAdd && mobileSimpleActions ? <button type="button" className="product-create-button product-create-button--header" aria-label="Crear producto" disabled={isOffline} onClick={openQuickCreate}>+</button> : null}
         {onAdd ? <ProductPickerToggle pickerMode={pickerMode} onChange={changePickerMode} /> : null}
       </div>
       {onAdd ? <>
         <div className="product-search-area" ref={productSearchRef}>
-          <form className={`product-form product-form--${pickerMode}`} onSubmit={addItem}>
+          <div className={`product-form product-form--${pickerMode}`}>
             <label htmlFor="new-product-name">Producto</label>
-            <div className="product-autocomplete"><input id="new-product-name" disabled={isOffline} value={name} onFocus={() => setIsProductSearchOpen(true)} onChange={(event) => { setName(event.target.value); setIsProductSearchOpen(true); }} required maxLength={200} autoComplete="off" />
-              {pickerMode === 'list' && isProductSearchOpen && suggestions.length ? <div className="product-suggestions" role="listbox" aria-label="Sugerencias de productos" onScroll={blurProductSearch}>{suggestions.map((suggestion) => <ProductCatalogListItem key={suggestion.id} product={suggestion} onSelect={selectSuggestion} onFavoriteChange={(product, favorite) => void changeFavorite(product, favorite)} />)}</div> : null}
+            <div className="product-entry-row">
+              <div className="product-autocomplete"><input id="new-product-name" disabled={isOffline} value={name} onFocus={() => setIsProductSearchOpen(true)} onChange={(event) => { setName(event.target.value); setIsProductSearchOpen(true); }} maxLength={200} autoComplete="off" />
+                {pickerMode === 'list' && isProductSearchOpen && suggestions.length ? <div className="product-suggestions" role="listbox" aria-label="Sugerencias de productos" onScroll={blurProductSearch}>{suggestions.map((suggestion) => <ProductCatalogListPickerItem key={suggestion.id} product={suggestion} active={activeListProductId === suggestion.id} quantity={productQuantities[suggestion.id] ?? 0} onActivate={activateListSuggestion} onQuantityChange={updateProductQuantity} onFavoriteChange={(product, favorite) => void changeFavorite(product, favorite)} />)}</div> : null}
+              </div>
+              <button type="button" className={voiceSearch.isListening ? 'product-voice-button is-listening' : 'product-voice-button'} aria-label={voiceSearch.isListening ? 'Escuchando' : 'Buscar producto por voz'} title={voiceSearch.isSupported ? 'Buscar producto por voz' : 'Búsqueda por voz no disponible'} disabled={isOffline || !voiceSearch.isSupported} onClick={voiceSearch.start}><MicrophoneIcon /></button>
+              <button type="button" className="product-create-button product-create-button--inline" aria-label="Crear producto" disabled={isOffline} onClick={openQuickCreate}>+</button>
             </div>
-            <ManualQuantityStepper quantity={quantity} disabled={isOffline} onChange={updateManualQuantity} />
-            {!mobileSimpleActions ? <button type="button" className="product-create-button product-create-button--inline" aria-label="Crear producto" disabled={isOffline} onClick={openQuickCreate}>+</button> : null}
-            <button type="submit" disabled={isOffline}>Añadir</button>
-          </form>
-          {pickerMode === 'cards' && isProductSearchOpen && suggestions.length ? <ProductCardResults suggestions={suggestions} quantities={cardQuantities} recentlyAddedId={recentlyAddedId} onQuantityChange={updateCardQuantity} onSelect={addSuggestionToWaitlist} onFavoriteChange={(product, favorite) => void changeFavorite(product, favorite)} onScroll={blurProductSearch} /> : null}
-          {pickerMode === 'cards' && waitlist.length ? <PendingProductWaitlist products={waitlist} onRemove={removeFromWaitlist} onCommit={addWaitlist} /> : null}
+          </div>
+          {pickerMode === 'cards' && isProductSearchOpen && suggestions.length ? <ProductCardResults suggestions={suggestions} quantities={productQuantities} recentlyAddedId={recentlyAddedId} onQuantityChange={updateProductQuantity} onSelect={addSuggestionToWaitlist} onFavoriteChange={(product, favorite) => void changeFavorite(product, favorite)} onScroll={blurProductSearch} /> : null}
+          {waitlist.length ? <PendingProductWaitlist products={waitlist} onRemove={removeFromWaitlist} onCommit={addWaitlist} /> : null}
         </div>
         {quickCreateOpen ? <QuickProductCreateDialog initialName={quickCreateInitialName} categories={quickCreateCategories} error={quickCreateError} isSaving={isCreatingProduct} onSubmit={(input) => void createQuickProduct(input)} onClose={() => { if (!isCreatingProduct) setQuickCreateOpen(false); }} /> : null}
       </> : null}
     </header>
     {isOffline ? <p className="offline-notice" role="status">Sin conexión</p> : null}
+    {clearConfirmOpen ? <ClearListConfirmDialog onCancel={() => setClearConfirmOpen(false)} onConfirm={() => { setClearConfirmOpen(false); onClearChecked?.(); }} /> : null}
     <ShoppingSection title="Pendientes" items={pendingItems} emptyMessage="No quedan productos pendientes." isOffline={isOffline} onToggle={onToggle} onUpdate={onUpdate} onDelete={onDelete} />
     <ShoppingSection title="Comprados" items={checkedItems} emptyMessage="Aún no has marcado ningún producto." isOffline={isOffline} onToggle={onToggle} onUpdate={onUpdate} onDelete={onDelete} />
   </main>;
@@ -293,9 +288,9 @@ function QuickProductCreateDialog({ initialName, categories, error, isSaving, on
       </header>
       <div className="catalog-entry-fields">
         <label>Nombre del producto<input value={productName} onChange={(event) => setProductName(event.target.value)} required maxLength={120} autoFocus /></label>
-        <label>Categoria<span className="catalog-select-field catalog-select-field--category">
+        <label>Categoría<span className="catalog-select-field catalog-select-field--category">
           <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-            {categories.length ? categories.map((category) => <option key={category.id} value={category.id}>{categoryOptionLabel(category)}</option>) : <option value="">Sin categoria</option>}
+            {categories.length ? categories.map((category) => <option key={category.id} value={category.id}>{categoryOptionLabel(category)}</option>) : <option value="">Sin categoría</option>}
           </select>
         </span></label>
         <label>Icono<span className="catalog-select-field">
@@ -322,12 +317,57 @@ function ProductPickerToggle({ pickerMode, onChange }: { pickerMode: ProductPick
   </div>;
 }
 
-function ManualQuantityStepper({ quantity, disabled, onChange }: { quantity: string; disabled: boolean; onChange(delta: number): void }): JSX.Element {
-  return <div className="manual-quantity-stepper" role="group" aria-label="Cantidad del producto">
-    <button type="button" aria-label="Reducir cantidad del producto" disabled={disabled || Number(quantity) <= 1} onClick={() => onChange(-1)}>−</button>
-    <span aria-label="Cantidad seleccionada">{quantity}</span>
-    <button type="button" aria-label="Aumentar cantidad del producto" disabled={disabled} onClick={() => onChange(1)}>+</button>
+function ResultQuantityStepper({ productName, quantity, disabled = false, onChange }: { productName: string; quantity: number; disabled?: boolean; onChange(delta: number): void }): JSX.Element {
+  return <div className="manual-quantity-stepper product-result-quantity-stepper" role="group" aria-label={`Cantidad de ${productName}`}>
+    <button type="button" aria-label={`Reducir cantidad de ${productName}`} disabled={disabled || quantity <= 0} onClick={(event) => { event.stopPropagation(); onChange(-1); }}>−</button>
+    <span aria-label={`Cantidad seleccionada de ${productName}`}>{quantity}</span>
+    <button type="button" aria-label={`Aumentar cantidad de ${productName}`} disabled={disabled} onClick={(event) => { event.stopPropagation(); onChange(1); }}>+</button>
   </div>;
+}
+
+function ProductCatalogListPickerItem({ product, active, quantity, disabled = false, onActivate, onQuantityChange, onFavoriteChange }: { product: ProductCatalogItem; active: boolean; quantity: number; disabled?: boolean; onActivate(product: ProductCatalogItem): void; onQuantityChange(productId: string, delta: number): void; onFavoriteChange?(product: ProductCatalogItem, favorite: boolean): void }): JSX.Element {
+  const details = productDetails(product);
+  const accessibleName = active && quantity > 0 ? `Añadir ${product.name} x${quantity}` : `Seleccionar ${product.name}`;
+  return <div className={active ? 'product-suggestion-row product-suggestion-row--active' : 'product-suggestion-row'} role="option" aria-selected={active}>
+    {!active ? <button
+      type="button"
+      className={product.isFavorite ? 'product-favorite-button product-favorite-button--compact is-favorite' : 'product-favorite-button product-favorite-button--compact'}
+      aria-label={`${product.isFavorite ? 'Quitar' : 'Añadir'} ${product.name} de favoritos`}
+      aria-pressed={Boolean(product.isFavorite)}
+      disabled={disabled}
+      onClick={(event) => { event.stopPropagation(); onFavoriteChange?.(product, !product.isFavorite); }}
+    >{product.isFavorite ? '★' : '☆'}</button> : null}
+    <button type="button" className="product-suggestion__select" aria-label={accessibleName} disabled={disabled} onClick={() => onActivate(product)}>
+      <span>{product.name}</span>
+      <small>{details}</small>
+    </button>
+    {active ? <ResultQuantityStepper productName={product.name} quantity={quantity} disabled={disabled} onChange={(delta) => onQuantityChange(product.id, delta)} /> : null}
+  </div>;
+}
+
+function ClearListConfirmDialog({ onCancel, onConfirm }: { onCancel(): void; onConfirm(): void }): JSX.Element {
+  return <div className="catalog-filter-backdrop" role="presentation" onClick={onCancel}>
+    <div className="catalog-entry-dialog clear-list-dialog" role="dialog" aria-modal="true" aria-labelledby="clear-list-title" onClick={(event) => event.stopPropagation()}>
+      <header className="catalog-filter-dialog__header">
+        <div><p className="eyebrow">Confirmar</p><h2 id="clear-list-title">Vaciar lista</h2></div>
+        <button className="catalog-filter-dialog__close" type="button" aria-label="Cerrar" onClick={onCancel}>&times;</button>
+      </header>
+      <p>¿Seguro que quieres vaciar esta lista? Se eliminarán los productos comprados.</p>
+      <div className="catalog-entry-dialog__actions">
+        <button className="button button--quiet" type="button" onClick={onCancel}>Cancelar</button>
+        <button className="button button--danger" type="button" onClick={onConfirm}>Vaciar</button>
+      </div>
+    </div>
+  </div>;
+}
+
+function MicrophoneIcon(): JSX.Element {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+    <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" />
+    <path d="M19 11a7 7 0 0 1-14 0" />
+    <path d="M12 18v3" />
+    <path d="M8 21h8" />
+  </svg>;
 }
 
 function ProductCardResults({ suggestions, quantities, recentlyAddedId, onQuantityChange, onSelect, onFavoriteChange, onScroll }: { suggestions: ProductCatalogItem[]; quantities: Record<string, number>; recentlyAddedId: string | null; onQuantityChange(productId: string, delta: number): void; onSelect(suggestion: ProductCatalogItem): void; onFavoriteChange(product: ProductCatalogItem, favorite: boolean): void; onScroll(): void }): JSX.Element {
@@ -368,6 +408,71 @@ function PendingProductWaitlist({ products, onRemove, onCommit }: { products: Pe
     </ul>
     <p>Desliza un producto hacia la izquierda para quitarlo antes de añadirlo.</p>
   </section>;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+type SpeechRecognitionLike = {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  continuous: boolean;
+  onresult: ((event: SpeechRecognitionResultEventLike) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+  abort(): void;
+};
+type SpeechRecognitionResultEventLike = {
+  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+};
+
+function useVoiceProductSearch({ disabled, onResult }: { disabled: boolean; onResult(result: string): void }): { isSupported: boolean; isListening: boolean; start(): void } {
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const SpeechRecognitionApi = getSpeechRecognitionConstructor();
+  const isSupported = Boolean(SpeechRecognitionApi);
+
+  useEffect(() => () => {
+    recognitionRef.current?.abort();
+    recognitionRef.current = null;
+  }, []);
+
+  function start(): void {
+    if (disabled || !SpeechRecognitionApi || recognitionRef.current) return;
+    const recognition = new SpeechRecognitionApi();
+    recognitionRef.current = recognition;
+    recognition.lang = navigator.language || 'es-ES';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.continuous = false;
+    recognition.onresult = (event) => {
+      const transcript = event.results[0]?.[0]?.transcript?.trim();
+      if (transcript) onResult(transcript);
+    };
+    recognition.onerror = () => undefined;
+    recognition.onend = () => {
+      recognitionRef.current = null;
+      setIsListening(false);
+    };
+    try {
+      setIsListening(true);
+      recognition.start();
+    } catch {
+      recognitionRef.current = null;
+      setIsListening(false);
+    }
+  }
+
+  return { isSupported, isListening, start };
+}
+
+function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null {
+  const speechWindow = window as Window & {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
+  return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null;
 }
 
 function applyFavoriteOverrides(products: ProductCatalogItem[], overrides: Record<string, boolean>): ProductCatalogItem[] {

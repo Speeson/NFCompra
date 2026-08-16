@@ -52,6 +52,7 @@ import dev.esgarpe.nfcompra.feature.auth.AuthResult
 import dev.esgarpe.nfcompra.feature.auth.AuthViewModel
 import dev.esgarpe.nfcompra.feature.shoppinglist.AccountShoppingSession
 import dev.esgarpe.nfcompra.feature.shoppinglist.HouseholdInvitationNoticeUiModel
+import dev.esgarpe.nfcompra.feature.shoppinglist.ProductVoiceSearchPermissionRegistry
 import dev.esgarpe.nfcompra.feature.shoppinglist.ShoppingListApp
 import dev.esgarpe.nfcompra.feature.sharing.AcceptInvitationScreen
 import dev.esgarpe.nfcompra.feature.sharing.AuthenticatedRefreshGate
@@ -485,6 +486,10 @@ class MainActivity : FragmentActivity() {
 
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); receiveViewIntent(intent) }
     override fun onResume() { super.onResume(); foregroundRefreshGate?.onForeground { notificationViewModel?.onForeground(); membersViewModel?.onForeground() } }
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        ProductVoiceSearchPermissionRegistry.onRequestPermissionsResult(requestCode, grantResults)
+    }
     override fun onSaveInstanceState(outState: Bundle) {
         invitationHandoff.savedStateToken()?.let { outState.putString(PENDING_INVITATION_TOKEN, it) }
         pendingHouseholdDeepLink?.let { outState.putString(PENDING_HOUSEHOLD_DEEP_LINK, it) }

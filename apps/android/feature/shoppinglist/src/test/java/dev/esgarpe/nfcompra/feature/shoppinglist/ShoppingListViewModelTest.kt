@@ -105,6 +105,26 @@ class ShoppingListViewModelTest {
         assertEquals("Compra A", homeA.content.title)
     }
 
+    @Test fun `loads shared household where current user is member but not owner`() = runTest {
+        server.enqueue(json("{\"households\":[{\"id\":\"home-shared\",\"name\":\"Casa compartida\",\"ownerId\":\"owner-user\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}"))
+        server.enqueue(json("{\"lists\":[{\"id\":\"list-shared\",\"householdId\":\"home-shared\",\"name\":\"Mercadona\",\"isDefault\":false,\"version\":1,\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}"))
+        server.enqueue(json("{\"items\":[]}"))
+        val viewModel = ShoppingListViewModel(
+            ShoppingListRepository(NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java)),
+        )
+
+        viewModel.load()
+
+        viewModel.state.test {
+            assertEquals(ShoppingListViewState.Loading, awaitItem())
+            val data = awaitItem() as ShoppingListViewState.Data
+            assertEquals("home-shared", data.selectedHouseholdId)
+            assertEquals("list-shared", data.selectedListId)
+            assertEquals("Mercadona", data.content.title)
+            assertEquals("owner-user", data.households.single().ownerId)
+        }
+    }
+
     @Test fun `refreshes product categories into data state for catalog tab`() = runTest {
         val viewModel = ShoppingListViewModel(MultiListMetricsRepository())
         viewModel.load()

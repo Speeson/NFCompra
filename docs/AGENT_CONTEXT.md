@@ -22,7 +22,8 @@ Local worktree layout is simplified to `C:\DAM2\NFCompra` on `main` and `C:\DAM2
 
 ## Recent work (last 20 commits)
 
-- Web: Shopping-list product search includes a lime `+` quick create action; in mobile-simple list detail it is centered in the header action row, while desktop keeps it inline with the product form. The product dialog includes name, category, icon, brand, and package size.
+- Web/Android: Shopping-list product entry now uses `[Producto][micrófono][+]`; voice search is local to each client, list/card result modes share per-product quantity plus the "Pendientes de añadir" tray, and `Vaciar` requires confirmation before clearing.
+- Web: Shopping-list product search includes a lime `+` quick create action inline with the search and microphone controls. The product dialog includes name, category, icon, brand, and package size.
 - Android: LoginScreen back button styling, auth form improvements, catalog favorites, loading states, household/list management features.
 - Web: Landing page expanded with app previews and refreshed content.
 - Android: Dashboard shell polishing, compact household cards, lists grouped by household, gradient shell styling.
