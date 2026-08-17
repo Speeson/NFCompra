@@ -213,6 +213,7 @@ No guardes keystores, tokens ni passwords en Git.
 ## Troubleshooting
 
 - Ver impacto local: `npm run deploy:impact -- --format json`.
+- Catalogo oficial sin productos al navegar por categorias (solo visibles en busqueda/favoritos): los productos de semilla quedaron sin `category_id` en la base; la migracion `0017_catalog_restore_categories.sql` restaura las categorias de los productos de `supermercados-espana`/`mercadona` (idempotente, se aplica en el proximo deploy de la API).
 - Redeploy Web: workflow manual `mode=web`.
 - Redeploy API: workflow manual `mode=api`.
 - Rebuild Android sin release: workflow manual `mode=android`, `android_release_mode=build-only`.
