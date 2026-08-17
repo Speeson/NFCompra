@@ -581,12 +581,12 @@ private class MultiListMetricsRepository : ShoppingRepository {
         ShoppingListSummaryUiModel("list-1", householdId, "Compra"),
         ShoppingListSummaryUiModel("list-2", householdId, "Cena"),
     )
-    override suspend fun productCategories() = listOf(
+    override suspend fun productCategories(householdId: String?) = listOf(
         ProductCategoryUiModel("favorites", "Favoritos", "favoritos", "star", isFavorite = true),
         ProductCategoryUiModel("cat-dairy", "Lacteos", "lacteos", "milk"),
     )
     var warmProductCatalogCalls = 0
-    override suspend fun warmProductCatalog() {
+    override suspend fun warmProductCatalog(householdId: String?) {
         warmProductCatalogCalls++
     }
     override fun observeItems(listId: String) = MutableStateFlow(itemsByList.getValue(listId))

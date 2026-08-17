@@ -47,10 +47,16 @@ beforeEach(async () => {
     CREATE TABLE IF NOT EXISTS shopping_lists (id TEXT PRIMARY KEY, household_id TEXT NOT NULL, name TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_shopping_lists_one_default_per_household ON shopping_lists(household_id) WHERE is_default = 1;
     CREATE TABLE IF NOT EXISTS shopping_items (id TEXT PRIMARY KEY, list_id TEXT NOT NULL, name TEXT NOT NULL, normalized_name TEXT NOT NULL, quantity REAL NOT NULL DEFAULT 1, unit TEXT NULL, category TEXT NULL, note TEXT NULL, is_checked INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL DEFAULT 0, version INTEGER NOT NULL DEFAULT 1, created_by TEXT NOT NULL, updated_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS product_categories (id TEXT PRIMARY KEY, name TEXT NOT NULL, normalized_name TEXT NOT NULL, parent_id TEXT NULL, icon_key TEXT NOT NULL DEFAULT 'shopping-basket', source TEXT NULL, source_category_id TEXT NULL, scope TEXT NOT NULL DEFAULT 'system' CHECK(scope IN ('system', 'household')), household_id TEXT NULL, created_by TEXT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS product_catalog (id TEXT PRIMARY KEY, name TEXT NOT NULL, normalized_name TEXT NOT NULL, category_id TEXT NULL, icon_key TEXT NOT NULL DEFAULT 'shopping-basket', brand TEXT NULL, package_size TEXT NULL, source TEXT NULL, source_product_id TEXT NULL, scope TEXT NOT NULL DEFAULT 'system' CHECK(scope IN ('system', 'household')), household_id TEXT NULL, created_by TEXT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS user_product_favorites (user_id TEXT NOT NULL, product_id TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (user_id, product_id));
     CREATE TABLE IF NOT EXISTS sync_operations (operation_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, lease_token TEXT NULL, created_at TEXT NOT NULL, response_status INTEGER NOT NULL, response_body TEXT NULL);
     DELETE FROM sync_operations;
     DELETE FROM shopping_items;
     DELETE FROM shopping_lists;
+    DELETE FROM user_product_favorites;
+    DELETE FROM product_catalog;
+    DELETE FROM product_categories;
     DELETE FROM household_members;
     DELETE FROM invitations;
     DELETE FROM households;

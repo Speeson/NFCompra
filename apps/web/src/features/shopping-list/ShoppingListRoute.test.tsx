@@ -237,7 +237,7 @@ describe('ShoppingListRoute', () => {
       const url = String(input);
       if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'household-1', name: 'Casa' }] }));
       if (url.endsWith('/households/household-1/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-1', householdId: 'household-1', name: 'Compra', isDefault: true, version: 1, createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' }] }));
-      if (url.endsWith('/product-catalog/snapshot')) return Promise.resolve(Response.json(catalogSnapshot()));
+      if (url.includes('/product-catalog/snapshot')) return Promise.resolve(Response.json(catalogSnapshot()));
       if (url.endsWith('/lists/list-1/items') && init?.method === 'POST') return Promise.resolve(Response.json({ item: { id: 'item-2', listId: 'list-1', name: 'Pan', normalizedName: 'pan', quantity: 1, unit: null, category: null, note: null, isChecked: false, position: 0, version: 1, createdBy: 'user-1', updatedBy: 'user-1', createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' } }));
       if (url.endsWith('/lists/list-1/items')) return Promise.resolve(Response.json({ items: [] }));
       if (url.endsWith('/notifications') || url.endsWith('/notifications/unread-count')) { notificationReads += 1; return Promise.resolve(Response.json(url.endsWith('/unread-count') ? { count: 0 } : { notifications: [] })); }
@@ -427,7 +427,7 @@ describe('ShoppingListRoute', () => {
       const url = String(input);
       if (url.endsWith('/households')) return Promise.resolve(Response.json({ households: [{ id: 'household-1', name: 'Casa' }] }));
       if (url.endsWith('/households/household-1/lists')) return Promise.resolve(Response.json({ lists: [{ id: 'list-1', householdId: 'household-1', name: 'Compra', isDefault: true, version: 1, createdAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' }] }));
-      if (url.endsWith('/product-catalog/snapshot')) return Promise.resolve(Response.json(catalogSnapshot()));
+      if (url.includes('/product-catalog/snapshot')) return Promise.resolve(Response.json(catalogSnapshot()));
       if (url.endsWith('/lists/list-1/items') && init?.method === 'POST') return add;
       if (url.endsWith('/lists/list-1/items')) return Promise.resolve(Response.json({ items: [item] }));
       if (url.endsWith('/items/item-1') && init?.method === 'PATCH') return edit;

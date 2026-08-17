@@ -28,12 +28,15 @@ Los errores siguen esta envoltura:
     "birthDate": "1995-04-23",
     "username": "ana",
     "email": "ana@example.test",
+    "role": "user",
     "emailVerifiedAt": "2026-07-27T12:00:00.000Z",
     "createdAt": "2026-07-27T12:00:00.000Z",
     "updatedAt": "2026-07-27T12:00:00.000Z"
   }
 }
 ```
+
+`role` es `"user"` o `"admin"`. Lo asigna el servidor desde D1 (`users.role`); los clientes nunca lo envían. El registro siempre crea cuentas con `role: "user"` y los campos `role` incluidos en un cuerpo de registro o de `PATCH /v1/me` se ignoran. La promoción a `admin` es una operación interna directa sobre D1 (ver `docs/security-roadmap.md`, SEC-01).
 
 `PATCH /v1/me` actualiza parcialmente `firstName`, `lastName` y `username`. `email` es de solo lectura. `firstName` no puede quedar vacio; `username` puede ser `null` o una cadena unica de 3 a 30 caracteres (`a-z`, `A-Z`, `0-9`, `.`, `_`, `-`). Un username ocupado responde `409 USERNAME_ALREADY_REGISTERED`.
 
@@ -181,5 +184,44 @@ Los tipos actuales son `invitation_received`, `invitation_accepted`, `member_rem
 | Fallo al entregar el correo de invitación | `503 EMAIL_DELIVERY_FAILED` |
 
 Las rutas de listas verifican que la cuenta sea miembro del hogar o de la lista antes de listar o mutar datos, y responden `403 FORBIDDEN` cuando no lo sea. Las mutaciones de productos validan el cuerpo (`422 VALIDATION_ERROR`), detectan versiones obsoletas (`409 ITEM_VERSION_CONFLICT`) y preservan la idempotencia mediante `operationId` (`409 OPERATION_IN_PROGRESS`, `OPERATION_ID_REUSED` u `OPERATION_LOST` cuando corresponda).
+
+### Catálogo global y roles
+
+El catálogo tiene dos ámbitos:
+
+- **Sistema** (`scope = "system"`, `householdId = null`): catálogo oficial/global. Mutaciones solo de administradores.
+- **Hogar** (`scope = "household"`, `householdId = <UUID>`): productos y categorías personalizados de un hogar, gestionados colaborativamente por sus miembros.
+
+Las mutaciones del catálogo del sistema son solo de administradores (`role = "admin"` cargado desde D1):
+
+- `POST /v1/product-categories`
+- `PATCH /v1/product-categories/{id}`
+- `DELETE /v1/product-categories/{id}`
+- `POST /v1/product-catalog`
+- `PATCH /v1/product-catalog/{id}`
+- `DELETE /v1/product-catalog/{id}`
+
+Mutaciones por hogar (requieren ser miembro del hogar; el `householdId` de la ruta se valida en servidor):
+
+- `POST /v1/households/{householdId}/product-categories`
+- `PATCH /v1/households/{householdId}/product-categories/{categoryId}`
+- `DELETE /v1/households/{householdId}/product-categories/{categoryId}`
+- `POST /v1/households/{householdId}/product-catalog`
+- `PATCH /v1/households/{householdId}/product-catalog/{productId}`
+- `DELETE /v1/households/{householdId}/product-catalog/{productId}`
+
+Comportamiento esperado:
+
+| Situación | Estado y código |
+| --- | --- |
+| Sin autenticación en una mutación del sistema | `401 UNAUTHORIZED` |
+| Usuario autenticado con `role` distinto de `admin` en una mutación del sistema | `403 FORBIDDEN` |
+| No miembro o hogar inexistente en una mutación por hogar | `403 FORBIDDEN` / `404 HOUSEHOLD_NOT_FOUND` |
+| Referencia cruzada entre hogares o de sistema a categoría de hogar | `400 CATEGORY_SCOPE_MISMATCH` |
+| Administrador o miembro autorizado | operación permitida |
+
+Lectura: `GET /v1/product-categories`, `GET /v1/product-catalog?search=`, `GET /v1/product-catalog/version` y `GET /v1/product-catalog/snapshot` aceptan el parámetro opcional `householdId`. Sin `householdId` devuelven solo el catálogo del sistema. Con `householdId` y un usuario miembro, devuelven sistema + productos/categorías del hogar actual en el mismo resultado. Si el usuario no es miembro del hogar indicado, responden `403 FORBIDDEN`. Los favoritos (`POST`/`DELETE /v1/product-catalog/{id}/favorite`) funcionan para productos de sistema y de hogar; no se permite marcar como favorito un producto de otro hogar (`403`).
+
+Los recursos expuestos incluyen `scope`, `householdId` y `permissions.canEdit`/`canDelete` (solo pistas para la UI; cada mutación re-verifica la autorización en servidor). El servidor es la única autoridad; nunca se confía en valores de `scope` o `householdId` enviados por el cliente.
 
 El sincronizador offline de Android consume este contrato existente: conserva cada `operationId` mientras reintenta una operación y usa la versión devuelta en `ITEM_VERSION_CONFLICT` para una resolución explícita. No introduce rutas, cabeceras ni campos HTTP adicionales.

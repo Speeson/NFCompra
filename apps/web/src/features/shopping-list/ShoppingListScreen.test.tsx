@@ -18,7 +18,7 @@ it('uses the shared pending workflow from compact list autocomplete mode', async
   stubCatalogSnapshot();
   localStorage.setItem('nfcompra.product-picker-mode', 'list');
 
-  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} />);
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} householdId="household-1" />);
   expect(screen.getByRole('heading', { name: 'Compra' })).toBeInTheDocument();
   expect(screen.queryByText('Lista de la compra')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /A.adir/ })).not.toBeInTheDocument();
@@ -51,7 +51,7 @@ it('creates a catalog product from compact list mode and keeps it ready to queue
   const fetchMock = stubCatalogCreate();
   localStorage.setItem('nfcompra.product-picker-mode', 'list');
 
-  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} />);
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} householdId="household-1" />);
   fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'Agua mineral' } });
   fireEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
 
@@ -79,7 +79,7 @@ it('creates a catalog product from card mode and queues it in the pending tray',
   stubCatalogCreate();
   localStorage.setItem('nfcompra.product-picker-mode', 'cards');
 
-  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} />);
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} householdId="household-1" />);
   fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'Agua mineral' } });
   fireEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
   fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
@@ -97,7 +97,7 @@ it('creates a catalog product from card mode and queues it in the pending tray',
 it('places the mobile quick product button in the shopping list header', async () => {
   stubCatalogCreate();
 
-  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={vi.fn()} onClearChecked={vi.fn()} mobileSimpleActions />);
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={vi.fn()} onClearChecked={vi.fn()} mobileSimpleActions householdId="household-1" />);
 
   const createButton = screen.getByRole('button', { name: 'Crear producto' });
   expect(createButton).toHaveClass('product-create-button--inline');
@@ -132,7 +132,7 @@ it('adds product cards to a removable waitlist before committing them to pending
   stubCatalogSnapshot();
   localStorage.setItem('nfcompra.product-picker-mode', 'cards');
 
-  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} />);
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} householdId="household-1" />);
   fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'atun' } });
 
   const card = await screen.findByRole('button', { name: /Seleccionar Atun claro al natural Hacendado/i });
@@ -184,7 +184,7 @@ it('uses final web speech recognition text as product search without adding dire
   const speech = stubSpeechRecognition();
   stubCatalogSnapshot();
 
-  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} />);
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} householdId="household-1" />);
 
   fireEvent.click(screen.getByRole('button', { name: 'Buscar producto por voz' }));
   expect(screen.getByRole('button', { name: 'Escuchando' })).toBeInTheDocument();
@@ -212,7 +212,7 @@ it('closes and reopens product search results when focus leaves and returns to t
   stubCatalogSnapshot();
   localStorage.setItem('nfcompra.product-picker-mode', 'cards');
 
-  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} />);
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} householdId="household-1" />);
   const productInput = screen.getByLabelText('Producto');
   fireEvent.change(productInput, { target: { value: 'atun' } });
 
@@ -351,7 +351,7 @@ function stubCatalogCreate(): ReturnType<typeof vi.fn> {
         products: created ? [waterProduct] : [],
       }));
     }
-    if (url.endsWith('/product-categories')) {
+    if (url.includes('/product-categories')) {
       return Promise.resolve(Response.json({
         categories: [{
           id: 'cat-water',

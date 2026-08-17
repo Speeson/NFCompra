@@ -188,6 +188,9 @@ private data class ShoppingScreenColors(
     val checkedSurface: Color,
     val checkedAccent: Color,
     val purchasedGreen: Color,
+    val household: Color,
+    val householdSoft: Color,
+    val householdBorder: Color,
 )
 
 private val LightShoppingScreenColors = ShoppingScreenColors(
@@ -204,6 +207,9 @@ private val LightShoppingScreenColors = ShoppingScreenColors(
     checkedSurface = Color(0xFFFFE7E1),
     checkedAccent = Color(0xFFE2533F),
     purchasedGreen = Color(0xFF18864B),
+    household = Color(0xFF7653C7),
+    householdSoft = Color(0xFFF2EDFC),
+    householdBorder = Color(0xFFD8CCF2),
 )
 
 private val DarkShoppingScreenColors = ShoppingScreenColors(
@@ -220,6 +226,9 @@ private val DarkShoppingScreenColors = ShoppingScreenColors(
     checkedSurface = Color(0xFF351C19),
     checkedAccent = Color(0xFFFF8A76),
     purchasedGreen = Color(0xFF72DBA9),
+    household = Color(0xFFC3B2F5),
+    householdSoft = Color(0xFF2A2440),
+    householdBorder = Color(0xFF4A4170),
 )
 
 private val LocalShoppingScreenColors = staticCompositionLocalOf { LightShoppingScreenColors }
@@ -236,6 +245,9 @@ private val PendingAccent: Color @Composable get() = LocalShoppingScreenColors.c
 private val CheckedSurface: Color @Composable get() = LocalShoppingScreenColors.current.checkedSurface
 private val CheckedAccent: Color @Composable get() = LocalShoppingScreenColors.current.checkedAccent
 private val PurchasedGreen: Color @Composable get() = LocalShoppingScreenColors.current.purchasedGreen
+private val WebHousehold: Color @Composable get() = LocalShoppingScreenColors.current.household
+private val WebHouseholdSoft: Color @Composable get() = LocalShoppingScreenColors.current.householdSoft
+private val WebHouseholdBorder: Color @Composable get() = LocalShoppingScreenColors.current.householdBorder
 private val ProductEntryControlHeight = 52.dp
 @Composable private fun screenTopPadding(): Dp = (LocalConfiguration.current.screenHeightDp * 0.02f).dp
 @Composable private fun screenBottomPadding(): Dp = (LocalConfiguration.current.screenHeightDp * 0.03f).dp
@@ -469,11 +481,11 @@ internal fun ShoppingListContent(
     onSearchProducts: suspend (String, Int) -> List<ProductCatalogUiModel> = { _, _ -> emptyList() },
     onSetProductFavorite: suspend (String, Boolean) -> ProductCatalogUiModel? = { _, _ -> null },
     onCreateProductCategory: suspend (String, String) -> ProductCategoryUiModel? = { _, _ -> null },
-    onUpdateProductCategory: suspend (String, String, String) -> ProductCategoryUiModel? = { _, _, _ -> null },
-    onDeleteProductCategory: suspend (String) -> Boolean = { false },
+    onUpdateProductCategory: suspend (ProductCategoryUiModel, String, String) -> ProductCategoryUiModel? = { _, _, _ -> null },
+    onDeleteProductCategory: suspend (ProductCategoryUiModel) -> Boolean = { false },
     onCreateProduct: suspend (String, String?, String, String?, String?) -> ProductCatalogUiModel? = { _, _, _, _, _ -> null },
-    onUpdateProduct: suspend (String, String, String?, String, String?, String?) -> ProductCatalogUiModel? = { _, _, _, _, _, _ -> null },
-    onDeleteProduct: suspend (String) -> Boolean = { false },
+    onUpdateProduct: suspend (ProductCatalogUiModel, String, String?, String, String?, String?) -> ProductCatalogUiModel? = { _, _, _, _, _, _ -> null },
+    onDeleteProduct: suspend (ProductCatalogUiModel) -> Boolean = { false },
     onUpdateProfile: suspend (String?, String?, String?) -> ProfileUiModel? = { _, _, _ -> null },
     onChangePassword: suspend (String, String) -> Boolean = { _, _ -> false },
     onDeleteAccount: suspend (String) -> Boolean = { false },
@@ -514,6 +526,9 @@ internal fun ShoppingListContent(
     var navigationMessage by remember { mutableStateOf<String?>(null) }
     var pendingOpenHouseholdId by remember { mutableStateOf<String?>(null) }
     var listTabReloadRequested by remember { mutableStateOf(false) }
+    val isAdmin = data.profile?.role == "admin"
+    val canManageCatalog = isAdmin || data.selectedHouseholdId != null
+    LaunchedEffect(Unit) { onRefreshProfile() }
     LaunchedEffect(openListsRequestKey) {
         if (openListsRequestKey > 0) {
             selectedTab = DashboardTab.Lists
@@ -688,6 +703,7 @@ internal fun ShoppingListContent(
                             onSetProductFavorite = onSetProductFavorite,
                             categories = data.productCategories,
                             onCreateProduct = onCreateProduct,
+                            canCreateProduct = data.selectedHouseholdId != null,
                             readOnly = openedListMode == ListOpenMode.View,
                             onRename = { renamingList = true },
                             onClearChecked = { onAction(ShoppingListAction.ClearSelectedList) },
@@ -752,6 +768,7 @@ internal fun ShoppingListContent(
                                 onCreateProduct = onCreateProduct,
                                 onUpdateProduct = onUpdateProduct,
                                 onDeleteProduct = onDeleteProduct,
+                                canManageCatalog = canManageCatalog,
                                 rootRequestKey = catalogRootRequestKey,
                                 onNestedStateChange = { catalogNested = it },
                             )
@@ -1402,11 +1419,12 @@ private fun CatalogPanel(
     onSearchProducts: suspend (String, Int) -> List<ProductCatalogUiModel>,
     onSetProductFavorite: suspend (String, Boolean) -> ProductCatalogUiModel?,
     onCreateProductCategory: suspend (String, String) -> ProductCategoryUiModel?,
-    onUpdateProductCategory: suspend (String, String, String) -> ProductCategoryUiModel?,
-    onDeleteProductCategory: suspend (String) -> Boolean,
+    onUpdateProductCategory: suspend (ProductCategoryUiModel, String, String) -> ProductCategoryUiModel?,
+    onDeleteProductCategory: suspend (ProductCategoryUiModel) -> Boolean,
     onCreateProduct: suspend (String, String?, String, String?, String?) -> ProductCatalogUiModel?,
-    onUpdateProduct: suspend (String, String, String?, String, String?, String?) -> ProductCatalogUiModel?,
-    onDeleteProduct: suspend (String) -> Boolean,
+    onUpdateProduct: suspend (ProductCatalogUiModel, String, String?, String, String?, String?) -> ProductCatalogUiModel?,
+    onDeleteProduct: suspend (ProductCatalogUiModel) -> Boolean,
+    canManageCatalog: Boolean = false,
     rootRequestKey: Int = 0,
     onNestedStateChange: (Boolean) -> Unit = {},
 ) {
@@ -1528,6 +1546,7 @@ private fun CatalogPanel(
             onSearchChange = { search = it },
             onOpenFilters = { filterDialogOpen = true },
             trailingAction = {
+                if (!canManageCatalog) return@CatalogSearchBar
                 if (selectedCategory == null) {
                     CatalogHeaderButton(
                         contentDescription = "Crear en catalogo",
@@ -1535,7 +1554,7 @@ private fun CatalogPanel(
                     ) {
                         Icon(Icons.Outlined.Add, contentDescription = null, tint = OnLime, modifier = Modifier.size(25.dp))
                     }
-                } else {
+                } else if (selectedCategory?.canEdit == true) {
                     Box {
                         CatalogHeaderButton(
                             contentDescription = "Opciones de categoria",
@@ -1594,6 +1613,7 @@ private fun CatalogPanel(
                 },
                 onEditProduct = { editingProduct = it },
                 onDeleteProduct = { deleteProduct = it },
+                canManageCatalog = canManageCatalog,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -1641,7 +1661,7 @@ private fun CatalogPanel(
             onDismiss = { editingCategory = null },
             onSubmitCategory = { name, icon ->
                 scope.launch {
-                    val updated = onUpdateProductCategory(category.id, name, icon)
+                    val updated = onUpdateProductCategory(category, name, icon)
                     if (updated != null) {
                         editingCategory = null
                         selectedCategory = updated
@@ -1661,7 +1681,7 @@ private fun CatalogPanel(
             onSubmitCategory = { _, _ -> },
             onSubmitProduct = { name, categoryId, icon, brand, packageSize ->
                 scope.launch {
-                    val updated = onUpdateProduct(product.id, name, categoryId, icon, brand, packageSize)
+                    val updated = onUpdateProduct(product, name, categoryId, icon, brand, packageSize)
                     if (updated != null) {
                         editingProduct = null
                         products = applyFilters(products.map { if (it.id == updated.id) updated else it })
@@ -1673,7 +1693,7 @@ private fun CatalogPanel(
     deleteCategory?.let { category ->
         ConfirmDialog("Eliminar categoria", "Se eliminara esta categoria del catalogo.", {
             scope.launch {
-                if (onDeleteProductCategory(category.id)) {
+                if (onDeleteProductCategory(category)) {
                     deleteCategory = null
                     resetToCatalog()
                 }
@@ -1683,7 +1703,7 @@ private fun CatalogPanel(
     deleteProduct?.let { product ->
         ConfirmDialog("Eliminar producto", "Se eliminara este producto del catalogo.", {
             scope.launch {
-                if (onDeleteProduct(product.id)) {
+                if (onDeleteProduct(product)) {
                     deleteProduct = null
                     products = products.filterNot { it.id == product.id }
                 }
@@ -2294,6 +2314,7 @@ private fun CatalogProductsView(
     onToggleFavorite: (ProductCatalogUiModel) -> Unit,
     onEditProduct: (ProductCatalogUiModel) -> Unit,
     onDeleteProduct: (ProductCatalogUiModel) -> Unit,
+    canManageCatalog: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -2306,6 +2327,7 @@ private fun CatalogProductsView(
                 onToggleFavorite = onToggleFavorite,
                 onEditProduct = onEditProduct,
                 onDeleteProduct = onDeleteProduct,
+                canManageCatalog = canManageCatalog,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -2318,6 +2340,7 @@ private fun CatalogProductGrid(
     onToggleFavorite: (ProductCatalogUiModel) -> Unit,
     onEditProduct: (ProductCatalogUiModel) -> Unit,
     onDeleteProduct: (ProductCatalogUiModel) -> Unit,
+    canManageCatalog: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -2329,6 +2352,7 @@ private fun CatalogProductGrid(
                         onToggleFavorite = { onToggleFavorite(product) },
                         onEditProduct = { onEditProduct(product) },
                         onDeleteProduct = { onDeleteProduct(product) },
+                        canManageCatalog = canManageCatalog,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -2345,13 +2369,15 @@ private fun CatalogProductCard(
     onToggleFavorite: () -> Unit,
     onEditProduct: () -> Unit,
     onDeleteProduct: () -> Unit,
+    canManageCatalog: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var actionsOpen by remember { mutableStateOf(false) }
+    val isHouseholdProduct = product.scope == "household"
     Card(
         modifier = modifier
             .height(150.dp)
-            .border(1.dp, WebBorder, MaterialTheme.shapes.large),
+            .border(1.dp, if (isHouseholdProduct) WebHouseholdBorder else WebBorder, MaterialTheme.shapes.large),
         colors = CardDefaults.cardColors(containerColor = WebSurface),
     ) {
         Row(
@@ -2370,36 +2396,49 @@ private fun CatalogProductCard(
                     Text(productIcon(product), fontSize = 23.sp, lineHeight = 23.sp)
                 }
                 CompactFavoriteButton(favorite = product.isFavorite, onClick = onToggleFavorite)
-                Box {
-                    CatalogMiniActionButton(contentDescription = "Opciones de producto", onClick = { actionsOpen = true }) {
-                        Text("...", color = WebPrimary, fontSize = 18.sp, lineHeight = 12.sp, fontWeight = FontWeight.Black)
+                if (canManageCatalog && product.canEdit) {
+                    Box {
+                        CatalogMiniActionButton(contentDescription = "Opciones de producto", onClick = { actionsOpen = true }) {
+                            Text("...", color = WebPrimary, fontSize = 18.sp, lineHeight = 12.sp, fontWeight = FontWeight.Black)
+                        }
+                        CatalogActionsMenu(
+                            expanded = actionsOpen,
+                            editLabel = "Editar producto",
+                            deleteLabel = "Eliminar producto",
+                            onEdit = {
+                                actionsOpen = false
+                                onEditProduct()
+                            },
+                            onDelete = {
+                                actionsOpen = false
+                                onDeleteProduct()
+                            },
+                            onDismiss = { actionsOpen = false },
+                        )
                     }
-                    CatalogActionsMenu(
-                        expanded = actionsOpen,
-                        editLabel = "Editar producto",
-                        deleteLabel = "Eliminar producto",
-                        onEdit = {
-                            actionsOpen = false
-                            onEditProduct()
-                        },
-                        onDelete = {
-                            actionsOpen = false
-                            onDeleteProduct()
-                        },
-                        onDismiss = { actionsOpen = false },
-                    )
                 }
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-                Text(
-                    text = product.name,
-                    color = WebText,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyMedium,
-                    lineHeight = 18.sp,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (isHouseholdProduct) {
+                        Icon(
+                            imageVector = Icons.Outlined.Home,
+                            contentDescription = "Producto del hogar",
+                            tint = WebHousehold,
+                            modifier = Modifier.size(13.dp),
+                        )
+                    }
+                    Text(
+                        text = product.name,
+                        color = WebText,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodyMedium,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
                 val meta = product.metaLabel()
                 if (meta.isNotBlank()) {
                     Text(
@@ -4200,6 +4239,7 @@ fun ShoppingListScreen(
     onSetProductFavorite: suspend (String, Boolean) -> ProductCatalogUiModel? = { _, _ -> null },
     categories: List<ProductCategoryUiModel> = emptyList(),
     onCreateProduct: suspend (String, String?, String, String?, String?) -> ProductCatalogUiModel? = { _, _, _, _, _ -> null },
+    canCreateProduct: Boolean = true,
     readOnly: Boolean = false,
     onRename: () -> Unit = {},
     onClearChecked: () -> Unit = {},
@@ -4312,6 +4352,7 @@ fun ShoppingListScreen(
                         cardMode = it
                         isProductSearchOpen = true
                     },
+                    canCreateProduct = canCreateProduct,
                     onCreateProduct = { createProductDialogOpen = true },
                     onClearChecked = { clearListDialogOpen = true },
                 )
@@ -4557,6 +4598,7 @@ private fun ShoppingListWebHeader(
     onProductFocus: () -> Unit,
     onVoiceSearch: () -> Unit,
     onCardModeChange: (Boolean) -> Unit,
+    canCreateProduct: Boolean,
     onCreateProduct: () -> Unit,
     onClearChecked: () -> Unit,
 ) {
@@ -4595,7 +4637,9 @@ private fun ShoppingListWebHeader(
                 ) {
                     Icon(Icons.Outlined.Mic, contentDescription = null, modifier = Modifier.size(20.dp))
                 }
-                QuickCreateProductButton(onClick = onCreateProduct, enabled = !isOffline, size = ProductEntryControlHeight)
+                if (canCreateProduct) {
+                    QuickCreateProductButton(onClick = onCreateProduct, enabled = !isOffline, size = ProductEntryControlHeight)
+                }
             }
         }
     }
@@ -4795,7 +4839,17 @@ private fun ProductSuggestionDropdown(
                     )
                 }
                 Column(modifier = Modifier.weight(1f, fill = true)) {
-                    Text(suggestion.name, color = WebText, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (suggestion.scope == "household") {
+                            Icon(
+                                imageVector = Icons.Outlined.Home,
+                                contentDescription = "Producto del hogar",
+                                tint = WebHousehold,
+                                modifier = Modifier.size(12.dp),
+                            )
+                        }
+                        Text(suggestion.name, color = WebText, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                     Text(suggestion.metaLabel(), color = WebMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (active) {
@@ -4959,7 +5013,12 @@ private fun ProductResultCard(
     onSelect: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val borderColor = if (recentlyAdded) WebPrimary else WebBorder
+    val isHousehold = suggestion.scope == "household"
+    val borderColor = when {
+        recentlyAdded -> WebPrimary
+        isHousehold -> WebHouseholdBorder
+        else -> WebBorder
+    }
     Card(
         modifier = modifier
             .defaultMinSize(minHeight = 210.dp)
@@ -4970,15 +5029,25 @@ private fun ProductResultCard(
             modifier = Modifier.padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                text = suggestion.name,
-                color = if (recentlyAdded) OnLime else WebText,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyLarge,
-                minLines = 2,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (isHousehold) {
+                    Icon(
+                        imageVector = Icons.Outlined.Home,
+                        contentDescription = "Producto del hogar",
+                        tint = WebHousehold,
+                        modifier = Modifier.size(13.dp),
+                    )
+                }
+                Text(
+                    text = suggestion.name,
+                    color = if (recentlyAdded) OnLime else WebText,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyLarge,
+                    minLines = 2,
+                )
+            }
             Text(
                 suggestion.metaLabel(),
                 color = if (recentlyAdded) OnLimeMuted else WebMuted,

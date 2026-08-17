@@ -8,6 +8,7 @@ export interface AuthUser {
   birthDate: string | null;
   username: string | null;
   email: string;
+  role: 'user' | 'admin';
   emailVerifiedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -22,6 +23,7 @@ interface UserRow {
   username: string | null;
   email: string;
   password_hash: string;
+  role: 'user' | 'admin' | null;
   email_verified_at: string | null;
   session_version: number;
   created_at: string;
@@ -34,7 +36,7 @@ export interface UserWithPassword extends AuthUser {
 }
 
 function mapUser(row: UserRow): UserWithPassword {
-  return { id: row.id, name: row.name, firstName: row.first_name, lastName: row.last_name, birthDate: row.birth_date, username: row.username, email: row.email, passwordHash: row.password_hash, sessionVersion: row.session_version, emailVerifiedAt: row.email_verified_at, createdAt: row.created_at, updatedAt: row.updated_at };
+  return { id: row.id, name: row.name, firstName: row.first_name, lastName: row.last_name, birthDate: row.birth_date, username: row.username, email: row.email, role: row.role ?? 'user', passwordHash: row.password_hash, sessionVersion: row.session_version, emailVerifiedAt: row.email_verified_at, createdAt: row.created_at, updatedAt: row.updated_at };
 }
 
 export async function findUserByEmail(env: Env, email: string): Promise<UserWithPassword | null> {
@@ -71,9 +73,9 @@ export async function findUserSessionById(env: Env, id: string): Promise<UserSes
 export async function createUser(env: Env, input: { name: string; firstName?: string | null; lastName?: string | null; birthDate?: string | null; username?: string | null; email: string; passwordHash: string }): Promise<AuthUser> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  await env.DB.prepare('INSERT INTO users (id, name, first_name, last_name, birth_date, username, email, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(id, input.name, input.firstName ?? null, input.lastName ?? null, input.birthDate ?? null, input.username ?? null, input.email, input.passwordHash, now, now).run();
-  return { id, name: input.name, firstName: input.firstName ?? null, lastName: input.lastName ?? null, birthDate: input.birthDate ?? null, username: input.username ?? null, email: input.email, emailVerifiedAt: null, createdAt: now, updatedAt: now };
+  await env.DB.prepare('INSERT INTO users (id, name, first_name, last_name, birth_date, username, email, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, input.name, input.firstName ?? null, input.lastName ?? null, input.birthDate ?? null, input.username ?? null, input.email, input.passwordHash, 'user', now, now).run();
+  return { id, name: input.name, firstName: input.firstName ?? null, lastName: input.lastName ?? null, birthDate: input.birthDate ?? null, username: input.username ?? null, email: input.email, role: 'user', emailVerifiedAt: null, createdAt: now, updatedAt: now };
 }
 
 export async function verifyEmail(env: Env, id: string): Promise<void> {

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type JSX, type PointerEven
 
 import { ProductCatalogCard, productDetails, productIcon } from '../catalog/ProductCatalogCards';
 import { catalogIconOptions, categoryOptionLabel } from '../catalog/catalog-icons';
-import { createProductCatalogItem, fetchProductCategories, searchProductCatalog, setProductFavorite, type ProductCatalogInput, type ProductCatalogItem, type ProductCategory } from '../catalog/product-catalog-api';
+import { createHouseholdProductCatalogItem, fetchProductCategories, searchProductCatalog, setProductFavorite, type ProductCatalogInput, type ProductCatalogItem, type ProductCategory } from '../catalog/product-catalog-api';
 import { readProductView, writeProductView, type ProductView } from '../preferences/preferences';
 import type { ShoppingItem } from './model';
 
@@ -23,12 +23,13 @@ type ShoppingListScreenProps = {
   onClearChecked?: () => void;
   onDeleteList?: () => void;
   mobileSimpleActions?: boolean;
+  householdId?: string;
   onToggle?: (item: ShoppingItem) => void;
   onUpdate?: (item: ShoppingItem, input: ProductInput) => void;
   onDelete?: (item: ShoppingItem) => void;
 };
 
-export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameList, onClearChecked, onDeleteList, mobileSimpleActions = false, onToggle, onUpdate, onDelete }: ShoppingListScreenProps): JSX.Element {
+export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameList, onClearChecked, onDeleteList, mobileSimpleActions = false, householdId, onToggle, onUpdate, onDelete }: ShoppingListScreenProps): JSX.Element {
   const pendingItems = items.filter((item) => !item.isChecked);
   const checkedItems = items.filter((item) => item.isChecked);
   const [name, setName] = useState('');
@@ -83,7 +84,7 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
       return () => { active = false; };
     }
     const timer = window.setTimeout(() => {
-      void searchProductCatalog(search, pickerMode === 'cards' ? 8 : 12)
+      void searchProductCatalog(search, pickerMode === 'cards' ? 8 : 12, householdId)
         .then((products) => { if (active) setSuggestions(applyFavoriteOverrides(products, favoriteOverrides)); })
         .catch(() => { if (active) setSuggestions([]); });
     }, pickerMode === 'cards' ? 80 : 150);
@@ -115,16 +116,17 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
     setQuickCreateInitialName(name.trim());
     setQuickCreateError(null);
     setQuickCreateOpen(true);
-    void fetchProductCategories()
+    void fetchProductCategories(householdId)
       .then((categories) => setQuickCreateCategories(categories.filter((category) => !category.isFavorite)))
       .catch(() => setQuickCreateCategories([]));
   }
 
   async function createQuickProduct(input: ProductCatalogInput): Promise<void> {
+    if (!householdId) return;
     setIsCreatingProduct(true);
     setQuickCreateError(null);
     try {
-      const product = await createProductCatalogItem(input);
+      const product = await createHouseholdProductCatalogItem(householdId, input);
       setSuggestions((current) => applyFavoriteOverrides([product, ...current.filter((entry) => entry.id !== product.id)], favoriteOverrides));
       setQuickCreateOpen(false);
       setName(product.name);
@@ -239,7 +241,7 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
                 {pickerMode === 'list' && isProductSearchOpen && suggestions.length ? <div className="product-suggestions" role="listbox" aria-label="Sugerencias de productos" onScroll={blurProductSearch}>{suggestions.map((suggestion) => <ProductCatalogListPickerItem key={suggestion.id} product={suggestion} active={activeListProductId === suggestion.id} quantity={productQuantities[suggestion.id] ?? 0} onActivate={activateListSuggestion} onQuantityChange={updateProductQuantity} onFavoriteChange={(product, favorite) => void changeFavorite(product, favorite)} />)}</div> : null}
               </div>
               <button type="button" className={voiceSearch.isListening ? 'product-voice-button is-listening' : 'product-voice-button'} aria-label={voiceSearch.isListening ? 'Escuchando' : 'Buscar producto por voz'} title={voiceSearch.isSupported ? 'Buscar producto por voz' : 'Búsqueda por voz no disponible'} disabled={isOffline || !voiceSearch.isSupported} onClick={voiceSearch.start}><MicrophoneIcon /></button>
-              <button type="button" className="product-create-button product-create-button--inline" aria-label="Crear producto" disabled={isOffline} onClick={openQuickCreate}>+</button>
+              {householdId ? <button type="button" className="product-create-button product-create-button--inline" aria-label="Crear producto" disabled={isOffline} onClick={openQuickCreate}>+</button> : null}
             </div>
           </div>
           {pickerMode === 'cards' && isProductSearchOpen && suggestions.length ? <ProductCardResults suggestions={suggestions} quantities={productQuantities} recentlyAddedId={recentlyAddedId} onQuantityChange={updateProductQuantity} onSelect={addSuggestionToWaitlist} onFavoriteChange={(product, favorite) => void changeFavorite(product, favorite)} onScroll={blurProductSearch} /> : null}

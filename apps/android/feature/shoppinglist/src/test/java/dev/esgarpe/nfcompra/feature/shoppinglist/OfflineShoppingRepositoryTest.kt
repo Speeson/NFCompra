@@ -649,10 +649,10 @@ class OfflineShoppingRepositoryTest {
     @Test
     fun `search uses the warmed local catalog snapshot without calling remote search`() = runTest {
         server.enqueue(catalogSnapshotResponse())
-        repository.warmProductCatalog()
+        repository.warmProductCatalog(null)
         assertEquals(1, server.requestCount)
 
-        val results = repository.searchProductCatalog("leche", 30)
+        val results = repository.searchProductCatalog(null, "leche", 30)
 
         assertEquals(listOf("Leche entera"), results.map { it.name })
         assertEquals(1, server.requestCount)
@@ -666,7 +666,7 @@ class OfflineShoppingRepositoryTest {
             ),
         )
 
-        val results = repository.searchProductCatalog("leche", 30)
+        val results = repository.searchProductCatalog(null, "leche", 30)
 
         assertEquals(listOf("Leche entera"), results.map { it.name })
         assertEquals(1, server.requestCount)
@@ -675,7 +675,7 @@ class OfflineShoppingRepositoryTest {
 
     @Test
     fun `search shorter than three characters returns empty without a network request`() = runTest {
-        val results = repository.searchProductCatalog("le", 30)
+        val results = repository.searchProductCatalog(null, "le", 30)
 
         assertTrue(results.isEmpty())
         assertEquals(0, server.requestCount)
@@ -685,8 +685,8 @@ class OfflineShoppingRepositoryTest {
     fun `warming twice does not re-download the same catalog snapshot`() = runTest {
         server.enqueue(catalogSnapshotResponse())
 
-        repository.warmProductCatalog()
-        repository.warmProductCatalog()
+        repository.warmProductCatalog(null)
+        repository.warmProductCatalog(null)
 
         assertEquals(1, server.requestCount)
     }
@@ -694,12 +694,12 @@ class OfflineShoppingRepositoryTest {
     @Test
     fun `creating a catalog product updates warmed snapshot before the next search`() = runTest {
         server.enqueue(catalogSnapshotResponse())
-        repository.warmProductCatalog()
+        repository.warmProductCatalog(null)
 
         server.enqueue(catalogProductMutationResponse("prod-oat", "Leche avena"))
-        val created = repository.createProductCatalogItem("Leche avena", "cat-1", "milk", null, "1 L")
+        val created = repository.createProductCatalogItem(null, "Leche avena", "cat-1", "milk", null, "1 L")
 
-        val results = repository.searchProductCatalog("leche avena", 30)
+        val results = repository.searchProductCatalog(null, "leche avena", 30)
 
         assertEquals("prod-oat", created.id)
         assertEquals(listOf("Leche avena"), results.map { it.name })

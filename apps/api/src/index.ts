@@ -89,7 +89,9 @@ function isCatalogRoute(path: string): boolean {
     || /^\/v1\/product-catalog\/[^/]+$/.test(path)
     || path === '/v1/product-catalog/version'
     || path === '/v1/product-catalog/snapshot'
-    || /^\/v1\/product-catalog\/[^/]+\/favorite$/.test(path);
+    || /^\/v1\/product-catalog\/[^/]+\/favorite$/.test(path)
+    || /^\/v1\/households\/[^/]+\/product-categories(?:\/[^/]+)?$/.test(path)
+    || /^\/v1\/households\/[^/]+\/product-catalog(?:\/[^/]+)?$/.test(path);
 }
 
 function withCors(request: Request, env: Env, response: Response): Response {

@@ -16,6 +16,10 @@
   --color-primary-soft: #eef8e8;
   --color-lime: #dcff72;
   --color-lime-contrast: #10271e;
+  --color-household: #7653c7;
+  --color-household-soft: #f2edfc;
+  --color-household-border: #dcd1f3;
+  --color-household-content: #5a3e9e;
   --color-input: #ffffff;
   --color-hover: #f2f8f4;
   --space-1: 0.25rem;
@@ -50,6 +54,10 @@
   --color-primary-soft: #1c3326;
   --color-lime: #d8ff67;
   --color-lime-contrast: #10271e;
+  --color-household: #c3b2f5;
+  --color-household-soft: #2a2440;
+  --color-household-border: #4a4170;
+  --color-household-content: #d9ccf7;
   --color-input: #0f1f17;
   --color-hover: #1c3025;
   --shadow-card: 0 1rem 2.6rem rgb(0 0 0 / 28%);

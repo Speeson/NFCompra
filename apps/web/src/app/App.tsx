@@ -126,7 +126,7 @@ export function AuthenticatedRoute({ pathname, search, user, onNavigate, onDelet
   if (householdListsMatch) return <ListsPage onNavigate={onNavigate} selectedHouseholdId={decodeURIComponent(householdListsMatch[1])} />;
   if (pathname === '/lists') return <ListsPage onNavigate={onNavigate} startCreating={search.get('create') === '1'} selectedHouseholdId={search.get('household')} />;
   if (listMatch) return <ShoppingListRoute currentUserId={userId} requestedListId={decodeURIComponent(listMatch[1])} onNavigate={onNavigate} />;
-  if (pathname === '/catalog') return <CatalogPage />;
+  if (pathname === '/catalog') return <CatalogPage isAdmin={user.role === 'admin'} />;
   if (pathname === '/profile') return <ProfilePage user={user} onNavigate={onNavigate} />;
   if (pathname === '/settings') return <SettingsPage onNavigate={onNavigate} onDeleteAccount={onDeleteAccount} />;
   return <ShoppingListRoute currentUserId={userId} requestedHouseholdId={search.get('household')} requestedListId={search.get('list')} onNavigate={onNavigate} />;

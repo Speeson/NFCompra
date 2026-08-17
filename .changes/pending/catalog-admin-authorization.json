@@ -1,0 +1,9 @@
+{
+  "components": ["api", "web", "android"],
+  "type": "patch",
+  "category": "security",
+  "summary": "Cat\u00e1logo del sistema solo para administradores y cat\u00e1logo personalizado por hogar.",
+  "details": [
+    "Las mutaciones del cat\u00e1logo global del sistema quedan reservadas a administradores; los usuarios normales solo lo leen, lo buscan y gestionan sus favoritos. Se a\u00f1ade un cat\u00e1logo personalizado por hogar: cualquier miembro puede crear, editar y borrar productos y categor\u00edas de su hogar, y la b\u00fasqueda mezcla los productos del sistema con los del hogar actual. Los datos de cada hogar quedan aislados en el servidor y los resultados de hogar se distinguen con un icono de casa. El rol y el \u00e1mbito se asignan siempre desde el servidor; los clientes nunca pueden promoverse ni cruzar hogares."
+  ]
+}

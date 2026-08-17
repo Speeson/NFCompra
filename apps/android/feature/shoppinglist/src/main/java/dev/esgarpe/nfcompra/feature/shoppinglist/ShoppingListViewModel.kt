@@ -71,11 +71,11 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
     fun load() = loadForCurrentIntent()
 
     suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> =
-        repository.searchProductCatalog(search, limit)
+        repository.searchProductCatalog(currentHouseholdId(), search, limit)
 
     fun warmProductCatalog() {
         viewModelScope.launch {
-            runCatching { repository.warmProductCatalog() }
+            runCatching { repository.warmProductCatalog(currentHouseholdId()) }
         }
     }
 
@@ -93,22 +93,22 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         }
 
     suspend fun createProductCategory(name: String, iconKey: String): ProductCategoryUiModel? =
-        catalogMutation("No se pudo crear la categoria.") { repository.createProductCategory(name, iconKey) }
+        catalogMutation("No se pudo crear la categoria.") { repository.createProductCategory(currentHouseholdId(), name, iconKey) }
 
-    suspend fun updateProductCategory(categoryId: String, name: String, iconKey: String): ProductCategoryUiModel? =
-        catalogMutation("No se pudo editar la categoria.") { repository.updateProductCategory(categoryId, name, iconKey) }
+    suspend fun updateProductCategory(category: ProductCategoryUiModel, name: String, iconKey: String): ProductCategoryUiModel? =
+        catalogMutation("No se pudo editar la categoria.") { repository.updateProductCategory(category, name, iconKey) }
 
-    suspend fun deleteProductCategory(categoryId: String): Boolean =
-        catalogMutation("No se pudo eliminar la categoria.") { repository.deleteProductCategory(categoryId); true } == true
+    suspend fun deleteProductCategory(category: ProductCategoryUiModel): Boolean =
+        catalogMutation("No se pudo eliminar la categoria.") { repository.deleteProductCategory(category); true } == true
 
     suspend fun createProductCatalogItem(name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel? =
-        catalogMutation("No se pudo crear el producto.") { repository.createProductCatalogItem(name, categoryId, iconKey, brand, packageSize) }
+        catalogMutation("No se pudo crear el producto.") { repository.createProductCatalogItem(currentHouseholdId(), name, categoryId, iconKey, brand, packageSize) }
 
-    suspend fun updateProductCatalogItem(productId: String, name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel? =
-        catalogMutation("No se pudo editar el producto.") { repository.updateProductCatalogItem(productId, name, categoryId, iconKey, brand, packageSize) }
+    suspend fun updateProductCatalogItem(product: ProductCatalogUiModel, name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel? =
+        catalogMutation("No se pudo editar el producto.") { repository.updateProductCatalogItem(product, name, categoryId, iconKey, brand, packageSize) }
 
-    suspend fun deleteProductCatalogItem(productId: String): Boolean =
-        catalogMutation("No se pudo eliminar el producto.") { repository.deleteProductCatalogItem(productId); true } == true
+    suspend fun deleteProductCatalogItem(product: ProductCatalogUiModel): Boolean =
+        catalogMutation("No se pudo eliminar el producto.") { repository.deleteProductCatalogItem(product); true } == true
 
     suspend fun updateProfile(firstName: String?, lastName: String?, username: String?): ProfileUiModel? =
         catalogMutation("No se pudo actualizar el perfil.") {
@@ -520,6 +520,9 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
     private fun currentMetrics(): Map<String, ShoppingListMetricsUiModel> =
         (mutableState.value as? ShoppingListViewState.Data)?.listMetrics.orEmpty()
 
+    private fun currentHouseholdId(): String? =
+        (mutableState.value as? ShoppingListViewState.Data)?.selectedHouseholdId
+
     private fun currentCategories(): List<ProductCategoryUiModel> =
         (mutableState.value as? ShoppingListViewState.Data)?.productCategories.orEmpty()
 
@@ -530,7 +533,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         (mutableState.value as? ShoppingListViewState.Data)?.profile
 
     private suspend fun loadCategories(): List<ProductCategoryUiModel> =
-        runCatching { repository.productCategories() }.getOrElse { emptyList() }
+        runCatching { repository.productCategories(currentHouseholdId()) }.getOrElse { emptyList() }
 
     private suspend fun refreshCategoriesAfterCatalogMutation() {
         val current = mutableState.value as? ShoppingListViewState.Data ?: return

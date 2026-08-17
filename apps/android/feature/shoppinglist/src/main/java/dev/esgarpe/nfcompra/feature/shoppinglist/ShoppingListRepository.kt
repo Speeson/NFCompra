@@ -46,6 +46,10 @@ data class ProductCatalogUiModel(
     val isFavorite: Boolean = false,
     val categoryId: String? = null,
     val brand: String? = null,
+    val scope: String? = null,
+    val householdId: String? = null,
+    val canEdit: Boolean = false,
+    val canDelete: Boolean = false,
 )
 data class ProductCategoryUiModel(
     val id: String,
@@ -53,6 +57,10 @@ data class ProductCategoryUiModel(
     val normalizedName: String,
     val iconKey: String,
     val isFavorite: Boolean = false,
+    val scope: String? = null,
+    val householdId: String? = null,
+    val canEdit: Boolean = false,
+    val canDelete: Boolean = false,
 )
 data class ProfileUiModel(
     val id: String,
@@ -61,6 +69,7 @@ data class ProfileUiModel(
     val firstName: String?,
     val lastName: String?,
     val username: String?,
+    val role: String? = null,
 ) {
     val displayName: String = name.takeIf { it.isNotBlank() }
         ?: listOfNotNull(firstName, lastName).joinToString(" ").takeIf { it.isNotBlank() }
@@ -95,16 +104,16 @@ interface ShoppingRepository {
     suspend fun createItem(listId: String, name: String, quantity: Double = 1.0)
     suspend fun updateItem(item: ShoppingListItemUiModel, name: String? = null, checked: Boolean? = null, quantity: Double? = null)
     suspend fun deleteItem(item: ShoppingListItemUiModel)
-    suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> = emptyList()
-    suspend fun warmProductCatalog() = Unit
-    suspend fun productCategories(): List<ProductCategoryUiModel> = emptyList()
+    suspend fun searchProductCatalog(householdId: String?, search: String, limit: Int): List<ProductCatalogUiModel> = emptyList()
+    suspend fun warmProductCatalog(householdId: String?) = Unit
+    suspend fun productCategories(householdId: String?): List<ProductCategoryUiModel> = emptyList()
     suspend fun setProductFavorite(productId: String, favorite: Boolean): ProductCatalogUiModel? = null
-    suspend fun createProductCategory(name: String, iconKey: String): ProductCategoryUiModel? = null
-    suspend fun updateProductCategory(categoryId: String, name: String, iconKey: String): ProductCategoryUiModel? = null
-    suspend fun deleteProductCategory(categoryId: String) = Unit
-    suspend fun createProductCatalogItem(name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel? = null
-    suspend fun updateProductCatalogItem(productId: String, name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel? = null
-    suspend fun deleteProductCatalogItem(productId: String) = Unit
+    suspend fun createProductCategory(householdId: String?, name: String, iconKey: String): ProductCategoryUiModel? = null
+    suspend fun updateProductCategory(category: ProductCategoryUiModel, name: String, iconKey: String): ProductCategoryUiModel? = null
+    suspend fun deleteProductCategory(category: ProductCategoryUiModel) = Unit
+    suspend fun createProductCatalogItem(householdId: String?, name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel? = null
+    suspend fun updateProductCatalogItem(product: ProductCatalogUiModel, name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel? = null
+    suspend fun deleteProductCatalogItem(product: ProductCatalogUiModel) = Unit
     suspend fun profile(): ProfileUiModel? = null
     suspend fun updateProfile(firstName: String?, lastName: String?, username: String?): ProfileUiModel? = null
     suspend fun changePassword(currentPassword: String, newPassword: String) = Unit
@@ -114,7 +123,7 @@ interface ShoppingRepository {
 }
 
 class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingRepository {
-    private var catalogSnapshot: List<ProductCatalogUiModel>? = null
+    private val catalogSnapshots = mutableMapOf<String?, List<ProductCatalogUiModel>>()
     private var favoriteProductIds: Set<String> = emptySet()
     private val catalogMutex = Mutex()
 
@@ -171,66 +180,91 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
         api.deleteItem(item.id, DeleteItemRequest(item.version, UUID.randomUUID().toString())).bodyOrThrow()
     }
 
-    override suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> {
+    override suspend fun searchProductCatalog(householdId: String?, search: String, limit: Int): List<ProductCatalogUiModel> {
         val query = search.normalizedSearch()
-        if (query.isBlank()) return loadCatalogSnapshotOrNull()?.take(limit.coerceAtLeast(1)) ?: emptyList()
+        if (query.isBlank()) return loadCatalogSnapshotOrNull(householdId)?.take(limit.coerceAtLeast(1)) ?: emptyList()
         if (query.length < 3) return emptyList()
-        val snapshot = catalogSnapshot
+        val snapshot = catalogSnapshots[householdId]
         if (snapshot != null) return snapshot.searchCatalog(query, limit)
         return runCatching {
-            val products = api.searchProductCatalog(search, limit.coerceIn(1, 25)).bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
+            val products = api.searchProductCatalog(search, limit.coerceIn(1, 25), householdId).bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
             favoriteProductIds = products.favoriteIds() + favoriteProductIds
             products.applyFavoriteOverlay(favoriteProductIds)
         }.getOrElse { emptyList() }
     }
 
-    override suspend fun warmProductCatalog() {
-        if (catalogSnapshot == null) loadCatalogSnapshotOrNull()
+    override suspend fun warmProductCatalog(householdId: String?) {
+        if (catalogSnapshots[householdId] == null) loadCatalogSnapshotOrNull(householdId)
     }
 
-    override suspend fun productCategories(): List<ProductCategoryUiModel> =
-        api.productCategories().bodyOrThrow().categories.map(ProductCategoryDto::toUiModel)
+    override suspend fun productCategories(householdId: String?): List<ProductCategoryUiModel> =
+        api.productCategories(householdId).bodyOrThrow().categories.map(ProductCategoryDto::toUiModel)
 
     override suspend fun setProductFavorite(productId: String, favorite: Boolean): ProductCatalogUiModel? {
         if (favorite) api.addProductFavorite(productId).bodyOrThrow()
         else api.removeProductFavorite(productId).bodyOrThrow()
         favoriteProductIds = if (favorite) favoriteProductIds + productId else favoriteProductIds - productId
-        catalogSnapshot = catalogSnapshot?.applyFavoriteOverlay(favoriteProductIds)
-        return catalogSnapshot?.firstOrNull { it.id == productId }
+        catalogSnapshots.replaceAll { _, products -> products.applyFavoriteOverlay(favoriteProductIds) }
+        return catalogSnapshots.values.flatten().firstOrNull { it.id == productId }
             ?: ProductCatalogUiModel(productId, "", "", null, "star", null, favorite)
     }
 
-    override suspend fun createProductCategory(name: String, iconKey: String): ProductCategoryUiModel {
+    override suspend fun createProductCategory(householdId: String?, name: String, iconKey: String): ProductCategoryUiModel {
         invalidateCatalogSnapshot()
-        return api.createProductCategory(ProductCategoryMutationRequest(name = name, iconKey = iconKey)).bodyOrThrow().category.toUiModel()
+        val request = ProductCategoryMutationRequest(name = name, iconKey = iconKey)
+        return if (householdId != null) {
+            api.createHouseholdProductCategory(householdId, request).bodyOrThrow().category.toUiModel()
+        } else {
+            api.createProductCategory(request).bodyOrThrow().category.toUiModel()
+        }
     }
 
-    override suspend fun updateProductCategory(categoryId: String, name: String, iconKey: String): ProductCategoryUiModel {
+    override suspend fun updateProductCategory(category: ProductCategoryUiModel, name: String, iconKey: String): ProductCategoryUiModel {
         invalidateCatalogSnapshot()
-        return api.updateProductCategory(categoryId, ProductCategoryMutationRequest(name = name, iconKey = iconKey)).bodyOrThrow().category.toUiModel()
+        val request = ProductCategoryMutationRequest(name = name, iconKey = iconKey)
+        return if (category.scope == "household" && category.householdId != null) {
+            api.updateHouseholdProductCategory(category.householdId, category.id, request).bodyOrThrow().category.toUiModel()
+        } else {
+            api.updateProductCategory(category.id, request).bodyOrThrow().category.toUiModel()
+        }
     }
 
-    override suspend fun deleteProductCategory(categoryId: String) {
-        api.deleteProductCategory(categoryId).bodyOrThrow()
+    override suspend fun deleteProductCategory(category: ProductCategoryUiModel) {
+        if (category.scope == "household" && category.householdId != null) {
+            api.deleteHouseholdProductCategory(category.householdId, category.id).bodyOrThrow()
+        } else {
+            api.deleteProductCategory(category.id).bodyOrThrow()
+        }
         invalidateCatalogSnapshot()
     }
 
-    override suspend fun createProductCatalogItem(name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel {
-        return api.createProductCatalogItem(ProductCatalogMutationRequest(name, categoryId, iconKey, brand, packageSize))
-            .bodyOrThrow()
-            .product
-            .toUiModel()
-            .also(::upsertCatalogSnapshot)
+    override suspend fun createProductCatalogItem(householdId: String?, name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel {
+        val request = ProductCatalogMutationRequest(name, categoryId, iconKey, brand, packageSize)
+        val product = if (householdId != null) {
+            api.createHouseholdProductCatalogItem(householdId, request).bodyOrThrow().product.toUiModel()
+        } else {
+            api.createProductCatalogItem(request).bodyOrThrow().product.toUiModel()
+        }
+        return product.also(::upsertCatalogSnapshot)
     }
 
-    override suspend fun updateProductCatalogItem(productId: String, name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel {
+    override suspend fun updateProductCatalogItem(product: ProductCatalogUiModel, name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel {
         invalidateCatalogSnapshot()
-        return api.updateProductCatalogItem(productId, ProductCatalogMutationRequest(name, categoryId, iconKey, brand, packageSize)).bodyOrThrow().product.toUiModel()
+        val request = ProductCatalogMutationRequest(name, categoryId, iconKey, brand, packageSize)
+        return if (product.scope == "household" && product.householdId != null) {
+            api.updateHouseholdProductCatalogItem(product.householdId, product.id, request).bodyOrThrow().product.toUiModel()
+        } else {
+            api.updateProductCatalogItem(product.id, request).bodyOrThrow().product.toUiModel()
+        }
     }
 
-    override suspend fun deleteProductCatalogItem(productId: String) {
-        api.deleteProductCatalogItem(productId).bodyOrThrow()
-        favoriteProductIds = favoriteProductIds - productId
+    override suspend fun deleteProductCatalogItem(product: ProductCatalogUiModel) {
+        if (product.scope == "household" && product.householdId != null) {
+            api.deleteHouseholdProductCatalogItem(product.householdId, product.id).bodyOrThrow()
+        } else {
+            api.deleteProductCatalogItem(product.id).bodyOrThrow()
+        }
+        favoriteProductIds = favoriteProductIds - product.id
         invalidateCatalogSnapshot()
     }
 
@@ -252,23 +286,24 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
         profile().displayName
 
     private fun ShoppingListDto.toUiModel() = ShoppingListSummaryUiModel(id, householdId, name, version)
-    private fun MeUserDto.toUiModel() = ProfileUiModel(id, email, name, firstName, lastName, username)
+    private fun MeUserDto.toUiModel() = ProfileUiModel(id, email, name, firstName, lastName, username, role)
 
     private fun invalidateCatalogSnapshot() {
-        catalogSnapshot = null
+        catalogSnapshots.clear()
     }
 
     private fun upsertCatalogSnapshot(product: ProductCatalogUiModel) {
-        catalogSnapshot = catalogSnapshot?.filterNot { it.id == product.id }?.plus(product)
+        val key = product.householdId
+        catalogSnapshots[key] = (catalogSnapshots[key]?.filterNot { it.id == product.id } ?: emptyList()) + product
     }
 
-    private suspend fun loadCatalogSnapshotOrNull(): List<ProductCatalogUiModel>? = catalogMutex.withLock {
-        catalogSnapshot?.let { return@withLock it }
+    private suspend fun loadCatalogSnapshotOrNull(householdId: String?): List<ProductCatalogUiModel>? = catalogMutex.withLock {
+        catalogSnapshots[householdId]?.let { return@withLock it }
         runCatching {
-            api.productCatalogSnapshot().bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
+            api.productCatalogSnapshot(householdId).bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
         }.getOrNull()?.let { products ->
             favoriteProductIds = products.favoriteIds() + favoriteProductIds
-            products.applyFavoriteOverlay(favoriteProductIds).also { catalogSnapshot = it }
+            products.applyFavoriteOverlay(favoriteProductIds).also { catalogSnapshots[householdId] = it }
         }
     }
 
@@ -313,7 +348,7 @@ class OfflineShoppingRepository(
     private val lifecycleLock = Any()
     private val activeJobs = mutableSetOf<Job>()
     private var closed = false
-    private var catalogSnapshot: List<ProductCatalogUiModel>? = null
+    private val catalogSnapshots = mutableMapOf<String?, List<ProductCatalogUiModel>>()
     private var favoriteProductIds: Set<String> = emptySet()
     private val catalogMutex = Mutex()
 
@@ -561,27 +596,27 @@ class OfflineShoppingRepository(
         Unit
     }
 
-    override suspend fun searchProductCatalog(search: String, limit: Int): List<ProductCatalogUiModel> = accountOperation {
+    override suspend fun searchProductCatalog(householdId: String?, search: String, limit: Int): List<ProductCatalogUiModel> = accountOperation {
         val query = search.normalizedSearch()
-        if (query.isBlank()) return@accountOperation loadCatalogSnapshotOrNull()?.take(limit.coerceAtLeast(1)) ?: emptyList()
+        if (query.isBlank()) return@accountOperation loadCatalogSnapshotOrNull(householdId)?.take(limit.coerceAtLeast(1)) ?: emptyList()
         if (query.length < 3) return@accountOperation emptyList()
-        val snapshot = catalogSnapshot ?: loadCachedCatalogSnapshotOrNull()
+        val snapshot = catalogSnapshots[householdId] ?: loadCachedCatalogSnapshotOrNull(householdId)
         if (snapshot != null) return@accountOperation snapshot.searchCatalog(query, limit)
         runCatching {
-            val products = api.searchProductCatalog(search, limit.coerceIn(1, 25)).bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
+            val products = api.searchProductCatalog(search, limit.coerceIn(1, 25), householdId).bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
             favoriteProductIds = products.favoriteIds() + favoriteProductIds
             products.applyFavoriteOverlay(favoriteProductIds)
         }.getOrElse { emptyList() }
     }
 
-    override suspend fun warmProductCatalog() = accountOperation {
-        if (catalogSnapshot == null) loadCatalogSnapshotOrNull()
+    override suspend fun warmProductCatalog(householdId: String?) = accountOperation {
+        if (catalogSnapshots[householdId] == null) loadCatalogSnapshotOrNull(householdId)
         Unit
     }
 
-    override suspend fun productCategories(): List<ProductCategoryUiModel> = accountOperation {
+    override suspend fun productCategories(householdId: String?): List<ProductCategoryUiModel> = accountOperation {
         runCatching {
-            api.productCategories().also { isOffline = false }.bodyOrThrow().categories.map(ProductCategoryDto::toUiModel)
+            api.productCategories(householdId).also { isOffline = false }.bodyOrThrow().categories.map(ProductCategoryDto::toUiModel)
         }.getOrElse { emptyList() }
     }
 
@@ -589,45 +624,73 @@ class OfflineShoppingRepository(
         if (favorite) api.addProductFavorite(productId).also { isOffline = false }.bodyOrThrow()
         else api.removeProductFavorite(productId).also { isOffline = false }.bodyOrThrow()
         favoriteProductIds = if (favorite) favoriteProductIds + productId else favoriteProductIds - productId
-        catalogSnapshot = catalogSnapshot?.applyFavoriteOverlay(favoriteProductIds)
-        catalogSnapshot?.let { catalogCache?.write(it) }
-        catalogSnapshot?.firstOrNull { it.id == productId }
+        catalogSnapshots.replaceAll { _, products -> products.applyFavoriteOverlay(favoriteProductIds) }
+        catalogSnapshots.forEach { (key, products) -> catalogCache?.write(key, products) }
+        catalogSnapshots.values.flatten().firstOrNull { it.id == productId }
             ?: ProductCatalogUiModel(productId, "", "", null, "star", null, favorite)
     }
 
-    override suspend fun createProductCategory(name: String, iconKey: String): ProductCategoryUiModel = accountOperation {
-        val category = api.createProductCategory(ProductCategoryMutationRequest(name = name, iconKey = iconKey)).also { isOffline = false }.bodyOrThrow().category.toUiModel()
+    override suspend fun createProductCategory(householdId: String?, name: String, iconKey: String): ProductCategoryUiModel = accountOperation {
+        val request = ProductCategoryMutationRequest(name = name, iconKey = iconKey)
+        val category = if (householdId != null) {
+            api.createHouseholdProductCategory(householdId, request).also { isOffline = false }.bodyOrThrow().category.toUiModel()
+        } else {
+            api.createProductCategory(request).also { isOffline = false }.bodyOrThrow().category.toUiModel()
+        }
         invalidateCatalogSnapshot()
         category
     }
 
-    override suspend fun updateProductCategory(categoryId: String, name: String, iconKey: String): ProductCategoryUiModel = accountOperation {
-        val category = api.updateProductCategory(categoryId, ProductCategoryMutationRequest(name = name, iconKey = iconKey)).also { isOffline = false }.bodyOrThrow().category.toUiModel()
+    override suspend fun updateProductCategory(category: ProductCategoryUiModel, name: String, iconKey: String): ProductCategoryUiModel = accountOperation {
+        val request = ProductCategoryMutationRequest(name = name, iconKey = iconKey)
+        val updated = if (category.scope == "household" && category.householdId != null) {
+            api.updateHouseholdProductCategory(category.householdId, category.id, request).also { isOffline = false }.bodyOrThrow().category.toUiModel()
+        } else {
+            api.updateProductCategory(category.id, request).also { isOffline = false }.bodyOrThrow().category.toUiModel()
+        }
         invalidateCatalogSnapshot()
-        category
+        updated
     }
 
-    override suspend fun deleteProductCategory(categoryId: String) = accountOperation {
-        api.deleteProductCategory(categoryId).also { isOffline = false }.bodyOrThrow()
+    override suspend fun deleteProductCategory(category: ProductCategoryUiModel) = accountOperation {
+        if (category.scope == "household" && category.householdId != null) {
+            api.deleteHouseholdProductCategory(category.householdId, category.id).also { isOffline = false }.bodyOrThrow()
+        } else {
+            api.deleteProductCategory(category.id).also { isOffline = false }.bodyOrThrow()
+        }
         invalidateCatalogSnapshot()
         Unit
     }
 
-    override suspend fun createProductCatalogItem(name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel = accountOperation {
-        val product = api.createProductCatalogItem(ProductCatalogMutationRequest(name, categoryId, iconKey, brand, packageSize)).also { isOffline = false }.bodyOrThrow().product.toUiModel()
+    override suspend fun createProductCatalogItem(householdId: String?, name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel = accountOperation {
+        val request = ProductCatalogMutationRequest(name, categoryId, iconKey, brand, packageSize)
+        val product = if (householdId != null) {
+            api.createHouseholdProductCatalogItem(householdId, request).also { isOffline = false }.bodyOrThrow().product.toUiModel()
+        } else {
+            api.createProductCatalogItem(request).also { isOffline = false }.bodyOrThrow().product.toUiModel()
+        }
         upsertCatalogSnapshot(product)
         product
     }
 
-    override suspend fun updateProductCatalogItem(productId: String, name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel = accountOperation {
-        val product = api.updateProductCatalogItem(productId, ProductCatalogMutationRequest(name, categoryId, iconKey, brand, packageSize)).also { isOffline = false }.bodyOrThrow().product.toUiModel()
+    override suspend fun updateProductCatalogItem(product: ProductCatalogUiModel, name: String, categoryId: String?, iconKey: String, brand: String?, packageSize: String?): ProductCatalogUiModel = accountOperation {
+        val request = ProductCatalogMutationRequest(name, categoryId, iconKey, brand, packageSize)
+        val updated = if (product.scope == "household" && product.householdId != null) {
+            api.updateHouseholdProductCatalogItem(product.householdId, product.id, request).also { isOffline = false }.bodyOrThrow().product.toUiModel()
+        } else {
+            api.updateProductCatalogItem(product.id, request).also { isOffline = false }.bodyOrThrow().product.toUiModel()
+        }
         invalidateCatalogSnapshot()
-        product
+        updated
     }
 
-    override suspend fun deleteProductCatalogItem(productId: String) = accountOperation {
-        api.deleteProductCatalogItem(productId).also { isOffline = false }.bodyOrThrow()
-        favoriteProductIds = favoriteProductIds - productId
+    override suspend fun deleteProductCatalogItem(product: ProductCatalogUiModel) = accountOperation {
+        if (product.scope == "household" && product.householdId != null) {
+            api.deleteHouseholdProductCatalogItem(product.householdId, product.id).also { isOffline = false }.bodyOrThrow()
+        } else {
+            api.deleteProductCatalogItem(product.id).also { isOffline = false }.bodyOrThrow()
+        }
+        favoriteProductIds = favoriteProductIds - product.id
         invalidateCatalogSnapshot()
         Unit
     }
@@ -656,34 +719,35 @@ class OfflineShoppingRepository(
         Unit
     }
 
-    private suspend fun loadCatalogSnapshotOrNull(): List<ProductCatalogUiModel>? = catalogMutex.withLock {
-        catalogSnapshot?.let { return@withLock it }
-        loadCachedCatalogSnapshotOrNull()?.let { return@withLock it }
+    private suspend fun loadCatalogSnapshotOrNull(householdId: String?): List<ProductCatalogUiModel>? = catalogMutex.withLock {
+        catalogSnapshots[householdId]?.let { return@withLock it }
+        loadCachedCatalogSnapshotOrNull(householdId)?.let { return@withLock it }
         runCatching {
-            api.productCatalogSnapshot().bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
+            api.productCatalogSnapshot(householdId).bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
         }.getOrNull()?.let { products ->
             favoriteProductIds = products.favoriteIds() + favoriteProductIds
             products.applyFavoriteOverlay(favoriteProductIds).also {
-                catalogSnapshot = it
-                catalogCache?.write(it)
+                catalogSnapshots[householdId] = it
+                catalogCache?.write(householdId, it)
             }
         }
     }
 
-    private fun loadCachedCatalogSnapshotOrNull(): List<ProductCatalogUiModel>? =
-        catalogCache?.read()?.let { cached ->
+    private fun loadCachedCatalogSnapshotOrNull(householdId: String?): List<ProductCatalogUiModel>? =
+        catalogCache?.read(householdId)?.let { cached ->
             favoriteProductIds = cached.favoriteIds() + favoriteProductIds
-            cached.applyFavoriteOverlay(favoriteProductIds).also { catalogSnapshot = it }
+            cached.applyFavoriteOverlay(favoriteProductIds).also { catalogSnapshots[householdId] = it }
         }
 
     private fun invalidateCatalogSnapshot() {
-        catalogSnapshot = null
+        catalogSnapshots.clear()
         catalogCache?.clear()
     }
 
     private suspend fun upsertCatalogSnapshot(product: ProductCatalogUiModel) = catalogMutex.withLock {
-        catalogSnapshot = catalogSnapshot?.filterNot { it.id == product.id }?.plus(product)
-        catalogSnapshot?.let { catalogCache?.write(it) }
+        val key = product.householdId
+        catalogSnapshots[key] = (catalogSnapshots[key]?.filterNot { it.id == product.id } ?: emptyList()) + product
+        catalogSnapshots[key]?.let { catalogCache?.write(key, it) }
     }
 
     override suspend fun deleteItem(item: ShoppingListItemUiModel) = accountOperation {
@@ -912,7 +976,7 @@ private fun PendingOperation.expectedVersion(): Int? = runCatching {
     }
 }.getOrNull()
 
-private fun MeUserDto.toProfileUiModel() = ProfileUiModel(id, email, name, firstName, lastName, username)
+private fun MeUserDto.toProfileUiModel() = ProfileUiModel(id, email, name, firstName, lastName, username, role)
 
 private fun <T> Response<T>.bodyOrThrow(): T {
     body()?.let { return it }
@@ -950,25 +1014,31 @@ class ProductCatalogCache(
     accountId: String,
     moshi: Moshi,
 ) {
-    private val cacheFile = File(context.filesDir, "nfcompra-catalog-$accountId.json")
+    private val cacheDir = File(context.filesDir, "nfcompra-catalog-$accountId")
     private val adapter = moshi.adapter(ProductCatalogCachePayload::class.java)
 
-    fun read(): List<ProductCatalogUiModel>? = runCatching {
-        if (!cacheFile.isFile) return null
-        val payload = adapter.fromJson(cacheFile.readText()) ?: return null
+    fun read(householdId: String?): List<ProductCatalogUiModel>? = runCatching {
+        val file = cacheFile(householdId)
+        if (!file.isFile) return null
+        val payload = adapter.fromJson(file.readText()) ?: return null
         if (payload.products.isEmpty()) return null
         payload.products
     }.getOrNull()
 
-    fun write(products: List<ProductCatalogUiModel>) {
+    fun write(householdId: String?, products: List<ProductCatalogUiModel>) {
         runCatching {
-            cacheFile.writeText(adapter.toJson(ProductCatalogCachePayload(products = products)))
+            val file = cacheFile(householdId)
+            file.parentFile?.mkdirs()
+            file.writeText(adapter.toJson(ProductCatalogCachePayload(products = products)))
         }
     }
 
     fun clear() {
-        runCatching { cacheFile.delete() }
+        runCatching { cacheDir.deleteRecursively() }
     }
+
+    private fun cacheFile(householdId: String?): File =
+        if (householdId == null) File(cacheDir, "system.json") else File(cacheDir, "household-$householdId.json")
 }
 
 private data class ProductCatalogCachePayload(
@@ -985,6 +1055,10 @@ private fun ProductCatalogItemDto.toUiModel() = ProductCatalogUiModel(
     isFavorite = isFavorite,
     categoryId = categoryId,
     brand = brand,
+    scope = scope,
+    householdId = householdId,
+    canEdit = permissions?.canEdit ?: false,
+    canDelete = permissions?.canDelete ?: false,
 )
 
 private fun ProductCategoryDto.toUiModel() = ProductCategoryUiModel(
@@ -993,6 +1067,10 @@ private fun ProductCategoryDto.toUiModel() = ProductCategoryUiModel(
     normalizedName = normalizedName,
     iconKey = iconKey,
     isFavorite = isFavorite,
+    scope = scope,
+    householdId = householdId,
+    canEdit = permissions?.canEdit ?: false,
+    canDelete = permissions?.canDelete ?: false,
 )
 
 private fun List<ProductCatalogUiModel>.searchCatalog(query: String, limit: Int): List<ProductCatalogUiModel> =

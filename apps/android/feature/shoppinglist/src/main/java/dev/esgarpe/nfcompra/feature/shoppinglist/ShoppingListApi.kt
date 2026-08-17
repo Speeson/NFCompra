@@ -37,6 +37,10 @@ data class DeleteCheckedItemsRequest(val operationId: String)
 data class CreateItemRequest(val name: String, val quantity: Double = 1.0, val unit: String? = null, val operationId: String)
 data class UpdateItemRequest(val name: String? = null, val quantity: Double? = null, val unit: String? = null, val isChecked: Boolean? = null, val expectedVersion: Int, val operationId: String)
 data class DeleteItemRequest(val expectedVersion: Int, val operationId: String)
+data class CatalogPermissionsDto(
+    val canEdit: Boolean = false,
+    val canDelete: Boolean = false,
+)
 data class ProductCatalogItemDto(
     val id: String,
     val name: String,
@@ -48,6 +52,9 @@ data class ProductCatalogItemDto(
     val packageSize: String?,
     val source: String?,
     val sourceProductId: String?,
+    val scope: String? = null,
+    val householdId: String? = null,
+    val permissions: CatalogPermissionsDto? = null,
     val isFavorite: Boolean = false,
 )
 data class ProductCatalogSearchResponse(val products: List<ProductCatalogItemDto>)
@@ -67,6 +74,9 @@ data class ProductCategoryDto(
     val iconKey: String,
     val source: String?,
     val sourceCategoryId: String?,
+    val scope: String? = null,
+    val householdId: String? = null,
+    val permissions: CatalogPermissionsDto? = null,
     val isFavorite: Boolean = false,
 )
 data class ProductCategoriesResponse(val categories: List<ProductCategoryDto>)
@@ -83,6 +93,7 @@ data class MeUserDto(
     val firstName: String? = null,
     val lastName: String? = null,
     val username: String? = null,
+    val role: String? = null,
 )
 data class MeResponse(val user: MeUserDto)
 data class UpdateProfileRequest(val firstName: String? = null, val lastName: String? = null, val username: String? = null)
@@ -109,17 +120,25 @@ interface ShoppingListApi {
     @PATCH("v1/items/{itemId}") suspend fun updateItem(@Path("itemId") itemId: String, @Body request: UpdateItemRequest): Response<ItemResponse>
     @HTTP(method = "DELETE", path = "v1/items/{itemId}", hasBody = true)
     suspend fun deleteItem(@Path("itemId") itemId: String, @Body request: DeleteItemRequest): Response<Unit>
-    @GET("v1/product-catalog") suspend fun searchProductCatalog(@Query("search") search: String, @Query("limit") limit: Int): Response<ProductCatalogSearchResponse>
+    @GET("v1/product-catalog") suspend fun searchProductCatalog(@Query("search") search: String, @Query("limit") limit: Int, @Query("householdId") householdId: String? = null): Response<ProductCatalogSearchResponse>
     @POST("v1/product-catalog") suspend fun createProductCatalogItem(@Body request: ProductCatalogMutationRequest): Response<ProductCatalogMutationResponse>
     @PATCH("v1/product-catalog/{productId}") suspend fun updateProductCatalogItem(@Path("productId") productId: String, @Body request: ProductCatalogMutationRequest): Response<ProductCatalogMutationResponse>
     @HTTP(method = "DELETE", path = "v1/product-catalog/{productId}")
     suspend fun deleteProductCatalogItem(@Path("productId") productId: String): Response<Unit>
-    @GET("v1/product-catalog/snapshot") suspend fun productCatalogSnapshot(): Response<ProductCatalogSnapshotResponse>
-    @GET("v1/product-categories") suspend fun productCategories(): Response<ProductCategoriesResponse>
+    @POST("v1/households/{householdId}/product-catalog") suspend fun createHouseholdProductCatalogItem(@Path("householdId") householdId: String, @Body request: ProductCatalogMutationRequest): Response<ProductCatalogMutationResponse>
+    @PATCH("v1/households/{householdId}/product-catalog/{productId}") suspend fun updateHouseholdProductCatalogItem(@Path("householdId") householdId: String, @Path("productId") productId: String, @Body request: ProductCatalogMutationRequest): Response<ProductCatalogMutationResponse>
+    @HTTP(method = "DELETE", path = "v1/households/{householdId}/product-catalog/{productId}")
+    suspend fun deleteHouseholdProductCatalogItem(@Path("householdId") householdId: String, @Path("productId") productId: String): Response<Unit>
+    @GET("v1/product-catalog/snapshot") suspend fun productCatalogSnapshot(@Query("householdId") householdId: String? = null): Response<ProductCatalogSnapshotResponse>
+    @GET("v1/product-categories") suspend fun productCategories(@Query("householdId") householdId: String? = null): Response<ProductCategoriesResponse>
     @POST("v1/product-categories") suspend fun createProductCategory(@Body request: ProductCategoryMutationRequest): Response<ProductCategoryMutationResponse>
     @PATCH("v1/product-categories/{categoryId}") suspend fun updateProductCategory(@Path("categoryId") categoryId: String, @Body request: ProductCategoryMutationRequest): Response<ProductCategoryMutationResponse>
     @HTTP(method = "DELETE", path = "v1/product-categories/{categoryId}")
     suspend fun deleteProductCategory(@Path("categoryId") categoryId: String): Response<Unit>
+    @POST("v1/households/{householdId}/product-categories") suspend fun createHouseholdProductCategory(@Path("householdId") householdId: String, @Body request: ProductCategoryMutationRequest): Response<ProductCategoryMutationResponse>
+    @PATCH("v1/households/{householdId}/product-categories/{categoryId}") suspend fun updateHouseholdProductCategory(@Path("householdId") householdId: String, @Path("categoryId") categoryId: String, @Body request: ProductCategoryMutationRequest): Response<ProductCategoryMutationResponse>
+    @HTTP(method = "DELETE", path = "v1/households/{householdId}/product-categories/{categoryId}")
+    suspend fun deleteHouseholdProductCategory(@Path("householdId") householdId: String, @Path("categoryId") categoryId: String): Response<Unit>
     @POST("v1/product-catalog/{productId}/favorite") suspend fun addProductFavorite(@Path("productId") productId: String): Response<ProductFavoriteResponse>
     @HTTP(method = "DELETE", path = "v1/product-catalog/{productId}/favorite")
     suspend fun removeProductFavorite(@Path("productId") productId: String): Response<ProductFavoriteResponse>

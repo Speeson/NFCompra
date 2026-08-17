@@ -316,6 +316,7 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
     {message ? <p role="alert">{message}</p> : null}
     {conflict ? <aside role="alert">El producto ha cambiado en el servidor: {conflict.current.name} (versión {conflict.current.version}). <button type="button" disabled={isOffline} onClick={() => { if (!isOffline) conflict.retry(); }}>Reintentar</button></aside> : null}
     <ShoppingListScreen title={currentListTitle} items={(itemsQuery.data ?? []).map((item) => ({ ...item, unit: item.unit ?? undefined }))} isOffline={isOffline}
+      householdId={householdId}
       mobileSimpleActions
       onAdd={(input) => { if (!isOffline) createItemMutation.mutate({ listId, ...input }); }}
       onRenameList={(name) => { if (!isOffline && currentList) renameListMutation.mutate({ list: currentList, name }); }}

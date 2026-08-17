@@ -1,4 +1,5 @@
 import type { Env } from '../env';
+import { deleteHouseholdCatalog } from '../catalog/repository';
 
 export interface Household {
   id: string;
@@ -60,6 +61,7 @@ export async function deleteHousehold(env: Env, householdId: string): Promise<bo
     env.DB.prepare('DELETE FROM household_members WHERE household_id = ?').bind(householdId),
     env.DB.prepare('DELETE FROM households WHERE id = ?').bind(householdId),
   ]);
+  await deleteHouseholdCatalog(env, householdId);
   return results.at(-1)?.meta.changes === 1;
 }
 

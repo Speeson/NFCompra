@@ -39,6 +39,7 @@ it('applies every migration to an empty database through the remote Wrangler exe
     .all<{ name: string }>();
 
   expect(users.results.map(({ name }) => name)).toContain('session_version');
+  expect(users.results.map(({ name }) => name)).toContain('role');
   expect(refreshTokens.results.map(({ name }) => name)).toContain('session_version');
   expect(syncOperations.results.map(({ name }) => name)).toContain('lease_token');
   expect(invitations.results.map(({ name }) => name)).toEqual(expect.arrayContaining(['invited_email', 'status', 'revoked_at', 'updated_at']));

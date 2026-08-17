@@ -15,9 +15,10 @@ const testEnv: WorkerEnv = { ...env, JWT_SECRET: 'test-jwt-secret', APP_BASE_URL
 
 beforeEach(async () => {
   await env.DB.exec(`
-    CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, first_name TEXT NULL, last_name TEXT NULL, birth_date TEXT NULL, username TEXT UNIQUE COLLATE NOCASE NULL, email TEXT NOT NULL UNIQUE COLLATE NOCASE, password_hash TEXT NOT NULL, email_verified_at TEXT NULL, session_version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS product_categories (id TEXT PRIMARY KEY, name TEXT NOT NULL, normalized_name TEXT NOT NULL UNIQUE, parent_id TEXT NULL, icon_key TEXT NOT NULL DEFAULT 'shopping-basket', source TEXT NULL, source_category_id TEXT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS product_catalog (id TEXT PRIMARY KEY, name TEXT NOT NULL, normalized_name TEXT NOT NULL, category_id TEXT NULL, icon_key TEXT NOT NULL DEFAULT 'shopping-basket', brand TEXT NULL, package_size TEXT NULL, source TEXT NULL, source_product_id TEXT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, first_name TEXT NULL, last_name TEXT NULL, birth_date TEXT NULL, username TEXT UNIQUE COLLATE NOCASE NULL, email TEXT NOT NULL UNIQUE COLLATE NOCASE, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'admin')), email_verified_at TEXT NULL, session_version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS product_categories (id TEXT PRIMARY KEY, name TEXT NOT NULL, normalized_name TEXT NOT NULL, parent_id TEXT NULL, icon_key TEXT NOT NULL DEFAULT 'shopping-basket', source TEXT NULL, source_category_id TEXT NULL, scope TEXT NOT NULL DEFAULT 'system' CHECK(scope IN ('system', 'household')), household_id TEXT NULL, created_by TEXT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_product_categories_scope_name ON product_categories(scope, COALESCE(household_id, ''), normalized_name);
+    CREATE TABLE IF NOT EXISTS product_catalog (id TEXT PRIMARY KEY, name TEXT NOT NULL, normalized_name TEXT NOT NULL, category_id TEXT NULL, icon_key TEXT NOT NULL DEFAULT 'shopping-basket', brand TEXT NULL, package_size TEXT NULL, source TEXT NULL, source_product_id TEXT NULL, scope TEXT NOT NULL DEFAULT 'system' CHECK(scope IN ('system', 'household')), household_id TEXT NULL, created_by TEXT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS product_aliases (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, alias TEXT NOT NULL, normalized_alias TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS user_product_favorites (user_id TEXT NOT NULL, product_id TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (user_id, product_id));
     DELETE FROM user_product_favorites;
@@ -29,6 +30,8 @@ beforeEach(async () => {
   const now = new Date().toISOString();
   await env.DB.prepare('INSERT INTO users (id, name, email, password_hash, email_verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .bind('user-a', 'Ana', 'ana@example.test', 'hash', now, now, now).run();
+  await env.DB.prepare('INSERT INTO users (id, name, email, password_hash, role, email_verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind('admin-a', 'Admin', 'admin@example.test', 'hash', 'admin', now, now, now).run();
   await env.DB.prepare('INSERT INTO product_categories (id, name, normalized_name, icon_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
     .bind('cat-dairy', 'Lacteos', 'lacteos', 'milk', now, now).run();
   await env.DB.prepare('INSERT INTO product_catalog (id, name, normalized_name, category_id, icon_key, brand, package_size, source, source_product_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
@@ -116,7 +119,7 @@ it('marks user favorites and sorts matching favorite products first', async () =
 });
 
 it('creates updates and deletes product categories', async () => {
-  const token = await createAccessToken('user-a', 0, testEnv);
+  const token = await createAccessToken('admin-a', 0, testEnv);
 
   const createResponse = await dispatch('/v1/product-categories', 'POST', token, { name: 'Bebidas', iconKey: 'drink' });
   expect(createResponse.status).toBe(201);
@@ -133,7 +136,7 @@ it('creates updates and deletes product categories', async () => {
 });
 
 it('creates updates and soft deletes product catalog items', async () => {
-  const token = await createAccessToken('user-a', 0, testEnv);
+  const token = await createAccessToken('admin-a', 0, testEnv);
 
   const createResponse = await dispatch('/v1/product-catalog', 'POST', token, {
     name: 'Agua mineral',

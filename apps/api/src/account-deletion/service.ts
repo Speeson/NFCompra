@@ -71,6 +71,8 @@ export function accountDeletionMutationSql(plan: AccountDeletionImpact, now: str
   statements.push({ sql: 'UPDATE nfc_links SET created_by = ?, updated_at = ? WHERE created_by = ?', params: [null, now, targetUserId] });
   statements.push({ sql: 'UPDATE shopping_items SET created_by = ? WHERE created_by = ?', params: [null, targetUserId] });
   statements.push({ sql: 'UPDATE shopping_items SET updated_by = ? WHERE updated_by = ?', params: [null, targetUserId] });
+  statements.push({ sql: 'UPDATE product_catalog SET created_by = ? WHERE created_by = ?', params: [null, targetUserId] });
+  statements.push({ sql: 'UPDATE product_categories SET created_by = ? WHERE created_by = ?', params: [null, targetUserId] });
   for (const action of plan.householdActions.filter((item) => item.action === 'delete')) {
     statements.push({ sql: 'DELETE FROM notifications WHERE household_id = ?', params: [action.householdId] });
     statements.push({ sql: 'DELETE FROM invitations WHERE household_id = ?', params: [action.householdId] });
@@ -78,6 +80,9 @@ export function accountDeletionMutationSql(plan: AccountDeletionImpact, now: str
     statements.push({ sql: 'DELETE FROM shopping_items WHERE list_id IN (SELECT id FROM shopping_lists WHERE household_id = ?)', params: [action.householdId] });
     statements.push({ sql: 'DELETE FROM shopping_lists WHERE household_id = ?', params: [action.householdId] });
     statements.push({ sql: 'DELETE FROM household_members WHERE household_id = ?', params: [action.householdId] });
+    statements.push({ sql: 'DELETE FROM user_product_favorites WHERE product_id IN (SELECT id FROM product_catalog WHERE scope = \'household\' AND household_id = ?)', params: [action.householdId] });
+    statements.push({ sql: 'DELETE FROM product_catalog WHERE scope = \'household\' AND household_id = ?', params: [action.householdId] });
+    statements.push({ sql: 'DELETE FROM product_categories WHERE scope = \'household\' AND household_id = ?', params: [action.householdId] });
     statements.push({ sql: 'DELETE FROM households WHERE id = ? AND owner_id = ?', params: [action.householdId, targetUserId] });
   }
   statements.push({ sql: 'DELETE FROM household_members WHERE user_id = ?', params: [targetUserId] });

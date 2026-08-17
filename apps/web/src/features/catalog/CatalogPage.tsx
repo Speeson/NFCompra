@@ -3,14 +3,22 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ProductCatalogCard } from './ProductCatalogCards';
 import { catalogIconLabel, catalogIconOptions } from './catalog-icons';
+import { readActiveHouseholdId } from '../households/active-household';
+import { fetchHouseholds, householdQueryKey } from '../shopping-list/queries';
 import {
+  createHouseholdProductCatalogItem,
+  createHouseholdProductCategory,
   createProductCatalogItem,
   createProductCategory,
+  deleteHouseholdProductCatalogItem,
+  deleteHouseholdProductCategory,
   deleteProductCatalogItem,
   deleteProductCategory,
   fetchProductCategories,
   loadProductCatalogSnapshot,
   setProductFavorite,
+  updateHouseholdProductCatalogItem,
+  updateHouseholdProductCategory,
   updateProductCatalogItem,
   updateProductCategory,
   type ProductCatalogInput,
@@ -19,8 +27,6 @@ import {
   type ProductCategoryInput,
 } from './product-catalog-api';
 
-const catalogProductsQueryKey = ['product-catalog', 'snapshot'] as const;
-const catalogCategoriesQueryKey = ['product-categories'] as const;
 type CatalogSearchFilter = 'all' | 'favorites' | 'category';
 type CatalogCreateMode = 'category' | 'product';
 type CatalogDialogState =
@@ -30,8 +36,17 @@ type CatalogDialogState =
   | null;
 type CatalogMenuPosition = { top: number; left: number } | null;
 
-export function CatalogPage(): JSX.Element {
+export function CatalogPage({ isAdmin = false }: { isAdmin?: boolean }): JSX.Element {
   const queryClient = useQueryClient();
+  const households = useQuery({ queryKey: householdQueryKey, queryFn: fetchHouseholds });
+  const storedHouseholdId = useMemo(() => readActiveHouseholdId(), []);
+  const homes = households.data ?? [];
+  const householdId = useMemo(() => {
+    if (storedHouseholdId && homes.some((home) => home.id === storedHouseholdId)) return storedHouseholdId;
+    return homes[0]?.id ?? null;
+  }, [homes, storedHouseholdId]);
+  const canCreate = isAdmin || householdId != null;
+  const catalogReady = !households.isPending;
   const [selectedCategoryId, setSelectedCategoryId] = useState('favorites');
   const [search, setSearch] = useState('');
   const [searchFilter, setSearchFilter] = useState<CatalogSearchFilter>('all');
@@ -40,44 +55,58 @@ export function CatalogPage(): JSX.Element {
   const [categoryMenuId, setCategoryMenuId] = useState<string | null>(null);
   const [categoryMenuPosition, setCategoryMenuPosition] = useState<CatalogMenuPosition>(null);
   const [productMenuId, setProductMenuId] = useState<string | null>(null);
-  const categories = useQuery({ queryKey: catalogCategoriesQueryKey, queryFn: fetchProductCategories });
-  const products = useQuery({ queryKey: catalogProductsQueryKey, queryFn: loadProductCatalogSnapshot });
+  const categories = useQuery({
+    queryKey: ['product-categories', householdId ?? ''],
+    queryFn: () => fetchProductCategories(householdId ?? undefined),
+    enabled: catalogReady,
+  });
+  const products = useQuery({
+    queryKey: ['product-catalog', 'snapshot', householdId ?? ''],
+    queryFn: () => loadProductCatalogSnapshot(householdId ?? undefined),
+    enabled: catalogReady,
+  });
 
   const invalidateCatalog = () => {
-    void queryClient.invalidateQueries({ queryKey: catalogCategoriesQueryKey });
-    void queryClient.invalidateQueries({ queryKey: catalogProductsQueryKey });
+    void queryClient.invalidateQueries({ queryKey: ['product-categories'] });
+    void queryClient.invalidateQueries({ queryKey: ['product-catalog', 'snapshot'] });
   };
 
   const favoriteMutation = useMutation({
     mutationFn: ({ productId, favorite }: { productId: string; favorite: boolean }) => setProductFavorite(productId, favorite),
     onMutate: async ({ productId, favorite }) => {
-      await queryClient.cancelQueries({ queryKey: catalogProductsQueryKey });
-      const previous = queryClient.getQueryData<ProductCatalogItem[]>(catalogProductsQueryKey);
-      queryClient.setQueryData<ProductCatalogItem[]>(catalogProductsQueryKey, (current) => current?.map((product) => product.id === productId ? { ...product, isFavorite: favorite } : product));
+      await queryClient.cancelQueries({ queryKey: ['product-catalog', 'snapshot'] });
+      const previous = queryClient.getQueryData<ProductCatalogItem[]>(['product-catalog', 'snapshot', householdId ?? '']);
+      queryClient.setQueryData<ProductCatalogItem[]>(['product-catalog', 'snapshot', householdId ?? ''], (current) => current?.map((product) => product.id === productId ? { ...product, isFavorite: favorite } : product));
       return { previous };
     },
     onError: (_error, _variables, context) => {
-      if (context?.previous) queryClient.setQueryData(catalogProductsQueryKey, context.previous);
+      if (context?.previous) queryClient.setQueryData(['product-catalog', 'snapshot', householdId ?? ''], context.previous);
     },
-    onSettled: () => void queryClient.invalidateQueries({ queryKey: catalogProductsQueryKey }),
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ['product-catalog', 'snapshot'] }),
   });
 
   const categoryMutation = useMutation({
-    mutationFn: ({ categoryId, input }: { categoryId?: string; input: ProductCategoryInput }) =>
-      categoryId ? updateProductCategory(categoryId, input) : createProductCategory(input),
+    mutationFn: ({ targetHouseholdId, categoryId, input }: { targetHouseholdId?: string | null; categoryId?: string; input: ProductCategoryInput }) =>
+      categoryId
+        ? targetHouseholdId ? updateHouseholdProductCategory(targetHouseholdId, categoryId, input) : updateProductCategory(categoryId, input)
+        : targetHouseholdId ? createHouseholdProductCategory(targetHouseholdId, input) : createProductCategory(input),
     onSuccess: invalidateCatalog,
   });
   const productMutation = useMutation({
-    mutationFn: ({ productId, input }: { productId?: string; input: ProductCatalogInput }) =>
-      productId ? updateProductCatalogItem(productId, input) : createProductCatalogItem(input),
+    mutationFn: ({ targetHouseholdId, productId, input }: { targetHouseholdId?: string | null; productId?: string; input: ProductCatalogInput }) =>
+      productId
+        ? targetHouseholdId ? updateHouseholdProductCatalogItem(targetHouseholdId, productId, input) : updateProductCatalogItem(productId, input)
+        : targetHouseholdId ? createHouseholdProductCatalogItem(targetHouseholdId, input) : createProductCatalogItem(input),
     onSuccess: invalidateCatalog,
   });
   const deleteCategoryMutation = useMutation({
-    mutationFn: deleteProductCategory,
+    mutationFn: ({ targetHouseholdId, categoryId }: { targetHouseholdId?: string | null; categoryId: string }) =>
+      targetHouseholdId ? deleteHouseholdProductCategory(targetHouseholdId, categoryId) : deleteProductCategory(categoryId),
     onSuccess: invalidateCatalog,
   });
   const deleteProductMutation = useMutation({
-    mutationFn: deleteProductCatalogItem,
+    mutationFn: ({ targetHouseholdId, productId }: { targetHouseholdId?: string | null; productId: string }) =>
+      targetHouseholdId ? deleteHouseholdProductCatalogItem(targetHouseholdId, productId) : deleteProductCatalogItem(productId),
     onSuccess: invalidateCatalog,
   });
 
@@ -101,7 +130,7 @@ export function CatalogPage(): JSX.Element {
   }, [productList, search, searchFilter, selectedCategoryId]);
 
   const openCategoryActions = (category: ProductCategory, anchor: HTMLElement) => {
-    if (category.isFavorite || category.id === 'favorites') return;
+    if (category.isFavorite || category.id === 'favorites' || !category.permissions?.canEdit) return;
     const rect = anchor.getBoundingClientRect();
     setProductMenuId(null);
     setCategoryMenuId((current) => {
@@ -118,6 +147,12 @@ export function CatalogPage(): JSX.Element {
     });
   };
 
+  const categoryHouseholdId = (category: ProductCategory): string | null | undefined =>
+    category.scope === 'household' ? category.householdId : null;
+
+  const productHouseholdId = (product: ProductCatalogItem): string | null | undefined =>
+    product.scope === 'household' ? product.householdId : null;
+
   return <section className="catalog-page">
     <header className="catalog-page__header">
       <div className="catalog-page__title"><p className="eyebrow">Catálogo</p><h1>Catálogo</h1></div>
@@ -126,7 +161,7 @@ export function CatalogPage(): JSX.Element {
         <button className="catalog-filter-button" type="button" aria-label="Abrir filtros de búsqueda" aria-expanded={isFilterOpen} onClick={() => setIsFilterOpen(true)}>
           <span aria-hidden="true"></span>
         </button>
-        <button className="catalog-create-button" type="button" aria-label="Crear en catálogo" onClick={() => setDialog({ kind: 'create', mode: 'category' })}><span aria-hidden="true">+</span></button>
+        {canCreate ? <button className="catalog-create-button" type="button" aria-label="Crear en catálogo" onClick={() => setDialog({ kind: 'create', mode: 'category' })}><span aria-hidden="true">+</span></button> : null}
       </div>
     </header>
     {isFilterOpen ? <CatalogFilterDialog
@@ -144,8 +179,16 @@ export function CatalogPage(): JSX.Element {
       isSaving={categoryMutation.isPending || productMutation.isPending}
       onModeChange={(mode) => setDialog({ kind: 'create', mode })}
       onClose={() => setDialog(null)}
-      onSubmitCategory={(input, categoryId) => categoryMutation.mutate({ categoryId, input }, { onSuccess: () => setDialog(null) })}
-      onSubmitProduct={(input, productId) => productMutation.mutate({ productId, input }, { onSuccess: () => setDialog(null) })}
+      onSubmitCategory={(input, categoryId) => {
+        const editing = categoryId ? categoryList.find((category) => category.id === categoryId) : null;
+        const targetHouseholdId = editing ? categoryHouseholdId(editing) : householdId;
+        categoryMutation.mutate({ targetHouseholdId, categoryId, input }, { onSuccess: () => setDialog(null) });
+      }}
+      onSubmitProduct={(input, productId) => {
+        const editing = productId ? productList.find((product) => product.id === productId) : null;
+        const targetHouseholdId = editing ? productHouseholdId(editing) : householdId;
+        productMutation.mutate({ targetHouseholdId, productId, input }, { onSuccess: () => setDialog(null) });
+      }}
     /> : null}
     {categoryWithOpenActions ? <div
       className="catalog-category-menu-layer"
@@ -161,7 +204,9 @@ export function CatalogPage(): JSX.Element {
         onDelete={() => {
           setCategoryMenuId(null);
           setCategoryMenuPosition(null);
-          if (window.confirm(`Eliminar categoría ${categoryWithOpenActions.name}?`)) deleteCategoryMutation.mutate(categoryWithOpenActions.id);
+          if (window.confirm(`Eliminar categoría ${categoryWithOpenActions.name}?`)) {
+            deleteCategoryMutation.mutate({ targetHouseholdId: categoryHouseholdId(categoryWithOpenActions), categoryId: categoryWithOpenActions.id });
+          }
         }}
       />
     </div> : null}
@@ -196,12 +241,12 @@ export function CatalogPage(): JSX.Element {
             disabled={favoriteMutation.isPending || busy}
             statusLabel={product.packageSize ?? null}
             onFavoriteChange={(entry, favorite) => favoriteMutation.mutate({ productId: entry.id, favorite })}
-            onOpenActions={(entry) => {
+            onOpenActions={product.permissions?.canEdit ? (entry) => {
               setCategoryMenuId(null);
               setProductMenuId((current) => current === entry.id ? null : entry.id);
-            }}
+            } : undefined}
           />
-          {productMenuId === product.id ? <CatalogActionMenu
+          {product.permissions?.canEdit && productMenuId === product.id ? <CatalogActionMenu
             type="product"
             onEdit={() => {
               setProductMenuId(null);
@@ -209,7 +254,9 @@ export function CatalogPage(): JSX.Element {
             }}
             onDelete={() => {
               setProductMenuId(null);
-              if (window.confirm(`Eliminar producto ${product.name}?`)) deleteProductMutation.mutate(product.id);
+              if (window.confirm(`Eliminar producto ${product.name}?`)) {
+                deleteProductMutation.mutate({ targetHouseholdId: productHouseholdId(product), productId: product.id });
+              }
             }}
           /> : null}
         </div>)}
