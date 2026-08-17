@@ -230,6 +230,19 @@ test('publish treats an existing release with the APK as complete and performs n
   assert.match(logs.join(' '), /already published/);
 });
 
+test('publish creates a missing release reported as a plain "release not found" message without an HTTP code', async () => {
+  const gh = ghSequence([
+    { ok: false, stderr: 'release not found for v1.2.4' },
+    ok(JSON.stringify({ id: 1 })),
+    ok(JSON.stringify(viewAssets([]))),
+    ok('uploaded'),
+    ok(JSON.stringify(viewAssets(['NFCompra-release.apk']))),
+  ]);
+  const result = await publishAndroidRelease({ version: '1.2.4', title: 'NFCompra Android 1.2.4', notesPath: '.changes/releases/android-v1.2.4.md', apkPath: 'NFCompra-release.apk', run: gh.fn, log: () => undefined, sleep: noSleep });
+  assert.equal(result.action, 'published');
+  assert.match(gh.calls[1], /release create v1\.2\.4/);
+});
+
 test('publish creates a missing release then uploads the missing APK', async () => {
   const gh = ghSequence([
     httpError(404),

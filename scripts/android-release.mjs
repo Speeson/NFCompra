@@ -219,6 +219,7 @@ function parseGhResponse(result) {
   const stderr = String(result.stderr ?? '');
   const statusMatch = stderr.match(/HTTP\s+(\d{3})/);
   const httpStatus = statusMatch ? Number(statusMatch[1]) : null;
+  const missing = httpStatus === null && /(not found|no release|could not find)/i.test(stderr);
   if (result.ok) {
     let data = null;
     const stdout = String(result.stdout ?? '');
@@ -227,7 +228,7 @@ function parseGhResponse(result) {
     }
     return { ok: true, status: httpStatus ?? 200, data, conflict: false };
   }
-  return { ok: false, status: httpStatus, data: null, conflict: httpStatus === 422 };
+  return { ok: false, status: httpStatus ?? (missing ? 404 : null), data: null, conflict: httpStatus === 422 };
 }
 
 export async function publishAndroidRelease({
