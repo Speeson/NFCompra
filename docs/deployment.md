@@ -90,12 +90,41 @@ El workflow `release-android.yml`:
 2. calcula version desde changesets;
 3. sube `versionCode + 1`;
 4. archiva metadata en `.changes/releases/android-v<version>.*`;
-5. crea commit `Release Android v<version>`;
-6. crea tag `v<version>`;
-7. firma y construye APK;
+5. firma y construye APK;
+6. crea commit `Release Android v<version>` y tag `v<version>`;
+7. publica commit y tag **atomically** (un solo `git push --atomic` de `main` + tag);
 8. publica GitHub Release con asset `NFCompra-release.apk`.
 
 El modo manual `release-dry-run` valida los secrets de firma, construye el APK release firmado, verifica su firma y puede subir solo el APK como artifact temporal. No cambia `versionCode`/`versionName`, no mueve changesets, no crea commit, tag ni GitHub Release.
+
+### Release Android reanudable e idempotente
+
+La publicacion `release` es reanudable e idempotente: si una ejecucion falla por un error transitorio de GitHub (p. ej. `HTTP 503` al crear la GitHub Release), basta con re-ejecutar el workflow.
+
+Maquina de estados:
+
+- **Nuevo (fresh)**: hay changesets Android pendientes, la version calculada no tiene tag y la GitHub Release no existe. El pipeline prepara la version, construye y firma el APK, publica commit/tag y crea la GitHub Release.
+- **Parcial (tag existe, Release falta)**: si `vX.Y.Z` existe y apunta a un release valido de NFCompra (versionName y metadata coinciden) pero la GitHub Release no existe, la ejecucion **reanuda vX.Y.Z**: hace checkout del tag exacto, valida su metadata, construye/firma ese mismo APK y crea la Release. No vuelve a calcular version, no consume changesets, no crea otro commit ni mueve/borra el tag.
+- **Asset parcial (Release existe, APK falta)**: detecta la Release existente, no la duplica, sube solo el asset `NFCompra-release.apk` que falta y verifica el estado final.
+- **Completo (Release + APK existen)**: no-op seguro; imprime `Release vX.Y.Z is already published.`
+- **Inconsistente (fail-safe)**: si el tag no coincide con el `versionName`, falta la metadata `.changes/releases/android-vX.Y.Z.json` o las notas `.md`, o la metadata no coincide con el tag, el workflow **falla sin tocar nada**: no adivina, no borra ni mueve tags, no publica otra version, y explica la inconsistencia en el resumen.
+
+Garantias:
+
+- Los releases Android fresh publican el commit de release y el tag de version con **un unico push atomico de Git**: `git push --atomic origin HEAD:main refs/tags/v<version>`. Se publican ambos o ninguno; el flujo normal ya no puede dejar `main` actualizado con el tag ausente.
+- No hay fallback secuencial: si el push atomico falla (conflicto de tag, `main` no fast-forward, error de red/servidor), el workflow falla de forma segura, **no** reintenta por separado `main` y el tag, **no** continua a la GitHub Release y no usa `--force`.
+- Un `503` tras el push atomico exitoso **no** provoca que el siguiente reintento calcule una version nueva; se reanuda la misma.
+- Los changesets solo se consumen una vez; al reanudar se usa la metadata ya archivada.
+- Los tags existentes nunca se borran, se mueven ni se sobrescriben silenciosamente.
+- El APK publicado corresponde exactamente al codigo del tag: en reanudacion se hace `git checkout` del tag antes de construir.
+
+Errores transitorios de GitHub (`HTTP 500/502/503/504`) en la publicacion se reintentan automaticamente con backoff acotado (2s, 5s, 10s, 20s). Errores permanentes (`401`, `403`, validacion, conflicto de estado) no se reintentan. Si se agotan los reintentos, el workflow falla conservando el estado reanudable e imprime:
+
+```
+Release vX.Y.Z can be safely resumed by re-running the same release workflow.
+```
+
+La publicacion separa la creacion de la GitHub Release y la subida del APK: cada operacion se detecta (existe / falta) y se ejecuta solo si falta, de forma independiente y reanudable.
 
 ## GitHub Actions
 
@@ -189,5 +218,7 @@ No guardes keystores, tokens ni passwords en Git.
 - Rebuild Android sin release: workflow manual `mode=android`, `android_release_mode=build-only`.
 - Validar firma Android sin release: workflow manual `mode=android`, `android_release_mode=release-dry-run`.
 - Publicar Android: workflow manual `mode=android`, `android_release_mode=release`.
-- Tag existente al publicar: revisar GitHub Releases; crea un changeset/version nueva si ya fue publicado correctamente.
+- Release fallida por error transitorio de GitHub (503/502/500/504): re-ejecutar el mismo workflow; reanuda la misma version sin crear version nueva ni duplicar estados. Si la GitHub Release o el APK ya existen, no se duplican.
+- Tag existente al publicar: si el tag corresponde a un release valido, la re-ejecucion lo reanuda. Si la release ya se publico correctamente y quieres otra version, crea un changeset/version nueva.
+- Tag inconsistente (versionName/metadata no coinciden): el workflow falla de forma segura; revisar el tag manualmente sin borrarlo.
 - Changesets invalidos: `npm run changeset:validate`.

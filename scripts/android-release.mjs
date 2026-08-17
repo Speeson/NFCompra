@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -153,12 +154,165 @@ export function prepareAndroidRelease({ bump = 'auto' } = {}) {
   return plan;
 }
 
+export function chooseReleaseTarget({ currentVersionName, currentVersionCode, plannedVersion, existingTags = [] }) {
+  const tags = new Set(existingTags);
+  if (plannedVersion) {
+    if (tags.has(`v${plannedVersion}`)) {
+      return { action: 'resume', versionName: plannedVersion, versionCode: null, reason: `Tag v${plannedVersion} already exists; resuming the same release.` };
+    }
+    return { action: 'fresh', versionName: plannedVersion, versionCode: currentVersionCode + 1 };
+  }
+  if (tags.has(`v${currentVersionName}`)) {
+    return { action: 'resume', versionName: currentVersionName, versionCode: null, reason: `Tag v${currentVersionName} already exists; resuming the same release.` };
+  }
+  return { action: 'fail', versionName: null, versionCode: null, reason: 'No pending Android changesets and no release tag to resume.' };
+}
+
+export function validateResumeRelease({
+  tagVersion,
+  gradleVersionName,
+  gradleVersionCode,
+  metadataExists,
+  metadataVersionName,
+  metadataVersionCode,
+  notesExists,
+}) {
+  const errors = [];
+  if (gradleVersionName !== tagVersion) errors.push(`Tag v${tagVersion} points to Android versionName "${gradleVersionName}".`);
+  if (!Number.isInteger(gradleVersionCode) || gradleVersionCode <= 0) errors.push(`Invalid Android versionCode "${gradleVersionCode}" at tag v${tagVersion}.`);
+  if (!metadataExists) {
+    errors.push(`Missing release metadata .changes/releases/android-v${tagVersion}.json at tag v${tagVersion}.`);
+  } else if (metadataVersionName !== tagVersion || metadataVersionCode !== gradleVersionCode) {
+    errors.push(`Release metadata version mismatch at tag v${tagVersion} (metadata ${metadataVersionName}/${metadataVersionCode}, gradle ${tagVersion}/${gradleVersionCode}).`);
+  }
+  if (!notesExists) errors.push(`Missing release notes .changes/releases/android-v${tagVersion}.md at tag v${tagVersion}.`);
+  return { ok: errors.length === 0, errors };
+}
+
+export function classifyGitHubPublication({ releaseExists, assetExists }) {
+  if (releaseExists && assetExists) return { action: 'complete' };
+  if (releaseExists) return { action: 'upload-asset' };
+  return { action: 'publish' };
+}
+
+export const GITHUB_RETRY_DELAYS_SECONDS = [2, 5, 10, 20];
+
+export function githubRetryDelays() {
+  return [...GITHUB_RETRY_DELAYS_SECONDS];
+}
+
+export function isRetryableHttpStatus(status) {
+  return [500, 502, 503, 504].includes(Number(status));
+}
+
+export function buildAtomicReleasePushArgs({ remote = 'origin', mainBranch = 'main', tagVersion }) {
+  if (!tagVersion) throw new Error('tagVersion is required to build the atomic release push.');
+  return ['push', '--atomic', remote, `HEAD:${mainBranch}`, `refs/tags/v${tagVersion}`];
+}
+
+function defaultGhRunner(args) {
+  const result = spawnSync('gh', args, { encoding: 'utf8' });
+  return { ok: result.status === 0, status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+}
+
+function parseGhResponse(result) {
+  const stderr = String(result.stderr ?? '');
+  const statusMatch = stderr.match(/HTTP\s+(\d{3})/);
+  const httpStatus = statusMatch ? Number(statusMatch[1]) : null;
+  if (result.ok) {
+    let data = null;
+    const stdout = String(result.stdout ?? '');
+    if (stdout.trim()) {
+      try { data = JSON.parse(stdout); } catch { /* gh --json output is JSON; ignore non-JSON */ }
+    }
+    return { ok: true, status: httpStatus ?? 200, data, conflict: false };
+  }
+  return { ok: false, status: httpStatus, data: null, conflict: httpStatus === 422 };
+}
+
+export async function publishAndroidRelease({
+  version,
+  title,
+  notesPath,
+  apkPath,
+  apkName = 'NFCompra-release.apk',
+  run = defaultGhRunner,
+  log = console.log,
+  sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+} = {}) {
+  const tag = `v${version}`;
+  const delays = githubRetryDelays();
+  const hasAsset = (data) => Array.isArray(data?.assets) && data.assets.some((asset) => asset.name === apkName);
+
+  const view = () => Promise.resolve(parseGhResponse(run(['release', 'view', tag, '--json', 'id,assets'])));
+  const create = () => Promise.resolve(parseGhResponse(run(['release', 'create', tag, '--target', 'main', '--title', title, '--notes-file', notesPath])));
+  const upload = () => Promise.resolve(parseGhResponse(run(['release', 'upload', tag, apkPath])));
+
+  let release = await withRetry(view, delays, tag, log, sleep);
+  if (!release.ok && release.status !== 404) throwPublicationError(release, tag);
+
+  const action = classifyGitHubPublication({ releaseExists: release.ok, assetExists: release.ok && hasAsset(release.data) }).action;
+  if (action === 'complete') {
+    log(`Release ${tag} is already published.`);
+    return { action: 'complete', version: tag };
+  }
+
+  if (!release.ok) {
+    log(`Creating GitHub release ${tag}...`);
+    const created = await withRetry(create, delays, tag, log, sleep);
+    if (!created.ok && !created.conflict) throwPublicationError(created, tag);
+    release = await withRetry(view, delays, tag, log, sleep);
+    if (!release.ok && release.status !== 404) throwPublicationError(release, tag);
+    if (!release.ok) throwPublicationError(release, tag);
+  }
+
+  if (!hasAsset(release.data)) {
+    log(`Uploading ${apkName} to release ${tag}...`);
+    const uploaded = await withRetry(upload, delays, tag, log, sleep);
+    if (!uploaded.ok && !uploaded.conflict) throwPublicationError(uploaded, tag);
+    const finalView = await withRetry(view, delays, tag, log, sleep);
+    if (!finalView.ok) throwPublicationError(finalView, tag);
+    if (!hasAsset(finalView.data)) {
+      throw new Error(`Release ${tag} exists but the ${apkName} asset could not be verified.`);
+    }
+  }
+
+  log(`Release ${tag} published with ${apkName}.`);
+  return { action: 'published', version: tag };
+}
+
+async function withRetry(task, delays, tag, log, sleep) {
+  let attempt = 0;
+  for (;;) {
+    const result = await task();
+    if (result.ok || result.conflict) return result;
+    if (!isRetryableHttpStatus(result.status) || attempt >= delays.length) return result;
+    const delaySeconds = delays[attempt];
+    log(`GitHub returned HTTP ${result.status} for ${tag}; retrying in ${delaySeconds}s (attempt ${attempt + 1}/${delays.length}).`);
+    await sleep(delaySeconds * 1000);
+    attempt += 1;
+  }
+}
+
+function throwPublicationError(result, tag) {
+  const status = result.status;
+  const prefix = `GitHub publication for ${tag} failed`;
+  if (isRetryableHttpStatus(status)) {
+    throw new Error(`${prefix} after transient retries (HTTP ${status}). ${tag} can be safely resumed by re-running the same release workflow.`);
+  }
+  throw new Error(`${prefix}${status ? ` (HTTP ${status})` : ''}.`);
+}
+
 function parseArgs(argv) {
   const args = { command: argv[0], bump: 'auto', format: 'text' };
   for (let i = 1; i < argv.length; i += 1) {
-    if (argv[i] === '--bump') args.bump = argv[++i];
-    else if (argv[i] === '--format') args.format = argv[++i];
-    else throw new Error(`Unknown argument: ${argv[i]}`);
+    const token = argv[i];
+    if (!token.startsWith('--')) throw new Error(`Unknown argument: ${token}`);
+    const key = token.slice(2);
+    const value = argv[i + 1];
+    if (value === undefined || value.startsWith('--')) throw new Error(`Missing value for ${token}`);
+    args[key] = value;
+    i += 1;
   }
   return args;
 }
@@ -178,7 +332,11 @@ function printPlan(plan, format) {
   console.log(`Changesets: ${plan.changesets.map((item) => item.file).join(', ') || 'none'}`);
 }
 
-function runCli() {
+function printJson(value) {
+  console.log(JSON.stringify(value, null, 2));
+}
+
+async function runCli() {
   const args = parseArgs(process.argv.slice(2));
   if (args.command === 'plan') printPlan(planAndroidRelease({ bump: args.bump }), args.format);
   else if (args.command === 'notes') {
@@ -191,10 +349,36 @@ function runCli() {
   } else if (args.command === 'validate') {
     readPendingChangesets();
     console.log('Changesets valid.');
+  } else if (args.command === 'choose-target') {
+    printJson(chooseReleaseTarget({
+      currentVersionName: args.current,
+      currentVersionCode: Number(args.code),
+      plannedVersion: args.planned || null,
+      existingTags: (args.tags ?? '').split(',').map((tag) => tag.trim()).filter(Boolean),
+    }));
+  } else if (args.command === 'validate-tag') {
+    printJson(validateResumeRelease({
+      tagVersion: args['tag-version'],
+      gradleVersionName: args['gradle-version'],
+      gradleVersionCode: Number(args['gradle-code']),
+      metadataExists: args['metadata-exists'] === 'true',
+      metadataVersionName: args['metadata-version'],
+      metadataVersionCode: Number(args['metadata-code']),
+      notesExists: args['notes-exists'] === 'true',
+    }));
+  } else if (args.command === 'classify-pub') {
+    printJson(classifyGitHubPublication({ releaseExists: args['release-exists'] === 'true', assetExists: args['asset-exists'] === 'true' }));
+  } else if (args.command === 'publish-github') {
+    await publishAndroidRelease({
+      version: args.version,
+      title: args.title,
+      notesPath: args['notes-path'],
+      apkPath: args['apk-path'],
+    });
   } else {
-    throw new Error('Usage: node scripts/android-release.mjs plan|notes|prepare|validate [--bump auto|patch|minor|major] [--format text|json]');
+    throw new Error('Usage: node scripts/android-release.mjs plan|notes|prepare|validate|choose-target|validate-tag|classify-pub|publish-github [--bump auto|patch|minor|major] [--format text|json]');
   }
 }
 
 const invoked = process.argv[1] && relative(repoRoot, process.argv[1]).replace(/\\/g, '/') === 'scripts/android-release.mjs';
-if (invoked) runCli();
+if (invoked) await runCli();

@@ -53,27 +53,76 @@ jobs:
         if: inputs.release_mode == 'release' || inputs.release_mode == 'release-dry-run'
         run: npm run changeset:validate
 
-      - name: Plan Android release
-        if: inputs.release_mode == 'release' || inputs.release_mode == 'release-dry-run'
+      - name: Plan Android release (dry-run)
+        if: inputs.release_mode == 'release-dry-run'
         run: node scripts/android-release.mjs plan --bump "${{ inputs.version_bump }}" --format json > android-plan.json
 
-      - name: Prepare Android release commit
+      - name: Determine Android release target
         if: inputs.release_mode == 'release'
+        id: target
         run: |
-          node scripts/android-release.mjs prepare --bump "${{ inputs.version_bump }}" --format json > android-plan.json
-          VERSION="$(node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('android-plan.json','utf8')); console.log(p.nextVersionName)")"
-          if git ls-remote --exit-code --tags origin "v$VERSION"; then
-            echo "Tag v$VERSION already exists."
+          set -euo pipefail
+          node scripts/android-release.mjs plan --bump "${{ inputs.version_bump }}" --format json > android-plan.json
+          CURRENT_VER="$(node -e "const p=require('./android-plan.json'); console.log(p.current.versionName)")"
+          CURRENT_CODE="$(node -e "const p=require('./android-plan.json'); console.log(p.current.versionCode)")"
+          PLANNED="$(node -e "const p=require('./android-plan.json'); console.log(p.nextVersionName||'')")"
+          git ls-remote --tags origin 'refs/tags/v*' | awk '{print $2}' | sed 's#refs/tags/##' | sort -u | paste -sd, - > android-tags.txt
+          node scripts/android-release.mjs choose-target \
+            --current "$CURRENT_VER" --code "$CURRENT_CODE" \
+            --planned "$PLANNED" --tags "$(cat android-tags.txt)" --format json > android-target.json
+          ACTION="$(node -e "const t=require('./android-target.json'); console.log(t.action)")"
+          VERSION="$(node -e "const t=require('./android-target.json'); console.log(t.versionName||'')")"
+          if [ "$ACTION" = "fail" ]; then
+            echo "::error::$(node -e "const t=require('./android-target.json'); console.log(t.reason)")"
             exit 1
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/android/app/build.gradle.kts .changes
-          git commit -m "Release Android v$VERSION"
-          git tag "v$VERSION"
-          git push origin HEAD:main
-          git push origin "v$VERSION"
+          echo "action=$ACTION" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "ANDROID_ACTION=$ACTION" >> "$GITHUB_ENV"
           echo "ANDROID_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Release target: $ACTION v$VERSION"
+
+      - name: Prepare Android release locally (fresh)
+        if: inputs.release_mode == 'release' && steps.target.outputs.action == 'fresh'
+        run: |
+          node scripts/android-release.mjs prepare --bump "${{ inputs.version_bump }}" --format json > android-plan.json
+
+      - name: Checkout release source (resume)
+        if: inputs.release_mode == 'release' && steps.target.outputs.action == 'resume'
+        run: |
+          git checkout --detach "v$ANDROID_VERSION"
+          git checkout "$GITHUB_SHA" -- scripts/android-release.mjs
+
+      - name: Validate resumed release tag
+        if: inputs.release_mode == 'release' && steps.target.outputs.action == 'resume'
+        run: |
+          set -euo pipefail
+          VERSION="$ANDROID_VERSION"
+          GRADLE_VER="$(node -e "import('./scripts/android-release.mjs').then(m=>console.log(m.readAndroidVersion().versionName))")"
+          GRADLE_CODE="$(node -e "import('./scripts/android-release.mjs').then(m=>console.log(m.readAndroidVersion().versionCode))")"
+          META_EXISTS=false
+          NOTES_EXISTS=false
+          META_VER=""
+          META_CODE=""
+          if [ -f ".changes/releases/android-v${VERSION}.json" ]; then
+            META_EXISTS=true
+            META_VER="$(node -e "const m=require('./.changes/releases/android-v${VERSION}.json'); console.log(m.versionName)")"
+            META_CODE="$(node -e "const m=require('./.changes/releases/android-v${VERSION}.json'); console.log(m.versionCode)")"
+          fi
+          if [ -f ".changes/releases/android-v${VERSION}.md" ]; then NOTES_EXISTS=true; fi
+          node scripts/android-release.mjs validate-tag \
+            --tag-version "$VERSION" \
+            --gradle-version "$GRADLE_VER" --gradle-code "$GRADLE_CODE" \
+            --metadata-exists "$META_EXISTS" \
+            --metadata-version "$META_VER" --metadata-code "$META_CODE" \
+            --notes-exists "$NOTES_EXISTS" --format json > android-validation.json
+          OK="$(node -e "const v=require('./android-validation.json'); console.log(v.ok)")"
+          if [ "$OK" != "true" ]; then
+            echo "::error::Release tag v$VERSION is inconsistent and will not be resumed."
+            node -e "const v=require('./android-validation.json'); for (const e of v.errors) console.log('::error:: '+e)"
+            exit 1
+          fi
+          echo "Resumed release tag v$VERSION validated."
 
       - name: Read current Android version
         if: inputs.release_mode != 'release'
@@ -123,16 +172,42 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Publish release commit and tag (fresh)
+        if: inputs.release_mode == 'release' && steps.target.outputs.action == 'fresh'
+        run: |
+          set -euo pipefail
+          VERSION="$ANDROID_VERSION"
+          if git ls-remote --exit-code --tags origin "v$VERSION"; then
+            echo "::error::Tag v$VERSION already exists on origin. Re-run the release workflow to resume it instead of re-publishing."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/android/app/build.gradle.kts .changes
+          git commit -m "Release Android v$VERSION"
+          git tag "v$VERSION"
+          read -r -a PUSH_ARGS <<< "$(ANDROID_VERSION="$VERSION" node -e "import('./scripts/android-release.mjs').then(m => console.log(m.buildAtomicReleasePushArgs({ tagVersion: process.env.ANDROID_VERSION }).join(' ')))")"
+          echo "Publishing release commit and tag atomically: git ${PUSH_ARGS[*]}"
+          if ! git "${PUSH_ARGS[@]}"; then
+            echo "::error::Atomic Android release publication failed for v$VERSION."
+            echo "::error::The release commit and tag were submitted as one atomic Git update; neither was published."
+            echo "::error::GitHub Release publication was not attempted."
+            echo "::error::No sequential fallback is performed. Fix the remote state without forcing, then re-run the release workflow to resume."
+            exit 1
+          fi
+          echo "Atomic publication succeeded: main and v$VERSION are published together."
+
       - name: Publish GitHub Release
         if: inputs.release_mode == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp apps/android/app/build/outputs/apk/release/app-release.apk NFCompra-release.apk
-          gh release create "v$ANDROID_VERSION" NFCompra-release.apk \
-            --target main \
+          node scripts/android-release.mjs publish-github \
+            --version "$ANDROID_VERSION" \
             --title "NFCompra Android $ANDROID_VERSION" \
-            --notes-file ".changes/releases/android-v$ANDROID_VERSION.md"
+            --notes-path ".changes/releases/android-v$ANDROID_VERSION.md" \
+            --apk-path "NFCompra-release.apk"
 
       - name: Summary
         run: |
@@ -141,6 +216,9 @@ jobs:
             echo "- Validation: OK"
             echo "- Release mode: ${{ inputs.release_mode }}"
             echo "- Version: ${ANDROID_VERSION:-not released}"
+            if [ -n "${ANDROID_ACTION:-}" ]; then
+              echo "- Release action: ${ANDROID_ACTION}"
+            fi
             if [ -f android-plan.json ]; then
               echo "- Release plan: calculated"
             fi
