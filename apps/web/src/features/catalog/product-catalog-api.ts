@@ -269,10 +269,20 @@ function searchSnapshot(products: ProductCatalogItem[], query: string, limit: nu
   const matches = products
     .map((product) => ({ product, rank: productRank(product, query) }))
     .filter((entry): entry is { product: ProductCatalogItem; rank: number } => entry.rank !== null)
-    .sort((a, b) => a.rank === b.rank ? a.product.name.localeCompare(b.product.name, 'es') : a.rank - b.rank)
+    .sort((a, b) => {
+      const tierDiff = catalogSearchTier(a.product) - catalogSearchTier(b.product);
+      if (tierDiff !== 0) return tierDiff;
+      return a.rank === b.rank ? a.product.name.localeCompare(b.product.name, 'es') : a.rank - b.rank;
+    })
     .slice(0, safeLimit)
     .map(({ product }) => product);
   return matches;
+}
+
+function catalogSearchTier(product: ProductCatalogItem): number {
+  if (product.isFavorite) return 0;
+  if (product.scope === 'household') return 1;
+  return 2;
 }
 
 function productRank(product: ProductCatalogItem, query: string): number | null {

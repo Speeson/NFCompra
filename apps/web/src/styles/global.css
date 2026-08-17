@@ -469,15 +469,9 @@ h2 { font-size: 1rem; }
 .product-card-results { display: grid; grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr)); gap: var(--space-3); margin-top: var(--space-3); }
 .product-result-card { display: grid; grid-template-columns: 2.7rem minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; align-items: stretch; gap: var(--space-3); min-width: 0; padding: var(--space-3); border: 1px solid color-mix(in srgb, var(--color-border) 80%, var(--color-primary) 20%); border-radius: var(--radius-md); background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 92%, white 8%), var(--color-surface)); box-shadow: 0 .65rem 1.7rem rgb(15 23 42 / 8%); transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
 .product-result-card:hover, .product-result-card:focus-within { border-color: color-mix(in srgb, var(--color-primary) 70%, var(--color-border)); box-shadow: 0 .9rem 2.1rem rgb(16 185 129 / 16%); transform: translateY(-1px); }
-.product-result-card--household { border-color: color-mix(in srgb, var(--color-household) 40%, var(--color-border)); }
+.product-result-card--household { border-color: color-mix(in srgb, var(--color-household) 40%, var(--color-border)); background: color-mix(in srgb, var(--color-household-soft) 60%, var(--color-surface)); }
 .product-result-card--household:hover, .product-result-card--household:focus-within { border-color: color-mix(in srgb, var(--color-household) 70%, var(--color-border)); box-shadow: 0 .9rem 2.1rem rgb(118 83 199 / 14%); }
-.product-result-card__title { display: inline-flex; align-items: baseline; gap: .32rem; min-width: 0; }
-.product-result-card__title .household-mark, .product-suggestion__title .household-mark { flex: none; align-self: center; color: var(--color-household); }
-.product-result-card__title strong { min-width: 0; }
-.household-mark { color: var(--color-household); }
-.product-suggestion-row--household { border-color: color-mix(in srgb, var(--color-household) 45%, var(--color-border)); }
-.product-suggestion__title { display: inline-flex; align-items: center; gap: .3rem; min-width: 0; }
-.product-suggestion__title .household-mark { flex: none; }
+.product-suggestion-row--household { border-color: color-mix(in srgb, var(--color-household) 45%, var(--color-border)); background: color-mix(in srgb, var(--color-household-soft) 70%, var(--color-surface)); }
 .product-result-card--added { animation: product-card-added .45s ease; border-color: var(--color-primary); box-shadow: 0 0 0 2px rgb(16 185 129 / 18%), 0 .9rem 2.2rem rgb(16 185 129 / 18%); }
 .product-result-card__rail { display: grid; grid-template-rows: 2.7rem 2.35rem; align-content: center; justify-items: center; gap: .45rem; min-width: 0; }
 .product-result-card:has(.product-result-card__actions) .product-result-card__rail { grid-template-rows: 2.7rem 2.15rem 2.15rem; align-content: space-between; }

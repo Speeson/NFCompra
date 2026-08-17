@@ -2378,7 +2378,7 @@ private fun CatalogProductCard(
         modifier = modifier
             .height(150.dp)
             .border(1.dp, if (isHouseholdProduct) WebHouseholdBorder else WebBorder, MaterialTheme.shapes.large),
-        colors = CardDefaults.cardColors(containerColor = WebSurface),
+        colors = CardDefaults.cardColors(containerColor = if (isHouseholdProduct) WebHouseholdSoft else WebSurface),
     ) {
         Row(
             modifier = Modifier.fillMaxSize().padding(10.dp),
@@ -2419,36 +2419,32 @@ private fun CatalogProductCard(
                 }
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (isHouseholdProduct) {
-                        Icon(
-                            imageVector = Icons.Outlined.Home,
-                            contentDescription = "Producto del hogar",
-                            tint = WebHousehold,
-                            modifier = Modifier.size(13.dp),
+                Text(
+                    text = product.name,
+                    color = WebText,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyLarge,
+                    lineHeight = 20.sp,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    val meta = product.metaLabel()
+                    if (meta.isNotBlank()) {
+                        Text(
+                            meta,
+                            color = WebMuted,
+                            fontSize = 11.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            lineHeight = 14.sp,
+                            modifier = Modifier.weight(1f),
                         )
                     }
-                    Text(
-                        text = product.name,
-                        color = WebText,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyMedium,
-                        lineHeight = 18.sp,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                }
-                val meta = product.metaLabel()
-                if (meta.isNotBlank()) {
-                    Text(
-                        meta,
-                        color = WebMuted,
-                        fontSize = 11.sp,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        lineHeight = 14.sp,
-                    )
                 }
             }
         }
@@ -4827,7 +4823,13 @@ private fun ProductSuggestionDropdown(
                     .fillMaxWidth()
                     .clip(MaterialTheme.shapes.medium)
                     .clickable { onSelect(suggestion) }
-                    .background(if (active) WebLime.copy(alpha = 0.28f) else Color.Transparent)
+                    .background(
+                        when {
+                            active -> WebLime.copy(alpha = 0.28f)
+                            suggestion.scope == "household" -> WebHouseholdSoft.copy(alpha = 0.7f)
+                            else -> Color.Transparent
+                        },
+                    )
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -4839,17 +4841,7 @@ private fun ProductSuggestionDropdown(
                     )
                 }
                 Column(modifier = Modifier.weight(1f, fill = true)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        if (suggestion.scope == "household") {
-                            Icon(
-                                imageVector = Icons.Outlined.Home,
-                                contentDescription = "Producto del hogar",
-                                tint = WebHousehold,
-                                modifier = Modifier.size(12.dp),
-                            )
-                        }
-                        Text(suggestion.name, color = WebText, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+                    Text(suggestion.name, color = WebText, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(suggestion.metaLabel(), color = WebMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (active) {
@@ -5023,31 +5015,27 @@ private fun ProductResultCard(
         modifier = modifier
             .defaultMinSize(minHeight = 210.dp)
             .border(1.dp, borderColor, MaterialTheme.shapes.large),
-        colors = CardDefaults.cardColors(containerColor = if (recentlyAdded) WebLime.copy(alpha = 0.45f) else WebSurface),
+        colors = CardDefaults.cardColors(
+            containerColor = when {
+                recentlyAdded -> WebLime.copy(alpha = 0.45f)
+                isHousehold -> WebHouseholdSoft
+                else -> WebSurface
+            },
+        ),
     ) {
         Column(
             modifier = Modifier.padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (isHousehold) {
-                    Icon(
-                        imageVector = Icons.Outlined.Home,
-                        contentDescription = "Producto del hogar",
-                        tint = WebHousehold,
-                        modifier = Modifier.size(13.dp),
-                    )
-                }
-                Text(
-                    text = suggestion.name,
-                    color = if (recentlyAdded) OnLime else WebText,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyLarge,
-                    minLines = 2,
-                )
-            }
+            Text(
+                text = suggestion.name,
+                color = if (recentlyAdded) OnLime else WebText,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.titleMedium,
+                minLines = 2,
+            )
             Text(
                 suggestion.metaLabel(),
                 color = if (recentlyAdded) OnLimeMuted else WebMuted,

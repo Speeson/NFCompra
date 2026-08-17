@@ -38,7 +38,7 @@ export function ProductCatalogCard({
   if (hasQuantity) {
     return <article className={cardClassName} aria-label={product.name}>
       <span className="product-result-card__content">
-        <ProductTitle product={product} />
+        <strong>{product.name}</strong>
         <small>{productDetails(product)}</small>
       </span>
       <div className="product-result-card__quantity" aria-label={`Cantidad de ${product.name}`}>
@@ -79,7 +79,7 @@ export function ProductCatalogCard({
       >⋯</button> : null}
     </div>
     <button type="button" className="product-result-card__main" aria-label={`Seleccionar ${product.name}`} disabled={!canAdd} onClick={() => onAdd?.(product)}>
-      <span className="product-result-card__content"><ProductTitle product={product} /><small>{productDetails(product)}</small></span>
+      <span className="product-result-card__content"><strong>{product.name}</strong><small>{productDetails(product)}</small></span>
       {visibleStatus ? <span className="product-result-card__status">{visibleStatus}</span> : null}
     </button>
     {hasQuantity ? <div className="product-result-card__quantity" aria-label={`Cantidad de ${product.name}`}>
@@ -88,26 +88,6 @@ export function ProductCatalogCard({
       <button type="button" aria-label={`Aumentar cantidad de ${product.name}`} disabled={disabled} onClick={() => onQuantityChange?.(product.id, 1)}>+</button>
     </div> : null}
   </article>;
-}
-
-function ProductTitle({ product }: { product: ProductCatalogItem }): JSX.Element {
-  if (product.scope !== 'household') return <strong>{product.name}</strong>;
-  return <span className="product-result-card__title">
-    <HouseholdIcon />
-    <strong>{product.name}</strong>
-  </span>;
-}
-
-function HouseholdIcon(): JSX.Element {
-  return <svg
-    className="household-mark"
-    role="img"
-    aria-label="Producto del hogar"
-    viewBox="0 0 16 16"
-    width="12"
-    height="12"
-    aria-hidden="false"
-  ><path fill="currentColor" d="M8 1.4 1.6 7.2h1.5v6.4h3.4v-3.6h3v3.6h3.4V7.2h1.5L8 1.4z" /></svg>;
 }
 
 export function ProductCatalogListItem({
@@ -134,7 +114,7 @@ export function ProductCatalogListItem({
         onClick={() => onFavoriteChange?.(product, !product.isFavorite)}
       >{product.isFavorite ? '\u2605' : '\u2606'}</button>
       <button type="button" className="product-suggestion__select" aria-label={accessibleName} disabled={disabled} onClick={() => onSelect(product)}>
-        <span>{product.scope === 'household' ? <span className="product-suggestion__title"><HouseholdIcon />{product.name}</span> : product.name}</span>
+        <span>{product.name}</span>
         <small>{details}</small>
       </button>
     </div>

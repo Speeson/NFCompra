@@ -349,6 +349,7 @@ class OfflineShoppingRepository(
     private val activeJobs = mutableSetOf<Job>()
     private var closed = false
     private val catalogSnapshots = mutableMapOf<String?, List<ProductCatalogUiModel>>()
+    private val catalogVersions = mutableMapOf<String?, String>()
     private var favoriteProductIds: Set<String> = emptySet()
     private val catalogMutex = Mutex()
 
@@ -600,7 +601,7 @@ class OfflineShoppingRepository(
         val query = search.normalizedSearch()
         if (query.isBlank()) return@accountOperation loadCatalogSnapshotOrNull(householdId)?.take(limit.coerceAtLeast(1)) ?: emptyList()
         if (query.length < 3) return@accountOperation emptyList()
-        val snapshot = catalogSnapshots[householdId] ?: loadCachedCatalogSnapshotOrNull(householdId)
+        val snapshot = catalogSnapshots[householdId] ?: loadCatalogSnapshotOrNull(householdId)
         if (snapshot != null) return@accountOperation snapshot.searchCatalog(query, limit)
         runCatching {
             val products = api.searchProductCatalog(search, limit.coerceIn(1, 25), householdId).bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
@@ -610,7 +611,7 @@ class OfflineShoppingRepository(
     }
 
     override suspend fun warmProductCatalog(householdId: String?) = accountOperation {
-        if (catalogSnapshots[householdId] == null) loadCatalogSnapshotOrNull(householdId)
+        catalogMutex.withLock { refreshCatalogSnapshotLocked(householdId) }
         Unit
     }
 
@@ -625,7 +626,7 @@ class OfflineShoppingRepository(
         else api.removeProductFavorite(productId).also { isOffline = false }.bodyOrThrow()
         favoriteProductIds = if (favorite) favoriteProductIds + productId else favoriteProductIds - productId
         catalogSnapshots.replaceAll { _, products -> products.applyFavoriteOverlay(favoriteProductIds) }
-        catalogSnapshots.forEach { (key, products) -> catalogCache?.write(key, products) }
+        catalogSnapshots.forEach { (key, products) -> catalogCache?.write(key, catalogVersions[key] ?: "", products) }
         catalogSnapshots.values.flatten().firstOrNull { it.id == productId }
             ?: ProductCatalogUiModel(productId, "", "", null, "star", null, favorite)
     }
@@ -721,33 +722,65 @@ class OfflineShoppingRepository(
 
     private suspend fun loadCatalogSnapshotOrNull(householdId: String?): List<ProductCatalogUiModel>? = catalogMutex.withLock {
         catalogSnapshots[householdId]?.let { return@withLock it }
-        loadCachedCatalogSnapshotOrNull(householdId)?.let { return@withLock it }
-        runCatching {
-            api.productCatalogSnapshot(householdId).bodyOrThrow().products.map(ProductCatalogItemDto::toUiModel)
-        }.getOrNull()?.let { products ->
-            favoriteProductIds = products.favoriteIds() + favoriteProductIds
-            products.applyFavoriteOverlay(favoriteProductIds).also {
-                catalogSnapshots[householdId] = it
-                catalogCache?.write(householdId, it)
-            }
-        }
+        refreshCatalogSnapshotLocked(householdId)
+        catalogSnapshots[householdId] ?: loadCachedCatalogSnapshotLocked(householdId)
     }
 
-    private fun loadCachedCatalogSnapshotOrNull(householdId: String?): List<ProductCatalogUiModel>? =
+    private suspend fun refreshCatalogSnapshotLocked(householdId: String?) {
+        val cached = catalogCache?.read(householdId)
+        if (catalogSnapshots[householdId] != null) {
+            if (cached == null) return
+            val serverVersion = fetchServerCatalogVersion(householdId)
+            if (serverVersion == null || serverVersion == cached.version) return
+            fetchCatalogSnapshotLocked(householdId)
+            return
+        }
+        if (cached != null) {
+            val serverVersion = fetchServerCatalogVersion(householdId)
+            if (serverVersion == null || serverVersion == cached.version) {
+                loadCachedCatalogSnapshotLocked(householdId)
+                return
+            }
+            fetchCatalogSnapshotLocked(householdId)
+            return
+        }
+        fetchCatalogSnapshotLocked(householdId)
+    }
+
+    private suspend fun fetchServerCatalogVersion(householdId: String?): String? =
+        runCatching {
+            api.productCatalogVersion(householdId).also { isOffline = false }.bodyOrThrow().version
+        }.getOrNull()
+
+    private suspend fun fetchCatalogSnapshotLocked(householdId: String?) {
+        val response = runCatching { api.productCatalogSnapshot(householdId).bodyOrThrow() }.getOrNull() ?: return
+        val products = response.products.map(ProductCatalogItemDto::toUiModel)
+        favoriteProductIds = products.favoriteIds() + favoriteProductIds
+        val merged = products.applyFavoriteOverlay(favoriteProductIds)
+        catalogSnapshots[householdId] = merged
+        catalogVersions[householdId] = response.version
+        catalogCache?.write(householdId, response.version, merged)
+    }
+
+    private fun loadCachedCatalogSnapshotLocked(householdId: String?): List<ProductCatalogUiModel>? =
         catalogCache?.read(householdId)?.let { cached ->
-            favoriteProductIds = cached.favoriteIds() + favoriteProductIds
-            cached.applyFavoriteOverlay(favoriteProductIds).also { catalogSnapshots[householdId] = it }
+            favoriteProductIds = cached.products.favoriteIds() + favoriteProductIds
+            cached.products.applyFavoriteOverlay(favoriteProductIds).also {
+                catalogSnapshots[householdId] = it
+                catalogVersions[householdId] = cached.version
+            }
         }
 
     private fun invalidateCatalogSnapshot() {
         catalogSnapshots.clear()
+        catalogVersions.clear()
         catalogCache?.clear()
     }
 
     private suspend fun upsertCatalogSnapshot(product: ProductCatalogUiModel) = catalogMutex.withLock {
         val key = product.householdId
         catalogSnapshots[key] = (catalogSnapshots[key]?.filterNot { it.id == product.id } ?: emptyList()) + product
-        catalogSnapshots[key]?.let { catalogCache?.write(key, it) }
+        catalogSnapshots[key]?.let { catalogCache?.write(key, catalogVersions[key] ?: "", it) }
     }
 
     override suspend fun deleteItem(item: ShoppingListItemUiModel) = accountOperation {
@@ -1017,19 +1050,20 @@ class ProductCatalogCache(
     private val cacheDir = File(context.filesDir, "nfcompra-catalog-$accountId")
     private val adapter = moshi.adapter(ProductCatalogCachePayload::class.java)
 
-    fun read(householdId: String?): List<ProductCatalogUiModel>? = runCatching {
+    fun read(householdId: String?): CachedCatalogSnapshot? = runCatching {
         val file = cacheFile(householdId)
         if (!file.isFile) return null
         val payload = adapter.fromJson(file.readText()) ?: return null
+        if (payload.schema != CATALOG_CACHE_SCHEMA) return null
         if (payload.products.isEmpty()) return null
-        payload.products
+        CachedCatalogSnapshot(payload.version, payload.products)
     }.getOrNull()
 
-    fun write(householdId: String?, products: List<ProductCatalogUiModel>) {
+    fun write(householdId: String?, version: String, products: List<ProductCatalogUiModel>) {
         runCatching {
             val file = cacheFile(householdId)
             file.parentFile?.mkdirs()
-            file.writeText(adapter.toJson(ProductCatalogCachePayload(products = products)))
+            file.writeText(adapter.toJson(ProductCatalogCachePayload(CATALOG_CACHE_SCHEMA, version, products)))
         }
     }
 
@@ -1041,7 +1075,16 @@ class ProductCatalogCache(
         if (householdId == null) File(cacheDir, "system.json") else File(cacheDir, "household-$householdId.json")
 }
 
+private const val CATALOG_CACHE_SCHEMA = 2
+
+data class CachedCatalogSnapshot(
+    val version: String,
+    val products: List<ProductCatalogUiModel>,
+)
+
 private data class ProductCatalogCachePayload(
+    val schema: Int,
+    val version: String,
     val products: List<ProductCatalogUiModel>,
 )
 
@@ -1075,9 +1118,19 @@ private fun ProductCategoryDto.toUiModel() = ProductCategoryUiModel(
 
 private fun List<ProductCatalogUiModel>.searchCatalog(query: String, limit: Int): List<ProductCatalogUiModel> =
     mapNotNull { product -> product.catalogRank(query)?.let { rank -> product to rank } }
-        .sortedWith(compareBy<Pair<ProductCatalogUiModel, Int>> { if (it.first.isFavorite) 0 else 1 }.thenBy { it.second }.thenBy { it.first.name })
+        .sortedWith(
+            compareBy<Pair<ProductCatalogUiModel, Int>> { catalogSearchTier(it.first) }
+                .thenBy { it.second }
+                .thenBy { it.first.name },
+        )
         .take(limit.coerceIn(1, 25))
         .map { it.first }
+
+private fun catalogSearchTier(product: ProductCatalogUiModel): Int = when {
+    product.isFavorite -> 0
+    product.scope == "household" -> 1
+    else -> 2
+}
 
 private fun List<ProductCatalogUiModel>.favoriteIds(): Set<String> =
     filterTo(mutableListOf()) { it.isFavorite }.mapTo(mutableSetOf()) { it.id }

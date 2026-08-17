@@ -3,6 +3,8 @@ package dev.esgarpe.nfcompra.feature.shoppinglist
 import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dev.esgarpe.nfcompra.core.database.LocalHousehold
 import dev.esgarpe.nfcompra.core.database.LocalShoppingItem
 import dev.esgarpe.nfcompra.core.database.LocalShoppingList
@@ -660,16 +662,18 @@ class OfflineShoppingRepositoryTest {
 
     @Test
     fun `remote search is only a fallback when no catalog snapshot is available`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(404))
         server.enqueue(
             json(
-                """{"products":[{"id":"prod-milk","name":"Leche entera","normalizedName":"leche entera","categoryId":"cat-1","categoryName":"Lacteos","iconKey":"milk","brand":"Hacendado","packageSize":"1 L","source":"spanish-supermarkets","sourceProductId":"milk-1","isFavorite":false}]}""",
+                """{"products":[${catalogProductJson("prod-milk", "Leche entera")}]}""",
             ),
         )
 
         val results = repository.searchProductCatalog(null, "leche", 30)
 
         assertEquals(listOf("Leche entera"), results.map { it.name })
-        assertEquals(1, server.requestCount)
+        assertEquals(2, server.requestCount)
+        assertEquals("/v1/product-catalog/snapshot", server.takeRequest(1, TimeUnit.SECONDS)?.path)
         assertEquals("/v1/product-catalog?search=leche&limit=25", server.takeRequest(1, TimeUnit.SECONDS)?.path)
     }
 
@@ -689,6 +693,33 @@ class OfflineShoppingRepositoryTest {
         repository.warmProductCatalog(null)
 
         assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun `catalog cache refresh re-downloads when the server catalog version changes`() = runTest {
+        val cache = ProductCatalogCache(
+            ApplicationProvider.getApplicationContext<Context>(),
+            "cache-${UUID.randomUUID()}",
+            Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build(),
+        )
+        val repo = OfflineShoppingRepository(
+            api = retrofitApi(server),
+            dao = database.shoppingDao(),
+            catalogCache = cache,
+            clock = { 1_000L },
+        )
+
+        server.enqueue(catalogSnapshotResponse("prod-milk", "Leche entera"))
+        repo.warmProductCatalog(null)
+        assertEquals(1, server.requestCount)
+
+        server.enqueue(catalogVersionResponse("v2"))
+        server.enqueue(catalogSnapshotResponse("prod-milk", "Leche entera v2"))
+        repo.warmProductCatalog(null)
+
+        val results = repo.searchProductCatalog(null, "leche", 30)
+        assertEquals(listOf("Leche entera v2"), results.map { it.name })
+        assertEquals(3, server.requestCount)
     }
 
     @Test
@@ -813,6 +844,10 @@ class OfflineShoppingRepositoryTest {
 
     private fun catalogSnapshotResponse(id: String = "prod-milk", name: String = "Leche entera") = json(
         """{"version":"v1","productCount":1,"products":[${catalogProductJson(id, name)}]}""",
+    )
+
+    private fun catalogVersionResponse(version: String) = json(
+        """{"version":"$version","productCount":1}""",
     )
 
     private fun catalogProductMutationResponse(id: String, name: String) = json(

@@ -294,7 +294,9 @@ export async function listProductCatalogSnapshot(env: Env, ctx: CatalogViewConte
     ${ctx.userId ? 'LEFT JOIN user_product_favorites ON user_product_favorites.product_id = product_catalog.id AND user_product_favorites.user_id = ?' : ''}
     WHERE product_catalog.is_active = 1
       AND (${sql})
-    ORDER BY is_favorite DESC, product_catalog.name ASC
+    ORDER BY is_favorite DESC,
+      CASE WHEN product_catalog.scope = 'household' THEN 0 ELSE 1 END,
+      product_catalog.name ASC
   `).bind(...userIdParam, ...params).all<ProductRow>();
 
   return results.map((row) => productRow(row, ctx));

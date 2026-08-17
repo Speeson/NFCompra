@@ -59,6 +59,7 @@ data class ProductCatalogItemDto(
 )
 data class ProductCatalogSearchResponse(val products: List<ProductCatalogItemDto>)
 data class ProductCatalogSnapshotResponse(val version: String, val productCount: Int, val products: List<ProductCatalogItemDto>)
+data class ProductCatalogVersionResponse(val version: String, val productCount: Int)
 data class ProductCatalogMutationResponse(val product: ProductCatalogItemDto)
 data class ProductCatalogMutationRequest(
     val name: String,
@@ -130,6 +131,7 @@ interface ShoppingListApi {
     @HTTP(method = "DELETE", path = "v1/households/{householdId}/product-catalog/{productId}")
     suspend fun deleteHouseholdProductCatalogItem(@Path("householdId") householdId: String, @Path("productId") productId: String): Response<Unit>
     @GET("v1/product-catalog/snapshot") suspend fun productCatalogSnapshot(@Query("householdId") householdId: String? = null): Response<ProductCatalogSnapshotResponse>
+    @GET("v1/product-catalog/version") suspend fun productCatalogVersion(@Query("householdId") householdId: String? = null): Response<ProductCatalogVersionResponse>
     @GET("v1/product-categories") suspend fun productCategories(@Query("householdId") householdId: String? = null): Response<ProductCategoriesResponse>
     @POST("v1/product-categories") suspend fun createProductCategory(@Body request: ProductCategoryMutationRequest): Response<ProductCategoryMutationResponse>
     @PATCH("v1/product-categories/{categoryId}") suspend fun updateProductCategory(@Path("categoryId") categoryId: String, @Body request: ProductCategoryMutationRequest): Response<ProductCategoryMutationResponse>

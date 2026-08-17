@@ -1,0 +1,9 @@
+{
+  "components": ["android", "web", "api"],
+  "type": "patch",
+  "category": "changed",
+  "summary": "Destacar y priorizar los productos del hogar en el cat\u00e1logo.",
+  "details": [
+    "Los productos personalizados de un hogar aparecen con fondo violeta en las tarjetas del cat\u00e1logo y en los resultados de b\u00fasqueda, y se ordenan despu\u00e9s de los favoritos y antes que el resto de productos. En Android el t\u00edtulo de los productos es algo m\u00e1s grande."
+  ]
+}

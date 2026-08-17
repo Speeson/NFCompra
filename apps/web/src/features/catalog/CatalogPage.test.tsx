@@ -272,12 +272,10 @@ describe('CatalogPage', () => {
     expect(screen.getByRole('button', { name: 'Crear en catálogo' })).toBeInTheDocument();
 
     const systemCard = screen.getByRole('article', { name: 'Leche entera' });
-    expect(within(systemCard).queryByRole('img', { name: 'Producto del hogar' })).not.toBeInTheDocument();
     expect(within(systemCard).queryByRole('button', { name: 'Acciones de producto Leche entera' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Bodega/ }));
     const householdCard = screen.getByRole('article', { name: 'Vino del pueblo' });
-    expect(within(householdCard).getByRole('img', { name: 'Producto del hogar' })).toBeInTheDocument();
     expect(householdCard).toHaveClass('product-result-card--household');
     expect(within(householdCard).getByRole('button', { name: 'Acciones de producto Vino del pueblo' })).toBeInTheDocument();
 
