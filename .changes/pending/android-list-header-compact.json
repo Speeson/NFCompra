@@ -1,0 +1,11 @@
+{
+  "components": ["android"],
+  "type": "patch",
+  "category": "changed",
+  "summary": "Compactar la cabecera de la lista abierta con men\u00fa de t\u00edtulo y vista predeterminada de productos.",
+  "details": [
+    "La cabecera de la lista abierta ahora usa un desplegable en el nombre de la lista (chevron) con el selector Lista/Cuadr\u00edcula y la acci\u00f3n destructiva Vaciar lista, eliminando la fila independiente de Vaciar + selector y el l\u00e1piz de renombrado.",
+    "Vaciar lista requiere confirmaci\u00f3n y elimina todos los productos, pendientes y comprados.",
+    "Nueva preferencia local Vista predeterminada de productos (Lista/Cuadr\u00edcula, por defecto Cuadr\u00edcula) en Ajustes > Preferencias de compra; el cambio r\u00e1pido desde el men\u00fa del t\u00edtulo es solo para la apertura actual y se restablece al abrir la lista."
+  ]
+}

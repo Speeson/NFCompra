@@ -3,6 +3,7 @@ package dev.esgarpe.nfcompra
 import android.content.Context
 import android.content.SharedPreferences
 import dev.esgarpe.nfcompra.core.designsystem.BottomNavigationStylePreference
+import dev.esgarpe.nfcompra.core.designsystem.ProductResultsViewPreference
 import dev.esgarpe.nfcompra.core.designsystem.ThemePreference
 import dev.esgarpe.nfcompra.core.designsystem.UiScalePreference
 
@@ -99,5 +100,37 @@ internal class SharedPreferencesThemeStorage(
 
     private companion object {
         const val THEME_PREFERENCE = "theme_preference"
+    }
+}
+
+internal class ProductResultsViewSettings(
+    private val storage: ProductResultsViewStorage,
+) {
+    var preference: ProductResultsViewPreference
+        get() = ProductResultsViewPreference.fromPersistedValue(storage.persistedValue)
+        set(value) {
+            storage.persistedValue = value.persistedValue
+        }
+}
+
+internal interface ProductResultsViewStorage {
+    var persistedValue: String?
+}
+
+internal class SharedPreferencesProductResultsViewStorage(
+    context: Context,
+    private val preferences: SharedPreferences =
+        context.getSharedPreferences("nfcompra.ui", Context.MODE_PRIVATE),
+) : ProductResultsViewStorage {
+    override var persistedValue: String?
+        get() = preferences.getString(PRODUCT_RESULTS_VIEW, null)
+        set(value) {
+            preferences.edit().apply {
+                if (value == null) remove(PRODUCT_RESULTS_VIEW) else putString(PRODUCT_RESULTS_VIEW, value)
+            }.apply()
+        }
+
+    private companion object {
+        const val PRODUCT_RESULTS_VIEW = "product_results_view"
     }
 }

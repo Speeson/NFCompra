@@ -1,10 +1,12 @@
 package dev.esgarpe.nfcompra
 
 import dev.esgarpe.nfcompra.core.designsystem.BottomNavigationStylePreference
+import dev.esgarpe.nfcompra.core.designsystem.ProductResultsViewPreference
 import dev.esgarpe.nfcompra.core.designsystem.ThemePreference
 import dev.esgarpe.nfcompra.core.designsystem.UiScalePreference
 import dev.esgarpe.nfcompra.core.designsystem.uiDensityValues
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UiScaleSettingsTest {
@@ -117,6 +119,35 @@ class UiScaleSettingsTest {
 
         assertEquals(ThemePreference.System, settings.preference)
     }
+
+    @Test
+    fun `default product results view is grid`() {
+        val settings = ProductResultsViewSettings(FakeProductResultsViewStorage())
+
+        assertEquals(ProductResultsViewPreference.Grid, settings.preference)
+        assertTrue(ProductResultsViewPreference.Grid.cardMode)
+    }
+
+    @Test
+    fun `persisted product results view values are restored`() {
+        val storage = FakeProductResultsViewStorage("list")
+        val settings = ProductResultsViewSettings(storage)
+
+        assertEquals(ProductResultsViewPreference.List, settings.preference)
+        assertTrue(!ProductResultsViewPreference.List.cardMode)
+
+        settings.preference = ProductResultsViewPreference.Grid
+
+        assertEquals("grid", storage.persistedValue)
+        assertEquals(ProductResultsViewPreference.Grid, settings.preference)
+    }
+
+    @Test
+    fun `unknown product results view falls back to grid`() {
+        val settings = ProductResultsViewSettings(FakeProductResultsViewStorage("unexpected"))
+
+        assertEquals(ProductResultsViewPreference.Grid, settings.preference)
+    }
 }
 
 private class FakeUiScaleStorage(
@@ -130,3 +161,7 @@ private class FakeBottomNavigationStyleStorage(
 private class FakeThemeStorage(
     override var persistedValue: String? = null,
 ) : ThemeStorage
+
+private class FakeProductResultsViewStorage(
+    override var persistedValue: String? = null,
+) : ProductResultsViewStorage

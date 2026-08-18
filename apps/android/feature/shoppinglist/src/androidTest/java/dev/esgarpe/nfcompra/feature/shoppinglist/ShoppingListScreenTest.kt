@@ -1,6 +1,8 @@
 package dev.esgarpe.nfcompra.feature.shoppinglist
 
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -291,7 +293,8 @@ class ShoppingListScreenTest {
         composeTestRule.onNodeWithContentDescription("Ver lista").performClick()
 
         composeTestRule.onNodeWithContentDescription("Eliminar lista").assertDoesNotExist()
-        composeTestRule.onNodeWithText("Vaciar").assertExists()
+        composeTestRule.onNodeWithText("Vaciar").assertDoesNotExist()
+        composeTestRule.onNodeWithContentDescription("Mostrar menú de la lista").assertExists()
     }
 
     @Test
@@ -320,13 +323,93 @@ class ShoppingListScreenTest {
 
         composeTestRule.onNodeWithText("Listas").performClick()
         composeTestRule.onNodeWithContentDescription("Ver lista").performClick()
-        composeTestRule.onNodeWithText("Vaciar").assertExists()
+        composeTestRule.onNodeWithContentDescription("Mostrar menú de la lista").assertExists()
 
         composeTestRule.onNodeWithText("Inicio").performClick()
         composeTestRule.onNodeWithText("Listas").performClick()
 
-        composeTestRule.onNodeWithText("Vaciar").assertDoesNotExist()
+        composeTestRule.onNodeWithContentDescription("Mostrar menú de la lista").assertDoesNotExist()
         composeTestRule.onNodeWithText("Crear lista").assertExists()
+    }
+
+    @Test
+    fun openedListTitleMenuSwitchesViewModeAndResetsOnReopen() {
+        composeTestRule.setContent {
+            NFCompraTheme {
+                ShoppingListContent(
+                    data = ShoppingListViewState.Data(
+                        content = ShoppingListUiState(
+                            title = "Compra semanal",
+                            pending = emptyList(),
+                            checked = listOf(ShoppingListItemUiModel("milk", "Leche", "1 litro", checked = true)),
+                            isOffline = false,
+                        ),
+                        households = listOf(HouseholdUiModel("home-1", "Casa")),
+                        lists = listOf(ShoppingListSummaryUiModel("list-1", "home-1", "Compra semanal")),
+                        selectedHouseholdId = "home-1",
+                        selectedListId = "list-1",
+                    ),
+                    onAction = {},
+                    onLogout = {},
+                    onMembers = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Listas").performClick()
+        composeTestRule.onNodeWithContentDescription("Ver lista").performClick()
+
+        composeTestRule.onNodeWithContentDescription("Cambiar a vista de lista").assertExists()
+
+        composeTestRule.onNodeWithContentDescription("Mostrar menú de la lista").performClick()
+        composeTestRule.onNodeWithText("Vista de resultados").assertExists()
+        composeTestRule.onNodeWithContentDescription("Cambiar a vista de lista").performClick()
+        composeTestRule.onNodeWithContentDescription("Cambiar a vista de tarjetas").assertExists()
+
+        composeTestRule.onNodeWithContentDescription("Volver").performClick()
+        composeTestRule.onNodeWithContentDescription("Ver lista").performClick()
+
+        composeTestRule.onNodeWithContentDescription("Cambiar a vista de lista").assertExists()
+    }
+
+    @Test
+    fun openedListClearListRequestsConfirmationAndDispatchesClearSelectedList() {
+        val actions = mutableListOf<ShoppingListAction>()
+        composeTestRule.setContent {
+            NFCompraTheme {
+                ShoppingListContent(
+                    data = ShoppingListViewState.Data(
+                        content = ShoppingListUiState(
+                            title = "Compra semanal",
+                            pending = listOf(ShoppingListItemUiModel("milk", "Leche", "1 litro", checked = false)),
+                            checked = listOf(ShoppingListItemUiModel("bread", "Pan", "1 unidad", checked = true)),
+                            isOffline = false,
+                        ),
+                        households = listOf(HouseholdUiModel("home-1", "Casa")),
+                        lists = listOf(ShoppingListSummaryUiModel("list-1", "home-1", "Compra semanal")),
+                        selectedHouseholdId = "home-1",
+                        selectedListId = "list-1",
+                    ),
+                    onAction = actions::add,
+                    onLogout = {},
+                    onMembers = {},
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Listas").performClick()
+        composeTestRule.onNodeWithContentDescription("Editar lista").performClick()
+
+        composeTestRule.onNodeWithContentDescription("Mostrar menú de la lista").performClick()
+        composeTestRule.onNodeWithText("Vaciar lista").performClick()
+        composeTestRule.onNodeWithText("¿Seguro que quieres vaciar esta lista? Se eliminarán todos los productos, tanto pendientes como comprados.").assertExists()
+        composeTestRule.onNodeWithText("Cancelar").performClick()
+        assertTrue(actions.none { it is ShoppingListAction.ClearSelectedList })
+
+        composeTestRule.onNodeWithContentDescription("Mostrar menú de la lista").performClick()
+        composeTestRule.onNodeWithText("Vaciar lista").performClick()
+        composeTestRule.onNode(hasText("Vaciar lista") and hasClickAction()).performClick()
+        assertTrue(actions.contains(ShoppingListAction.ClearSelectedList))
     }
 
     @Test

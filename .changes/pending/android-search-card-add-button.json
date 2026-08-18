@@ -1,0 +1,10 @@
+{
+  "components": ["android"],
+  "type": "patch",
+  "category": "fixed",
+  "summary": "Corregir el bot\u00f3n A\u00f1adir truncado en las tarjetas de b\u00fasqueda de productos en Android.",
+  "details": [
+    "El bot\u00f3n A\u00f1adir de las tarjetas en modo cuadr\u00edcula mostraba solo \"A\u00f1adi\" porque el texto se part\u00eda en dos l\u00edneas y la altura fija lo recortaba.",
+    "Ahora el texto queda en una sola l\u00ednea y el bot\u00f3n usa menos padding horizontal para que \"A\u00f1adir\" quepa completo."
+  ]
+}

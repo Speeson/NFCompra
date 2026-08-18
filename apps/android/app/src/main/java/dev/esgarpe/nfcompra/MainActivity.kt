@@ -47,6 +47,7 @@ import java.util.concurrent.Executor
 import dev.esgarpe.nfcompra.core.designsystem.BottomNavigationStylePreference
 import dev.esgarpe.nfcompra.core.designsystem.NFCompraTheme
 import dev.esgarpe.nfcompra.core.designsystem.NFCompraUiScaleProvider
+import dev.esgarpe.nfcompra.core.designsystem.ProductResultsViewPreference
 import dev.esgarpe.nfcompra.core.designsystem.ThemePreference
 import dev.esgarpe.nfcompra.core.designsystem.UiScalePreference
 import dev.esgarpe.nfcompra.core.network.KeystoreTokenStore
@@ -110,6 +111,9 @@ class MainActivity : FragmentActivity() {
             SharedPreferencesBottomNavigationStyleStorage(applicationContext, profilePreferences),
         )
         val themeSettings = ThemeSettings(SharedPreferencesThemeStorage(applicationContext, profilePreferences))
+        val productResultsViewSettings = ProductResultsViewSettings(
+            SharedPreferencesProductResultsViewStorage(applicationContext, profilePreferences),
+        )
         val authRepository = AuthRepository(
             NetworkClient.authApi(BuildConfig.AUTH_BASE_URL),
             tokenStore,
@@ -141,6 +145,7 @@ class MainActivity : FragmentActivity() {
             var uiScalePreference by remember { mutableStateOf(uiScaleSettings.preference) }
             var bottomNavigationStylePreference by remember { mutableStateOf(bottomNavigationStyleSettings.preference) }
             var themePreference by remember { mutableStateOf(themeSettings.preference) }
+            var productResultsViewPreference by remember { mutableStateOf(productResultsViewSettings.preference) }
             val systemDarkTheme = isSystemInDarkTheme()
             val darkTheme = when (themePreference) {
                 ThemePreference.Light -> false
@@ -166,6 +171,12 @@ class MainActivity : FragmentActivity() {
                 { preference: ThemePreference ->
                     themeSettings.preference = preference
                     themePreference = preference
+                }
+            }
+            val onProductResultsViewPreferenceChange = remember {
+                { preference: ProductResultsViewPreference ->
+                    productResultsViewSettings.preference = preference
+                    productResultsViewPreference = preference
                 }
             }
             val onRememberEmail: (String) -> Unit = remember {
@@ -457,6 +468,8 @@ class MainActivity : FragmentActivity() {
                                     onBottomNavigationStylePreferenceChange = onBottomNavigationStylePreferenceChange,
                                     themePreference = themePreference,
                                     onThemePreferenceChange = onThemePreferenceChange,
+                                    productResultsViewPreference = productResultsViewPreference,
+                                    onProductResultsViewPreferenceChange = onProductResultsViewPreferenceChange,
                                 )
                                 }
                             }

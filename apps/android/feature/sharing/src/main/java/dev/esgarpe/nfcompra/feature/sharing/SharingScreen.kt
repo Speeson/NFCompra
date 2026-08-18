@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -414,8 +416,15 @@ fun NotificationPopup(
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.5f))
                 .clickable(onClick = onDismiss),
-            contentAlignment = Alignment.Center,
         ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(vertical = 16.dp),
+                contentAlignment = Alignment.Center,
+            ) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth(0.92f)
@@ -570,6 +579,7 @@ fun NotificationPopup(
                         }
                     }
                 }
+            }
             }
         }
     }

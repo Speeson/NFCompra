@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
@@ -88,6 +89,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -159,6 +161,7 @@ import androidx.compose.ui.unit.sp
 import dev.esgarpe.nfcompra.core.designsystem.BottomNavigationStylePreference
 import dev.esgarpe.nfcompra.core.designsystem.NFCompraTheme
 import dev.esgarpe.nfcompra.core.designsystem.NFCompraUiScaleProvider
+import dev.esgarpe.nfcompra.core.designsystem.ProductResultsViewPreference
 import dev.esgarpe.nfcompra.core.designsystem.ThemePreference
 import dev.esgarpe.nfcompra.core.designsystem.UiScalePreference
 import kotlinx.coroutines.CancellationException
@@ -343,6 +346,8 @@ fun ShoppingListApp(
     onBottomNavigationStylePreferenceChange: (BottomNavigationStylePreference) -> Unit = {},
     themePreference: ThemePreference = ThemePreference.Default,
     onThemePreferenceChange: (ThemePreference) -> Unit = {},
+    productResultsViewPreference: ProductResultsViewPreference = ProductResultsViewPreference.Default,
+    onProductResultsViewPreferenceChange: (ProductResultsViewPreference) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
     LaunchedEffect(viewModel) { viewModel.load() }
@@ -384,6 +389,8 @@ fun ShoppingListApp(
             onBottomNavigationStylePreferenceChange = onBottomNavigationStylePreferenceChange,
             themePreference = themePreference,
             onThemePreferenceChange = onThemePreferenceChange,
+            productResultsViewPreference = productResultsViewPreference,
+            onProductResultsViewPreferenceChange = onProductResultsViewPreferenceChange,
         )
         is ShoppingListViewState.InitialHouseholdError -> {
             val error = state as ShoppingListViewState.InitialHouseholdError
@@ -470,6 +477,8 @@ fun ShoppingListApp(
             onBottomNavigationStylePreferenceChange = onBottomNavigationStylePreferenceChange,
             themePreference = themePreference,
             onThemePreferenceChange = onThemePreferenceChange,
+            productResultsViewPreference = productResultsViewPreference,
+            onProductResultsViewPreferenceChange = onProductResultsViewPreferenceChange,
         )
     }
 }
@@ -511,15 +520,20 @@ internal fun ShoppingListContent(
     onBottomNavigationStylePreferenceChange: (BottomNavigationStylePreference) -> Unit = {},
     themePreference: ThemePreference = ThemePreference.Default,
     onThemePreferenceChange: (ThemePreference) -> Unit = {},
+    productResultsViewPreference: ProductResultsViewPreference = ProductResultsViewPreference.Default,
+    onProductResultsViewPreferenceChange: (ProductResultsViewPreference) -> Unit = {},
 ) {
     var selectedTab by remember { mutableStateOf(DashboardTab.Home) }
     var creatingHousehold by remember { mutableStateOf(false) }
     var creatingList by remember { mutableStateOf(false) }
-    var renamingList by remember { mutableStateOf(false) }
     var deletingList by remember { mutableStateOf(false) }
     var notificationsOpen by remember { mutableStateOf(false) }
     var openedListId by remember { mutableStateOf<String?>(null) }
     var openedListMode by remember { mutableStateOf(ListOpenMode.Edit) }
+    var titleMenuExpanded by remember(openedListId) { mutableStateOf(false) }
+    var clearListDialogOpen by remember(openedListId) { mutableStateOf(false) }
+    val defaultCardMode = productResultsViewPreference.cardMode
+    var cardMode by remember(openedListId, defaultCardMode) { mutableStateOf(defaultCardMode) }
     var catalogNested by remember { mutableStateOf(false) }
     var catalogRootRequestKey by remember { mutableStateOf(0) }
     var householdsRootRequestKey by remember { mutableStateOf(0) }
@@ -664,7 +678,19 @@ internal fun ShoppingListContent(
             ShoppingAppBanner(
                 title = if (isListDetailOpen) data.content.title else selectedTabLabel(selectedTab),
                 subtitle = if (isListDetailOpen) selectedListHouseholdName else null,
-                onTitleEdit = if (isListDetailOpen && openedListMode == ListOpenMode.Edit) ({ renamingList = true }) else null,
+                titleMenuExpanded = titleMenuExpanded,
+                onTitleMenuToggle = { titleMenuExpanded = !titleMenuExpanded },
+                titleMenuContent = if (isListDetailOpen) ({
+                    ListTitleMenuContent(
+                        cardMode = cardMode,
+                        onCardModeChange = { cardMode = it },
+                        canClearList = openedListMode != ListOpenMode.View,
+                        onClearList = {
+                            titleMenuExpanded = false
+                            clearListDialogOpen = true
+                        },
+                    )
+                }) else null,
                 showBack = selectedTab != DashboardTab.Home || isListDetailOpen,
                 onBack = {
                     if (isListDetailOpen) {
@@ -705,8 +731,7 @@ internal fun ShoppingListContent(
                             onCreateProduct = onCreateProduct,
                             canCreateProduct = data.selectedHouseholdId != null,
                             readOnly = openedListMode == ListOpenMode.View,
-                            onRename = { renamingList = true },
-                            onClearChecked = { onAction(ShoppingListAction.ClearSelectedList) },
+                            cardMode = cardMode,
                             onDelete = { deletingList = true },
                         )
                     } else {
@@ -789,6 +814,8 @@ internal fun ShoppingListContent(
                                 onBottomNavigationStylePreferenceChange = onBottomNavigationStylePreferenceChange,
                                 themePreference = themePreference,
                                 onThemePreferenceChange = onThemePreferenceChange,
+                                productResultsViewPreference = productResultsViewPreference,
+                                onProductResultsViewPreferenceChange = onProductResultsViewPreferenceChange,
                             )
                         }
                     }
@@ -831,14 +858,21 @@ internal fun ShoppingListContent(
             },
         )
     }
-    if (renamingList) CreateEntityDialog("Renombrar lista", "Nuevo nombre de la lista", confirmText = "Guardar", onConfirm = {
-        onAction(ShoppingListAction.RenameList(it))
-        renamingList = false
-    }) { renamingList = false }
     if (deletingList) ConfirmDialog("Eliminar lista", "Se eliminará esta lista y sus productos.", {
         onAction(ShoppingListAction.DeleteSelectedList)
         deletingList = false
     }) { deletingList = false }
+    if (clearListDialogOpen) {
+        ClearShoppingListConfirmDialog(
+            title = "Vaciar lista",
+            message = "¿Seguro que quieres vaciar esta lista? Se eliminarán todos los productos, tanto pendientes como comprados.",
+            onConfirm = {
+                clearListDialogOpen = false
+                onAction(ShoppingListAction.ClearSelectedList)
+            },
+            onDismiss = { clearListDialogOpen = false },
+        )
+    }
 }
 }
 
@@ -875,12 +909,14 @@ private data class DashboardNavBarColors(
 private fun ShoppingAppBanner(
     title: String,
     subtitle: String? = null,
-    onTitleEdit: (() -> Unit)? = null,
+    titleMenuExpanded: Boolean = false,
+    onTitleMenuToggle: () -> Unit = {},
+    titleMenuContent: (@Composable ColumnScope.() -> Unit)? = null,
     showBack: Boolean,
     onBack: () -> Unit,
     onOpenNotifications: (() -> Unit)? = null,
 ) {
-    val isDetailTitle = subtitle != null || onTitleEdit != null
+    val isDetailTitle = subtitle != null || titleMenuContent != null
     val bannerH = if (isDetailTitle) responsiveDp(0.081f) else responsiveDp(0.067f)
     val bannerPadding = responsiveWidthDp(0.051f)
     Box(
@@ -919,27 +955,36 @@ private fun ShoppingAppBanner(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                Text(
-                    text = title,
-                    color = Color.White,
-                    fontSize = if (isDetailTitle) 22.sp else 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (onTitleEdit != null) {
-                    IconButton(onClick = onTitleEdit, modifier = Modifier.size(34.dp)) {
+            Box {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(enabled = titleMenuContent != null) { onTitleMenuToggle() }
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Text(
+                        text = title,
+                        color = Color.White,
+                        fontSize = if (isDetailTitle) 22.sp else 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (titleMenuContent != null) {
                         Icon(
-                            imageVector = Icons.Outlined.Edit,
-                            contentDescription = "Renombrar lista",
+                            imageVector = if (titleMenuExpanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                            contentDescription = if (titleMenuExpanded) "Ocultar menú de la lista" else "Mostrar menú de la lista",
                             tint = Color.White,
-                            modifier = Modifier.size(17.dp),
+                            modifier = Modifier.size(24.dp),
                         )
+                    }
+                }
+                if (titleMenuContent != null) {
+                    DropdownMenu(expanded = titleMenuExpanded, onDismissRequest = onTitleMenuToggle) {
+                        titleMenuContent()
                     }
                 }
             }
@@ -971,6 +1016,33 @@ private fun ShoppingAppBanner(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ColumnScope.ListTitleMenuContent(
+    cardMode: Boolean,
+    onCardModeChange: (Boolean) -> Unit,
+    canClearList: Boolean,
+    onClearList: () -> Unit,
+) {
+    Text(
+        "Vista de resultados",
+        color = WebText,
+        fontWeight = FontWeight.Bold,
+        fontSize = 13.sp,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+    )
+    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), contentAlignment = Alignment.Center) {
+        ViewModeSwitch(cardMode = cardMode, onCardModeChange = onCardModeChange)
+    }
+    if (canClearList) {
+        HorizontalDivider(color = WebBorder.copy(alpha = 0.6f), modifier = Modifier.padding(vertical = 6.dp))
+        DropdownMenuItem(
+            text = { Text("Vaciar lista", color = Color(0xFFB42318), fontWeight = FontWeight.Bold) },
+            leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null, tint = Color(0xFFB42318)) },
+            onClick = onClearList,
+        )
     }
 }
 
@@ -2687,6 +2759,8 @@ private fun ProfilePanel(
     onBottomNavigationStylePreferenceChange: (BottomNavigationStylePreference) -> Unit = {},
     themePreference: ThemePreference = ThemePreference.Default,
     onThemePreferenceChange: (ThemePreference) -> Unit = {},
+    productResultsViewPreference: ProductResultsViewPreference = ProductResultsViewPreference.Default,
+    onProductResultsViewPreferenceChange: (ProductResultsViewPreference) -> Unit = {},
 ) {
     var personalDataExpanded by remember { mutableStateOf(false) }
     var settingsExpanded by remember { mutableStateOf(false) }
@@ -2763,6 +2837,8 @@ private fun ProfilePanel(
                 onBottomNavigationStylePreferenceChange = onBottomNavigationStylePreferenceChange,
                 themePreference = themePreference,
                 onThemePreferenceChange = onThemePreferenceChange,
+                productResultsViewPreference = productResultsViewPreference,
+                onProductResultsViewPreferenceChange = onProductResultsViewPreferenceChange,
                 onDeleteAccount = { deletingAccount = true },
             )
         }
@@ -3117,6 +3193,8 @@ private fun SettingsInlineContent(
     onBottomNavigationStylePreferenceChange: (BottomNavigationStylePreference) -> Unit = {},
     themePreference: ThemePreference = ThemePreference.Default,
     onThemePreferenceChange: (ThemePreference) -> Unit = {},
+    productResultsViewPreference: ProductResultsViewPreference = ProductResultsViewPreference.Default,
+    onProductResultsViewPreferenceChange: (ProductResultsViewPreference) -> Unit = {},
     onDeleteAccount: () -> Unit = {},
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -3162,6 +3240,23 @@ private fun SettingsInlineContent(
                 ),
                 selected = bottomNavigationStylePreference,
                 onSelected = onBottomNavigationStylePreferenceChange,
+            )
+        }
+
+        SettingsSubsection("Preferencias de compra") {
+            Text("Vista predeterminada de productos", color = WebText, fontWeight = FontWeight.Bold)
+            Text(
+                "Elige c\u00f3mo quieres ver los resultados al abrir una lista.",
+                color = WebMuted,
+                fontSize = 12.sp,
+            )
+            SegmentedPreferenceSelector(
+                options = listOf(
+                    SelectorOption(ProductResultsViewPreference.List, "Lista"),
+                    SelectorOption(ProductResultsViewPreference.Grid, "Cuadr\u00edcula"),
+                ),
+                selected = productResultsViewPreference,
+                onSelected = onProductResultsViewPreferenceChange,
             )
         }
 
@@ -3227,6 +3322,8 @@ private fun SettingsDialog(
     onBottomNavigationStylePreferenceChange: (BottomNavigationStylePreference) -> Unit = {},
     themePreference: ThemePreference = ThemePreference.Default,
     onThemePreferenceChange: (ThemePreference) -> Unit = {},
+    productResultsViewPreference: ProductResultsViewPreference = ProductResultsViewPreference.Default,
+    onProductResultsViewPreferenceChange: (ProductResultsViewPreference) -> Unit = {},
     onDeleteAccount: () -> Unit = {},
 ) {
     val limeButtonColors = ButtonDefaults.buttonColors(containerColor = WebLime, contentColor = OnLime)
@@ -3308,6 +3405,35 @@ private fun SettingsDialog(
                             RadioButton(
                                 selected = bottomNavigationStylePreference == option,
                                 onClick = { onBottomNavigationStylePreferenceChange(option) },
+                                colors = RadioButtonDefaults.colors(selectedColor = WebPrimary),
+                            )
+                            Text(option.label, color = WebText, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+                SectionTitle("Preferencias de compra")
+                Text("Vista predeterminada de productos", color = WebText, fontWeight = FontWeight.Bold)
+                Text(
+                    "Elige cómo quieres ver los resultados al abrir una lista.",
+                    color = WebMuted,
+                    fontSize = 12.sp,
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    enumValues<ProductResultsViewPreference>().forEach { option ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { onProductResultsViewPreferenceChange(option) }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = productResultsViewPreference == option,
+                                onClick = { onProductResultsViewPreferenceChange(option) },
                                 colors = RadioButtonDefaults.colors(selectedColor = WebPrimary),
                             )
                             Text(option.label, color = WebText, fontWeight = FontWeight.SemiBold)
@@ -4048,15 +4174,6 @@ private fun EmptyListForHousehold(onCreateList: () -> Unit) {
 }
 
 @Composable
-private fun CurrentListActions(onRename: () -> Unit, onClearChecked: () -> Unit, onDelete: () -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        TextButton(onClick = onRename, colors = ButtonDefaults.textButtonColors(contentColor = WebPrimary)) { Text("Renombrar") }
-        TextButton(onClick = onClearChecked, colors = ButtonDefaults.textButtonColors(contentColor = WebPrimary)) { Text("Vaciar comprados") }
-        TextButton(onClick = onDelete, colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFB42318))) { Text("Eliminar") }
-    }
-}
-
-@Composable
 private fun InitialHouseholdLoadRecovery(errorMessage: String, onRetry: () -> Unit, onLogout: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize().background(WebPage).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         TextButton(onClick = onLogout, colors = ButtonDefaults.textButtonColors(contentColor = WebPrimary)) { Text("Cerrar sesión") }
@@ -4138,7 +4255,17 @@ private fun ClearShoppingListConfirmDialog(title: String, message: String, onCon
         containerColor = WebSurface,
         title = { DialogTitle(title) },
         text = { Text(message, color = WebMuted, fontWeight = FontWeight.SemiBold) },
-        confirmButton = { Button(onClick = onConfirm, shape = MaterialTheme.shapes.medium, colors = webPrimaryButtonColors()) { Text("Vaciar") } },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                shape = MaterialTheme.shapes.medium,
+                colors = ButtonDefaults.buttonColors(containerColor = CheckedAccent, contentColor = Color.White),
+            ) {
+                Icon(Icons.Outlined.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Vaciar lista", fontWeight = FontWeight.Bold)
+            }
+        },
         dismissButton = { TextButton(onClick = onDismiss, colors = ButtonDefaults.textButtonColors(contentColor = WebMuted)) { Text("Cancelar") } },
     )
 }
@@ -4237,12 +4364,10 @@ fun ShoppingListScreen(
     onCreateProduct: suspend (String, String?, String, String?, String?) -> ProductCatalogUiModel? = { _, _, _, _, _ -> null },
     canCreateProduct: Boolean = true,
     readOnly: Boolean = false,
-    onRename: () -> Unit = {},
-    onClearChecked: () -> Unit = {},
+    cardMode: Boolean = true,
     onDelete: () -> Unit = {},
 ) {
     var addName by remember { mutableStateOf("") }
-    var cardMode by remember { mutableStateOf(true) }
     var suggestions by remember { mutableStateOf(emptyList<ProductCatalogUiModel>()) }
     var isProductSearchOpen by remember { mutableStateOf(false) }
     var cardQuantities by remember { mutableStateOf(emptyMap<String, Int>()) }
@@ -4250,7 +4375,6 @@ fun ShoppingListScreen(
     var waitlist by remember { mutableStateOf(emptyList<PendingProductUiModel>()) }
     var recentlyAddedId by remember { mutableStateOf<String?>(null) }
     var createProductDialogOpen by remember { mutableStateOf(false) }
-    var clearListDialogOpen by remember { mutableStateOf(false) }
     val searchScope = rememberCoroutineScope()
     val voiceSearch = rememberProductVoiceSearch(
         enabled = !state.isOffline,
@@ -4335,7 +4459,6 @@ fun ShoppingListScreen(
                 ShoppingListWebHeader(
                     isOffline = state.isOffline,
                     productName = addName,
-                    cardMode = cardMode,
                     voiceSearchAvailable = voiceSearch.available,
                     voiceSearchListening = voiceSearch.listening,
                     onProductNameChange = {
@@ -4344,13 +4467,8 @@ fun ShoppingListScreen(
                     },
                     onProductFocus = { isProductSearchOpen = true },
                     onVoiceSearch = voiceSearch.start,
-                    onCardModeChange = {
-                        cardMode = it
-                        isProductSearchOpen = true
-                    },
                     canCreateProduct = canCreateProduct,
                     onCreateProduct = { createProductDialogOpen = true },
-                    onClearChecked = { clearListDialogOpen = true },
                 )
             }
         }
@@ -4458,17 +4576,6 @@ fun ShoppingListScreen(
                     }
                 }
             },
-        )
-    }
-    if (clearListDialogOpen) {
-        ClearShoppingListConfirmDialog(
-            title = "Vaciar lista",
-            message = "¿Seguro que quieres vaciar esta lista? Se eliminarán los productos comprados.",
-            onConfirm = {
-                clearListDialogOpen = false
-                onClearChecked()
-            },
-            onDismiss = { clearListDialogOpen = false },
         )
     }
 }
@@ -4587,35 +4694,16 @@ private tailrec fun Context.findActivity(): Activity? =
 private fun ShoppingListWebHeader(
     isOffline: Boolean,
     productName: String,
-    cardMode: Boolean,
     voiceSearchAvailable: Boolean,
     voiceSearchListening: Boolean,
     onProductNameChange: (String) -> Unit,
     onProductFocus: () -> Unit,
     onVoiceSearch: () -> Unit,
-    onCardModeChange: (Boolean) -> Unit,
     canCreateProduct: Boolean,
     onCreateProduct: () -> Unit,
-    onClearChecked: () -> Unit,
 ) {
     Card(colors = CardDefaults.cardColors(containerColor = WebSurface)) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                    Button(
-                        onClick = onClearChecked,
-                        modifier = Modifier.height(42.dp),
-                        shape = MaterialTheme.shapes.medium,
-                        colors = webPrimaryButtonColors(),
-                    ) {
-                        Text("Vaciar")
-                    }
-                }
-                Spacer(modifier = Modifier.weight(1f))
-                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
-                    ViewModeSwitch(cardMode = cardMode, onCardModeChange = onCardModeChange)
-                }
-            }
             if (isOffline) {
                 Text("Sin conexión", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
             }
@@ -4650,7 +4738,10 @@ private fun ViewModeSwitch(cardMode: Boolean, onCardModeChange: (Boolean) -> Uni
             .clip(MaterialTheme.shapes.medium)
             .background(WebSubtleSurface)
             .border(1.dp, WebBorder, MaterialTheme.shapes.medium)
-            .clickable { onCardModeChange(!cardMode) },
+            .clickable { onCardModeChange(!cardMode) }
+            .semantics {
+                contentDescription = if (cardMode) "Cambiar a vista de lista" else "Cambiar a vista de tarjetas"
+            },
     ) {
         val thumbWidth = maxWidth / 2
         val thumbOffset by animateDpAsState(
@@ -5059,9 +5150,10 @@ private fun ProductResultCard(
                     enabled = quantity > 0,
                     shape = MaterialTheme.shapes.medium,
                     colors = webPrimaryButtonColors(),
+                    contentPadding = PaddingValues(horizontal = 10.dp),
                     modifier = Modifier.weight(1f).height(40.dp),
                 ) {
-                    Text("Añadir")
+                    Text("Añadir", maxLines = 1)
                 }
                 CompactFavoriteButton(
                     favorite = suggestion.isFavorite,
