@@ -127,6 +127,23 @@ it('shows list suggestions with the favorite action integrated before the produc
   expect(within(row).getByRole('group', { name: 'Cantidad de Leche entera' })).toBeInTheDocument();
 });
 
+it('highlights household products in list and card search results', async () => {
+  stubCatalogSnapshot();
+  localStorage.setItem('nfcompra.product-picker-mode', 'list');
+
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={vi.fn()} householdId="household-1" />);
+  fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'vino' } });
+
+  const row = await screen.findByRole('option');
+  expect(row).toHaveClass('product-suggestion-row--household');
+  expect(within(row).getByRole('button', { name: 'Seleccionar Vino del pueblo' })).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Vista de tarjetas' }));
+  const card = await screen.findByRole('article', { name: 'Vino del pueblo' });
+  expect(card).toHaveClass('product-result-card--picker');
+  expect(card).toHaveClass('product-result-card--household');
+});
+
 it('adds product cards to a removable waitlist before committing them to pending items', async () => {
   const onAdd = vi.fn();
   stubCatalogSnapshot();
@@ -297,7 +314,7 @@ function stubCatalogSnapshot(): void {
     if (url.includes('/product-catalog/snapshot')) {
       return Promise.resolve(Response.json({
         version: 'v1',
-        productCount: 2,
+        productCount: 3,
         products: [{
           id: 'prod-milk',
           name: 'Leche entera',
@@ -320,6 +337,19 @@ function stubCatalogSnapshot(): void {
           packageSize: '0.48 kg',
           source: 'mercadona',
           sourceProductId: '18018',
+        }, {
+          id: 'prod-wine',
+          name: 'Vino del pueblo',
+          normalizedName: 'vino del pueblo',
+          categoryId: 'cat-bodega',
+          categoryName: 'Bodega',
+          iconKey: 'wine',
+          brand: null,
+          packageSize: '750 ml',
+          source: 'user',
+          sourceProductId: null,
+          scope: 'household',
+          householdId: 'household-1',
         }],
       }));
     }

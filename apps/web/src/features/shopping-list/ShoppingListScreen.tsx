@@ -328,7 +328,12 @@ function ResultQuantityStepper({ productName, quantity, disabled = false, onChan
 function ProductCatalogListPickerItem({ product, active, quantity, disabled = false, onActivate, onQuantityChange, onFavoriteChange }: { product: ProductCatalogItem; active: boolean; quantity: number; disabled?: boolean; onActivate(product: ProductCatalogItem): void; onQuantityChange(productId: string, delta: number): void; onFavoriteChange?(product: ProductCatalogItem, favorite: boolean): void }): JSX.Element {
   const details = productDetails(product);
   const accessibleName = active && quantity > 0 ? `Añadir ${product.name} x${quantity}` : `Seleccionar ${product.name}`;
-  return <div className={active ? 'product-suggestion-row product-suggestion-row--active' : 'product-suggestion-row'} role="option" aria-selected={active}>
+  const rowClassName = [
+    'product-suggestion-row',
+    active ? 'product-suggestion-row--active' : null,
+    product.scope === 'household' ? 'product-suggestion-row--household' : null,
+  ].filter(Boolean).join(' ');
+  return <div className={rowClassName} role="option" aria-selected={active}>
     {!active ? <button
       type="button"
       className={product.isFavorite ? 'product-favorite-button product-favorite-button--compact is-favorite' : 'product-favorite-button product-favorite-button--compact'}

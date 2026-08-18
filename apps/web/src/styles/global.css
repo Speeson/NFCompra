@@ -471,7 +471,8 @@ h2 { font-size: 1rem; }
 .product-result-card:hover, .product-result-card:focus-within { border-color: color-mix(in srgb, var(--color-primary) 70%, var(--color-border)); box-shadow: 0 .9rem 2.1rem rgb(16 185 129 / 16%); transform: translateY(-1px); }
 .product-result-card--household { border-color: color-mix(in srgb, var(--color-household) 40%, var(--color-border)); background: color-mix(in srgb, var(--color-household-soft) 60%, var(--color-surface)); }
 .product-result-card--household:hover, .product-result-card--household:focus-within { border-color: color-mix(in srgb, var(--color-household) 70%, var(--color-border)); box-shadow: 0 .9rem 2.1rem rgb(118 83 199 / 14%); }
-.product-suggestion-row--household { border-color: color-mix(in srgb, var(--color-household) 45%, var(--color-border)); background: color-mix(in srgb, var(--color-household-soft) 70%, var(--color-surface)); }
+.product-result-card--picker.product-result-card--household { border-color: color-mix(in srgb, var(--color-household) 40%, var(--color-border)); background: color-mix(in srgb, var(--color-household-soft) 60%, var(--color-surface)); }
+.product-suggestion-row--household:not(.product-suggestion-row--active) { border: 1px solid color-mix(in srgb, var(--color-household) 45%, var(--color-border)); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-household-soft) 70%, var(--color-surface)); padding: .45rem .5rem .45rem .75rem; }
 .product-result-card--added { animation: product-card-added .45s ease; border-color: var(--color-primary); box-shadow: 0 0 0 2px rgb(16 185 129 / 18%), 0 .9rem 2.2rem rgb(16 185 129 / 18%); }
 .product-result-card__rail { display: grid; grid-template-rows: 2.7rem 2.35rem; align-content: center; justify-items: center; gap: .45rem; min-width: 0; }
 .product-result-card:has(.product-result-card__actions) .product-result-card__rail { grid-template-rows: 2.7rem 2.15rem 2.15rem; align-content: space-between; }

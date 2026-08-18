@@ -1,0 +1,10 @@
+{
+  "components": ["web"],
+  "type": "patch",
+  "category": "added",
+  "summary": "A\u00f1adir resaltado violeta de productos del hogar en los resultados de b\u00fasqueda web.",
+  "details": [
+    "Los resultados de b\u00fasqueda de productos de la lista web marcan ahora los productos del hogar con el mismo acento violeta que las tarjetas del cat\u00e1logo.",
+    "Se aplica tanto al modo lista como al modo tarjetas (cuadr\u00edcula), en escritorio y m\u00f3vil, a juego con la app Android."
+  ]
+}
