@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent, type JSX } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ProductCatalogCard } from './ProductCatalogCards';
+import { catalogCategoryImageSource } from './catalog-category-images';
 import { catalogIconLabel, catalogIconOptions } from './catalog-icons';
 import { readActiveHouseholdId } from '../households/active-household';
 import { fetchHouseholds, householdQueryKey } from '../shopping-list/queries';
@@ -214,24 +215,29 @@ export function CatalogPage({ isAdmin = false }: { isAdmin?: boolean }): JSX.Ele
     {categories.isError || products.isError ? <p role="alert">No se pudo cargar el catálogo.</p> : null}
     <div className="catalog-page__body">
       <nav className="catalog-categories" aria-label="Categorías del catálogo">
-        {categoryList.map((category) => <div key={category.id} className={selectedCategoryId === category.id ? 'catalog-category-entry is-selected' : 'catalog-category-entry'}>
-          <button
-            type="button"
-            className="catalog-category-entry__main"
-            aria-pressed={selectedCategoryId === category.id}
-            onClick={(event) => {
-              if (selectedCategoryId === category.id) openCategoryActions(category, event.currentTarget);
-              else {
-                setSelectedCategoryId(category.id);
-                setCategoryMenuId(null);
-                setCategoryMenuPosition(null);
-              }
-            }}
-          >
-            <span aria-hidden="true">{category.id === 'favorites' ? '★' : categoryIcon(category.iconKey)}</span>
-            <strong>{category.name}</strong>
-          </button>
-        </div>)}
+        {categoryList.map((category) => {
+          const imageSource = catalogCategoryImageSource(category.normalizedName);
+          return <div key={category.id} className={selectedCategoryId === category.id ? 'catalog-category-entry is-selected' : 'catalog-category-entry'}>
+            <button
+              type="button"
+              className="catalog-category-entry__main"
+              aria-pressed={selectedCategoryId === category.id}
+              onClick={(event) => {
+                if (selectedCategoryId === category.id) openCategoryActions(category, event.currentTarget);
+                else {
+                  setSelectedCategoryId(category.id);
+                  setCategoryMenuId(null);
+                  setCategoryMenuPosition(null);
+                }
+              }}
+            >
+              {imageSource
+                ? <img className="catalog-category-entry__image" src={imageSource} alt="" aria-hidden="true" loading="lazy" decoding="async" />
+                : <span aria-hidden="true">{category.id === 'favorites' ? '★' : categoryIcon(category.iconKey)}</span>}
+              <strong>{category.name}</strong>
+            </button>
+          </div>;
+        })}
       </nav>
       <section className="product-card-results catalog-products" aria-label="Productos del catálogo">
         {!products.isPending && !visibleProducts.length ? <p className="empty-state">No hay productos para esta selección.</p> : null}

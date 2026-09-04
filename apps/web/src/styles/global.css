@@ -1399,6 +1399,12 @@ h2 { font-size: 1rem; }
   line-clamp: 2;
   line-height: 1.15;
 }
+.catalog-category-entry__image {
+  width: 2.2rem;
+  aspect-ratio: 1;
+  border-radius: .7rem;
+  object-fit: cover;
+}
 .catalog-category-entry__main[aria-pressed="true"] {
   border-color: var(--color-primary);
   background: var(--color-lime);
@@ -1607,6 +1613,9 @@ h2 { font-size: 1rem; }
   }
   .catalog-categories button {
     grid-template-columns: 1.8rem minmax(0, 1fr);
+  }
+  .catalog-category-entry__image {
+    width: 1.8rem;
   }
   .catalog-products {
     grid-template-columns: 1fr;
@@ -2509,6 +2518,11 @@ h2 { font-size: 1rem; }
 
   .catalog-category-entry__main strong {
     font-size: .82rem;
+  }
+
+  .catalog-category-entry__image {
+    width: 1.45rem;
+    border-radius: .45rem;
   }
 
   .catalog-products {

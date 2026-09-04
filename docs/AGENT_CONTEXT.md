@@ -2,6 +2,8 @@
 
 ## Project state
 
+- **Catalog category images**: Web and Android bundle photographs for the 26 system catalog categories, rendered with centered cover cropping and rounded corners. Favorites and custom categories keep icon fallbacks.
+
 NFCompra MVP: shopping list app with Cloudflare Worker/D1 API, React PWA, and Android Compose app. All clients share the `/v1` contract. Production API: `https://api.nfcompra.esgarpe.dev`.
 Local worktree layout is simplified to `C:\DAM2\NFCompra` on `main` and `C:\DAM2\NFCompra-dev` on `dev`. Old milestone worktrees are no longer registered in Git.
 

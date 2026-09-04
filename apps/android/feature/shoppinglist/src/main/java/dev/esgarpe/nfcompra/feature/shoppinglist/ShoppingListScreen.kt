@@ -2649,25 +2649,37 @@ private fun CatalogCategoryCard(category: ProductCategoryUiModel, modifier: Modi
 
 @Composable
 private fun CategoryIllustration(category: ProductCategoryUiModel) {
+    val imageRes = catalogCategoryImageRes(category.normalizedName)
     Box(
         modifier = Modifier
             .height(88.dp)
             .fillMaxWidth(),
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .size(78.dp)
-                .clip(MaterialTheme.shapes.extraLarge)
-                .background(Color.White.copy(alpha = 0.72f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = categoryEmoji(category),
-                fontSize = 42.sp,
-                lineHeight = 44.sp,
-                textAlign = TextAlign.Center,
+        if (imageRes != null) {
+            Image(
+                painter = painterResource(imageRes),
+                contentDescription = null,
+                modifier = Modifier
+                    .size(88.dp)
+                    .clip(MaterialTheme.shapes.extraLarge),
+                contentScale = ContentScale.Crop,
             )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(78.dp)
+                    .clip(MaterialTheme.shapes.extraLarge)
+                    .background(Color.White.copy(alpha = 0.72f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = categoryEmoji(category),
+                    fontSize = 42.sp,
+                    lineHeight = 44.sp,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
     }
 }
