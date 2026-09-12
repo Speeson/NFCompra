@@ -61,7 +61,8 @@ it('turns free text into one list candidate and commits it without a catalog id'
 
   expect(await screen.findAllByRole('option')).toHaveLength(1);
   const candidate = screen.getByRole('button', { name: 'Seleccionar Tomate frito' });
-  fireEvent.click(candidate);
+  expect(candidate).toHaveTextContent('Tomate frito');
+  expect(screen.getByLabelText('Cantidad seleccionada de Tomate frito')).toHaveTextContent('0');
   fireEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad de Tomate frito' }));
   fireEvent.click(screen.getByRole('button', { name: /A.adir Tomate frito x1/ }));
   fireEvent.click(screen.getByRole('button', { name: /A.adir 1 producto/ }));

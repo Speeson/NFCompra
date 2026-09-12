@@ -27,6 +27,15 @@ class ProductEntryModeTest {
     }
 
     @Test
+    fun `quick list candidate is active immediately while other flows keep explicit selection`() {
+        val candidate = ProductEntryCandidate.quick("Tomate frito")
+
+        assertEquals(candidate.key, activeProductCandidateId(ProductEntryMode.Quick, cardMode = false, listOf(candidate), selectedId = null))
+        assertNull(activeProductCandidateId(ProductEntryMode.Quick, cardMode = true, listOf(candidate), selectedId = null))
+        assertNull(activeProductCandidateId(ProductEntryMode.Catalog, cardMode = false, listOf(candidate), selectedId = null))
+    }
+
+    @Test
     fun `unknown server preference stays backward compatible`() {
         assertEquals(ProductEntryMode.Catalog, ProductEntryMode.fromApi(null))
         assertEquals(ProductEntryMode.Catalog, ProductEntryMode.fromApi("unknown"))

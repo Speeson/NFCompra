@@ -48,6 +48,9 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
   const [isProductSearchOpen, setIsProductSearchOpen] = useState(true);
   const [favoriteOverrides, setFavoriteOverrides] = useState<Record<string, boolean>>({});
   const [isRenamingList, setIsRenamingList] = useState(false);
+  const visibleActiveListProductId = productEntryMode === 'quick' && pickerMode === 'list'
+    ? suggestions[0]?.key ?? null
+    : activeListProductId;
   const [listNameDraft, setListNameDraft] = useState(title);
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [quickCreateInitialName, setQuickCreateInitialName] = useState('');
@@ -177,7 +180,7 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
   }
 
   function activateListSuggestion(suggestion: ProductCandidate): void {
-    if (activeListProductId !== suggestion.key) {
+    if (visibleActiveListProductId !== suggestion.key) {
       setActiveListProductId(suggestion.key);
       return;
     }
@@ -253,7 +256,7 @@ export function ShoppingListScreen({ title, items, isOffline, onAdd, onRenameLis
             <label htmlFor="new-product-name">Producto</label>
             <div className="product-entry-row">
               <div className="product-autocomplete"><input id="new-product-name" placeholder={productEntryMode === 'quick' ? 'Escribe un producto...' : 'Buscar producto...'} disabled={isOffline} value={name} onFocus={() => setIsProductSearchOpen(true)} onChange={(event) => { setName(event.target.value); setIsProductSearchOpen(true); }} maxLength={200} autoComplete="off" />
-                {pickerMode === 'list' && isProductSearchOpen && suggestions.length ? <div className="product-suggestions" role="listbox" aria-label="Sugerencias de productos" onScroll={blurProductSearch}>{suggestions.map((suggestion) => <ProductCatalogListPickerItem key={suggestion.key} product={suggestion} active={activeListProductId === suggestion.key} quantity={productQuantities[suggestion.key] ?? 0} onActivate={activateListSuggestion} onQuantityChange={updateProductQuantity} onFavoriteChange={(product, favorite) => void changeFavorite(product, favorite)} />)}</div> : null}
+                {pickerMode === 'list' && isProductSearchOpen && suggestions.length ? <div className="product-suggestions" role="listbox" aria-label="Sugerencias de productos" onScroll={blurProductSearch}>{suggestions.map((suggestion) => <ProductCatalogListPickerItem key={suggestion.key} product={suggestion} active={visibleActiveListProductId === suggestion.key} quantity={productQuantities[suggestion.key] ?? 0} onActivate={activateListSuggestion} onQuantityChange={updateProductQuantity} onFavoriteChange={(product, favorite) => void changeFavorite(product, favorite)} />)}</div> : null}
               </div>
               <button type="button" className={voiceSearch.isListening ? 'product-voice-button is-listening' : 'product-voice-button'} aria-label={voiceSearch.isListening ? 'Escuchando' : 'Buscar producto por voz'} title={voiceSearch.isSupported ? 'Buscar producto por voz' : 'Búsqueda por voz no disponible'} disabled={isOffline || !voiceSearch.isSupported} onClick={voiceSearch.start}><MicrophoneIcon /></button>
               {householdId && productEntryMode === 'catalog' ? <button type="button" className="product-create-button product-create-button--inline" aria-label="Crear producto" disabled={isOffline} onClick={openQuickCreate}>+</button> : null}

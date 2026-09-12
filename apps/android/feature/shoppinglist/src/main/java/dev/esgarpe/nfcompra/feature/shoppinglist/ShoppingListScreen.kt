@@ -4497,6 +4497,12 @@ fun ShoppingListScreen(
             recentlyAddedId = null
         }
     }
+    val visibleActiveListProductId = activeProductCandidateId(
+        mode = productEntryMode,
+        cardMode = cardMode,
+        candidates = suggestions,
+        selectedId = activeListProductId,
+    )
 
     LazyColumn(
         modifier = Modifier
@@ -4530,13 +4536,13 @@ fun ShoppingListScreen(
                 ProductSuggestionDropdown(
                     suggestions = suggestions,
                     quantities = cardQuantities,
-                    activeProductId = activeListProductId,
+                    activeProductId = visibleActiveListProductId,
                     onToggleFavorite = toggleFavorite,
                     onQuantityChange = { productId, delta ->
                         cardQuantities = cardQuantities + (productId to ((cardQuantities[productId] ?: 0) + delta).coerceAtLeast(0))
                     },
                     onSelect = { suggestion ->
-                        if (activeListProductId != suggestion.key) {
+                        if (visibleActiveListProductId != suggestion.key) {
                             activeListProductId = suggestion.key
                         } else {
                             queueProduct(suggestion)
@@ -4953,6 +4959,13 @@ internal fun productEntryCandidates(
     }
 }
 
+internal fun activeProductCandidateId(
+    mode: ProductEntryMode,
+    cardMode: Boolean,
+    candidates: List<ProductEntryCandidate>,
+    selectedId: String?,
+): String? = if (mode == ProductEntryMode.Quick && !cardMode) candidates.firstOrNull()?.key else selectedId
+
 private data class PendingProductUiModel(
     val key: String,
     val catalogProductId: String?,
@@ -5018,7 +5031,13 @@ private fun ProductSuggestionDropdown(
                     )
                 }
                 Column(modifier = Modifier.weight(1f, fill = true)) {
-                    Text(suggestion.name, color = WebText, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        text = suggestion.name,
+                        color = WebText,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = if (suggestion.catalogProduct == null) 2 else 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                     Text(suggestion.metaLabel(), color = WebMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (active) {

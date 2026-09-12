@@ -2750,6 +2750,14 @@ h2 { font-size: 1rem; }
   text-align: left;
 }
 
+.product-form .product-suggestion-row--active .product-suggestion__select {
+  grid-column: 1;
+}
+
+.product-suggestion-row--active .product-result-quantity-stepper {
+  grid-column: 2;
+}
+
 .product-result-quantity-stepper {
   justify-self: end;
   grid-template-columns: 2.35rem 2.35rem 2.35rem;
