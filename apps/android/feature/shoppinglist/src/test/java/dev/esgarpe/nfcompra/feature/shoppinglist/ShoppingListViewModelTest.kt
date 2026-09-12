@@ -160,6 +160,19 @@ class ShoppingListViewModelTest {
         assertEquals("""{"firstName":"Ana","lastName":"Garcia","username":"ana"}""", request.body.readUtf8())
     }
 
+    @Test fun `updates account product entry mode through me endpoint`() = runTest {
+        server.enqueue(json("{\"user\":{\"id\":\"user-1\",\"email\":\"ana@example.test\",\"name\":\"Ana\",\"productEntryMode\":\"quick\"}}"))
+        val repository = ShoppingListRepository(NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java))
+
+        val profile = repository.updateProductEntryMode(ProductEntryMode.Quick)
+
+        assertEquals(ProductEntryMode.Quick, profile.productEntryMode)
+        val request = server.takeRequest(1, TimeUnit.SECONDS)!!
+        assertEquals("PATCH", request.method)
+        assertEquals("/v1/me", request.path)
+        assertEquals("""{"productEntryMode":"quick"}""", request.body.readUtf8())
+    }
+
     @Test fun `changes authenticated password through profile endpoint`() = runTest {
         server.enqueue(json("{\"status\":\"password_changed\"}"))
         val repository = ShoppingListRepository(NetworkClient.authenticatedApi(server.url("/").toString(), InMemoryTokenStore(), ShoppingListApi::class.java))

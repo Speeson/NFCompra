@@ -1,5 +1,14 @@
 package dev.esgarpe.nfcompra.feature.shoppinglist
 
+enum class ProductEntryMode(val apiValue: String) {
+    Catalog("catalog"),
+    Quick("quick");
+
+    companion object {
+        fun fromApi(value: String?): ProductEntryMode = entries.firstOrNull { it.apiValue == value } ?: Catalog
+    }
+}
+
 data class ShoppingListItemUiModel(
     val id: String,
     val name: String,
@@ -41,7 +50,7 @@ data class HouseholdInvitationNoticeUiModel(
 
 sealed interface ShoppingListAction {
     data class ToggleItem(val id: String) : ShoppingListAction
-    data class AddItem(val name: String, val quantity: Double = 1.0) : ShoppingListAction
+    data class AddItem(val name: String, val quantity: Double = 1.0, val catalogProductId: String? = null) : ShoppingListAction
     data class EditItem(val id: String, val name: String, val quantity: Double? = null) : ShoppingListAction
     data class DeleteItem(val id: String) : ShoppingListAction
     data class SelectHousehold(val id: String) : ShoppingListAction

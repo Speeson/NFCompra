@@ -48,7 +48,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
                     ShoppingListAction.DeleteCheckedItems -> deleteCheckedItems(data)
                     ShoppingListAction.ClearSelectedList -> clearSelectedList(data)
                     is ShoppingListAction.RetryInitialHouseholdLoad -> Unit
-                    is ShoppingListAction.AddItem -> data.selectedListId?.let { mutateAfter(data) { repository.createItem(it, action.name, action.quantity) } }
+                    is ShoppingListAction.AddItem -> data.selectedListId?.let { mutateAfter(data) { repository.createItem(it, action.name, action.quantity, action.catalogProductId) } }
                     is ShoppingListAction.EditItem -> mutateAfter(data) { repository.updateItem(data.item(action.id), name = action.name, quantity = action.quantity) }
                     is ShoppingListAction.ToggleItem -> mutateItem(data, action.id) { repository.updateItem(it, checked = !it.checked) }
                     is ShoppingListAction.DeleteItem -> mutateAfter(data) { repository.deleteItem(data.item(action.id)) }
@@ -115,6 +115,14 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
             repository.updateProfile(firstName, lastName, username)?.also { profile ->
                 val current = mutableState.value as? ShoppingListViewState.Data ?: return@also
                 mutableState.value = current.copy(profile = profile, displayName = profile.displayName, message = "Perfil actualizado.")
+            }
+        }
+
+    suspend fun updateProductEntryMode(productEntryMode: ProductEntryMode): ProfileUiModel? =
+        catalogMutation("No se pudo actualizar el modo de entrada.") {
+            repository.updateProductEntryMode(productEntryMode)?.also { profile ->
+                val current = mutableState.value as? ShoppingListViewState.Data ?: return@also
+                mutableState.value = current.copy(profile = profile)
             }
         }
 

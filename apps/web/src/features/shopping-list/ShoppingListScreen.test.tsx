@@ -27,6 +27,7 @@ it('uses the shared pending workflow from compact list autocomplete mode', async
 
   fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'lech' } });
 
+  expect(await screen.findAllByRole('option')).toHaveLength(2);
   const suggestion = await screen.findByRole('button', { name: 'Seleccionar Leche entera' });
   fireEvent.click(suggestion);
   expect(screen.getByLabelText('Cantidad seleccionada de Leche entera')).toHaveTextContent('0');
@@ -43,7 +44,61 @@ it('uses the shared pending workflow from compact list autocomplete mode', async
   expect(within(pendingTray).getByText('x2')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /A.adir 1 producto/ }));
 
-  await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Leche entera', quantity: 2, unit: null }));
+  await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Leche entera', quantity: 2, unit: null, catalogProductId: 'prod-milk' }));
+});
+
+it('turns free text into one list candidate and commits it without a catalog id', async () => {
+  const onAdd = vi.fn();
+  const fetchMock = vi.fn(() => Promise.reject(new Error('Catalog search must not run')));
+  vi.stubGlobal('fetch', fetchMock);
+  localStorage.setItem('nfcompra.product-picker-mode', 'list');
+
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} productEntryMode="quick" householdId="household-1" />);
+  const input = screen.getByLabelText('Producto');
+  expect(input).toHaveAttribute('placeholder', 'Escribe un producto...');
+  expect(screen.queryByRole('button', { name: 'Crear producto' })).not.toBeInTheDocument();
+  fireEvent.change(input, { target: { value: 'Tomate frito' } });
+
+  expect(await screen.findAllByRole('option')).toHaveLength(1);
+  const candidate = screen.getByRole('button', { name: 'Seleccionar Tomate frito' });
+  fireEvent.click(candidate);
+  fireEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad de Tomate frito' }));
+  fireEvent.click(screen.getByRole('button', { name: /A.adir Tomate frito x1/ }));
+  fireEvent.click(screen.getByRole('button', { name: /A.adir 1 producto/ }));
+
+  expect(onAdd).toHaveBeenCalledWith({ name: 'Tomate frito', quantity: 1, unit: null, catalogProductId: null });
+  expect(input).toHaveValue('');
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it('uses the same quick candidate and quantity flow in card view', async () => {
+  const onAdd = vi.fn();
+  vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Catalog search must not run'))));
+  localStorage.setItem('nfcompra.product-picker-mode', 'cards');
+
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} productEntryMode="quick" />);
+  fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'Pan para mañana' } });
+  expect(await screen.findAllByRole('article', { name: 'Pan para mañana' })).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad de Pan para mañana' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad de Pan para mañana' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Seleccionar Pan para mañana' }));
+  fireEvent.click(screen.getByRole('button', { name: /A.adir 1 producto/ }));
+
+  expect(onAdd).toHaveBeenCalledWith({ name: 'Pan para mañana', quantity: 2, unit: null, catalogProductId: null });
+});
+
+it('changes candidate generation immediately when the account mode changes', async () => {
+  stubCatalogSnapshot();
+  localStorage.setItem('nfcompra.product-picker-mode', 'list');
+  const { rerender } = render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={vi.fn()} productEntryMode="quick" />);
+
+  fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'lech' } });
+  expect(await screen.findByRole('button', { name: 'Seleccionar lech' })).toBeInTheDocument();
+
+  rerender(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={vi.fn()} productEntryMode="catalog" />);
+
+  expect(await screen.findByRole('button', { name: 'Seleccionar Leche entera' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Seleccionar lech' })).not.toBeInTheDocument();
 });
 
 it('creates a catalog product from compact list mode and keeps it ready to queue', async () => {
@@ -71,7 +126,7 @@ it('creates a catalog product from compact list mode and keeps it ready to queue
   fireEvent.click(screen.getByRole('button', { name: 'Aumentar cantidad de Agua mineral' }));
   fireEvent.click(await screen.findByRole('button', { name: /A.adir Agua mineral x1/ }));
   fireEvent.click(await screen.findByRole('button', { name: /A.adir 1 producto/ }));
-  await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Agua mineral', quantity: 1, unit: null }));
+  await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Agua mineral', quantity: 1, unit: null, catalogProductId: 'prod-water' }));
 });
 
 it('creates a catalog product from card mode and queues it in the pending tray', async () => {
@@ -91,7 +146,7 @@ it('creates a catalog product from card mode and queues it in the pending tray',
   expect(within(pendingTray).getByText('x1')).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: /A.adir 1 producto/ }));
-  await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Agua mineral', quantity: 1, unit: null }));
+  await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Agua mineral', quantity: 1, unit: null, catalogProductId: 'prod-water' }));
 });
 
 it('places the mobile quick product button in the shopping list header', async () => {
@@ -114,7 +169,7 @@ it('shows list suggestions with the favorite action integrated before the produc
   render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={vi.fn()} />);
   fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'lech' } });
 
-  const row = await screen.findByRole('option');
+  const row = (await screen.findAllByRole('option')).find((option) => within(option).queryByText('Leche entera'))!;
   const rowButtons = within(row).getAllByRole('button');
 
   expect(rowButtons[0]).toHaveAccessibleName('Añadir Leche entera de favoritos');
@@ -177,7 +232,7 @@ it('adds product cards to a removable waitlist before committing them to pending
   fireEvent.click(reopenedCard);
   fireEvent.click(screen.getByRole('button', { name: 'Añadir 1 producto' }));
 
-  await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Atun claro al natural Hacendado', quantity: 1, unit: null }));
+  await waitFor(() => expect(onAdd).toHaveBeenCalledWith({ name: 'Atun claro al natural Hacendado', quantity: 1, unit: null, catalogProductId: 'prod-tuna' }));
 });
 
 it('blurs the product field when scrolling search results', async () => {
@@ -210,6 +265,22 @@ it('uses final web speech recognition text as product search without adding dire
   expect(screen.getByLabelText('Producto')).toHaveValue('Leche entera');
   expect(await screen.findByRole('button', { name: 'Seleccionar Leche entera' })).toBeInTheDocument();
   expect(onAdd).not.toHaveBeenCalled();
+});
+
+it('routes dictated text through quick entry without catalog search or automatic add', async () => {
+  const onAdd = vi.fn();
+  const speech = stubSpeechRecognition();
+  const fetchMock = vi.fn(() => Promise.reject(new Error('Catalog search must not run')));
+  vi.stubGlobal('fetch', fetchMock);
+
+  render(<ShoppingListScreen title="Compra" items={[]} isOffline={false} onAdd={onAdd} productEntryMode="quick" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Buscar producto por voz' }));
+  act(() => speech.emitResult('Huevos camperos'));
+
+  expect(screen.getByLabelText('Producto')).toHaveValue('Huevos camperos');
+  expect(await screen.findAllByText('Huevos camperos')).toHaveLength(1);
+  expect(onAdd).not.toHaveBeenCalled();
+  expect(fetchMock).not.toHaveBeenCalled();
 });
 
 it('keeps the existing product search text when web speech recognition fails', async () => {
@@ -314,7 +385,7 @@ function stubCatalogSnapshot(): void {
     if (url.includes('/product-catalog/snapshot')) {
       return Promise.resolve(Response.json({
         version: 'v1',
-        productCount: 3,
+        productCount: 4,
         products: [{
           id: 'prod-milk',
           name: 'Leche entera',
@@ -326,6 +397,17 @@ function stubCatalogSnapshot(): void {
           packageSize: '1 L',
           source: 'supermercados-espana',
           sourceProductId: 'milk-1',
+        }, {
+          id: 'prod-milk-lactose-free',
+          name: 'Leche sin lactosa',
+          normalizedName: 'leche sin lactosa',
+          categoryId: 'cat-dairy',
+          categoryName: 'Lacteos',
+          iconKey: 'milk',
+          brand: null,
+          packageSize: '1 L',
+          source: 'supermercados-espana',
+          sourceProductId: 'milk-2',
         }, {
           id: 'prod-tuna',
           name: 'Atun claro al natural Hacendado',

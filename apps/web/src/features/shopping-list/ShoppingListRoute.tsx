@@ -22,7 +22,7 @@ export function createWebQueryClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
 }
 
-export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, requestedListId, onNavigate }: { currentUserId?: string; requestedHouseholdId?: string | null; requestedListId?: string | null; onNavigate?(path: string): void }): JSX.Element {
+export function ShoppingListRoute({ currentUserId = '', productEntryMode = 'catalog', requestedHouseholdId, requestedListId, onNavigate }: { currentUserId?: string; productEntryMode?: 'catalog' | 'quick'; requestedHouseholdId?: string | null; requestedListId?: string | null; onNavigate?(path: string): void }): JSX.Element {
   const queryClient = useQueryClient();
   const [householdId, setHouseholdId] = useState<string | undefined>(() => requestedHouseholdId ?? new URL(window.location.href).searchParams.get('household') ?? undefined);
   const [listId, setListId] = useState<string | undefined>(() => requestedListId ?? new URL(window.location.href).searchParams.get('list') ?? undefined);
@@ -163,8 +163,8 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
     onSuccess: (item, _variables, context) => { settleUpdate(context, item); invalidateNotifications(); },
   });
 
-  const createItemMutation = useMutation<ApiShoppingItem, Error, { listId: string; name: string; quantity: number; unit: string | null }, CreateContext>({
-    mutationFn: ({ listId: targetListId, name, quantity, unit }) => createItem(targetListId, { name, quantity, unit, operationId: operationId() }),
+  const createItemMutation = useMutation<ApiShoppingItem, Error, { listId: string; name: string; quantity: number; unit: string | null; catalogProductId?: string | null }, CreateContext>({
+    mutationFn: ({ listId: targetListId, name, quantity, unit, catalogProductId }) => createItem(targetListId, { name, quantity, unit, catalogProductId: catalogProductId ?? null, operationId: operationId() }),
     onMutate: async (variables) => {
       resetFeedback();
       await queryClient.cancelQueries({ queryKey: itemQueryKey(variables.listId) });
@@ -315,7 +315,7 @@ export function ShoppingListRoute({ currentUserId = '', requestedHouseholdId, re
     </section>
     {message ? <p role="alert">{message}</p> : null}
     {conflict ? <aside role="alert">El producto ha cambiado en el servidor: {conflict.current.name} (versión {conflict.current.version}). <button type="button" disabled={isOffline} onClick={() => { if (!isOffline) conflict.retry(); }}>Reintentar</button></aside> : null}
-    <ShoppingListScreen title={currentListTitle} items={(itemsQuery.data ?? []).map((item) => ({ ...item, unit: item.unit ?? undefined }))} isOffline={isOffline}
+    <ShoppingListScreen title={currentListTitle} items={(itemsQuery.data ?? []).map((item) => ({ ...item, unit: item.unit ?? undefined }))} isOffline={isOffline} productEntryMode={productEntryMode}
       householdId={householdId}
       mobileSimpleActions
       onAdd={(input) => { if (!isOffline) createItemMutation.mutate({ listId, ...input }); }}
@@ -335,9 +335,9 @@ function NewListForm({ disabled, onCreate }: { disabled: boolean; onCreate(name:
 
 function operationId(): string { return crypto.randomUUID(); }
 function offlineSource(userId: string, listId: string): string { return `${userId}:${listId}`; }
-function optimisticItem({ listId, name, quantity, unit }: { listId: string; name: string; quantity: number; unit: string | null }): ApiShoppingItem {
+function optimisticItem({ listId, name, quantity, unit, catalogProductId }: { listId: string; name: string; quantity: number; unit: string | null; catalogProductId?: string | null }): ApiShoppingItem {
   const now = new Date().toISOString();
-  return { id: `optimistic-${operationId()}`, listId, name, normalizedName: name.toLocaleLowerCase(), quantity, unit, category: null, note: null, isChecked: false, position: 0, version: 1, createdBy: '', updatedBy: '', createdAt: now, updatedAt: now };
+  return { id: `optimistic-${operationId()}`, listId, name, normalizedName: name.toLocaleLowerCase(), quantity, unit, category: null, note: null, isChecked: false, position: 0, version: 1, createdBy: '', updatedBy: '', createdAt: now, updatedAt: now, catalogProductId: catalogProductId ?? null };
 }
 function isShoppingItem(value: unknown): value is ApiShoppingItem {
   return typeof value === 'object' && value !== null && typeof (value as { id?: unknown }).id === 'string' && typeof (value as { version?: unknown }).version === 'number';

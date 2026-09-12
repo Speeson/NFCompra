@@ -2939,6 +2939,14 @@ h2 { font-size: 1rem; }
 .settings-row__copy strong { font-size: 1rem; overflow-wrap: anywhere; }
 .settings-row__copy small { color: var(--color-muted); font-size: .82rem; font-weight: 700; line-height: 1.35; }
 .settings-row__control { flex: 0 0 auto; }
+.settings-row__note {
+  margin: 0;
+  padding: 0 var(--space-6) var(--space-5);
+  color: var(--color-muted);
+  font-size: .82rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
 
 .settings-segmented {
   display: inline-grid;

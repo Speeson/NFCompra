@@ -46,7 +46,7 @@ beforeEach(async () => {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_invitations_active_household_email ON invitations(household_id, invited_email) WHERE status = 'pending';
     CREATE TABLE IF NOT EXISTS shopping_lists (id TEXT PRIMARY KEY, household_id TEXT NOT NULL, name TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0, version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_shopping_lists_one_default_per_household ON shopping_lists(household_id) WHERE is_default = 1;
-    CREATE TABLE IF NOT EXISTS shopping_items (id TEXT PRIMARY KEY, list_id TEXT NOT NULL, name TEXT NOT NULL, normalized_name TEXT NOT NULL, quantity REAL NOT NULL DEFAULT 1, unit TEXT NULL, category TEXT NULL, note TEXT NULL, is_checked INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL DEFAULT 0, version INTEGER NOT NULL DEFAULT 1, created_by TEXT NOT NULL, updated_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS shopping_items (id TEXT PRIMARY KEY, list_id TEXT NOT NULL, name TEXT NOT NULL, normalized_name TEXT NOT NULL, quantity REAL NOT NULL DEFAULT 1, unit TEXT NULL, category TEXT NULL, note TEXT NULL, is_checked INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL DEFAULT 0, version INTEGER NOT NULL DEFAULT 1, created_by TEXT NOT NULL, updated_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, catalog_product_id TEXT NULL);
     CREATE TABLE IF NOT EXISTS product_categories (id TEXT PRIMARY KEY, name TEXT NOT NULL, normalized_name TEXT NOT NULL, parent_id TEXT NULL, icon_key TEXT NOT NULL DEFAULT 'shopping-basket', source TEXT NULL, source_category_id TEXT NULL, scope TEXT NOT NULL DEFAULT 'system' CHECK(scope IN ('system', 'household')), household_id TEXT NULL, created_by TEXT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS product_catalog (id TEXT PRIMARY KEY, name TEXT NOT NULL, normalized_name TEXT NOT NULL, category_id TEXT NULL, icon_key TEXT NOT NULL DEFAULT 'shopping-basket', brand TEXT NULL, package_size TEXT NULL, source TEXT NULL, source_product_id TEXT NULL, scope TEXT NOT NULL DEFAULT 'system' CHECK(scope IN ('system', 'household')), household_id TEXT NULL, created_by TEXT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS user_product_favorites (user_id TEXT NOT NULL, product_id TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (user_id, product_id));
@@ -401,6 +401,39 @@ it('purges only checked items from a list', async () => {
 
   const itemsResponse = await dispatch(`/v1/lists/${list.id}/items`, undefined, authorization, 'GET');
   expect(await itemsResponse.json()).toMatchObject({ items: [{ name: 'Arroz', isChecked: false }] });
+});
+
+it('creates free-text items with no catalog record or catalog association', async () => {
+  const authorization = await authorizationFor('Ana');
+  const { list } = await createHouseholdWithList(authorization);
+  const catalogCount = await env.DB.prepare('SELECT COUNT(*) AS count FROM product_catalog').first<{ count: number }>();
+
+  const response = await dispatch(`/v1/lists/${list.id}/items`, {
+    name: 'Tomate frito', quantity: 3, catalogProductId: null, operationId: crypto.randomUUID(),
+  }, authorization);
+
+  expect(response.status).toBe(201);
+  expect(await response.json()).toMatchObject({ item: { name: 'Tomate frito', quantity: 3, catalogProductId: null } });
+  expect(await env.DB.prepare('SELECT catalog_product_id FROM shopping_items WHERE name = ?').bind('Tomate frito').first()).toEqual({ catalog_product_id: null });
+  expect(await env.DB.prepare('SELECT COUNT(*) AS count FROM product_catalog').first()).toEqual(catalogCount);
+});
+
+it('keeps a real catalog association when creating an item from catalog mode', async () => {
+  const authorization = await authorizationFor('Ana');
+  const { list } = await createHouseholdWithList(authorization);
+  const now = new Date().toISOString();
+  await env.DB.prepare(`
+    INSERT INTO product_catalog (id, name, normalized_name, icon_key, scope, is_active, created_at, updated_at)
+    VALUES ('catalog-milk', 'Leche', 'leche', 'milk', 'system', 1, ?, ?)
+  `).bind(now, now).run();
+
+  const response = await dispatch(`/v1/lists/${list.id}/items`, {
+    name: 'Leche', catalogProductId: 'catalog-milk', operationId: crypto.randomUUID(),
+  }, authorization);
+
+  expect(response.status).toBe(201);
+  expect(await response.json()).toMatchObject({ item: { name: 'Leche', catalogProductId: 'catalog-milk' } });
+  expect(await env.DB.prepare('SELECT catalog_product_id FROM shopping_items WHERE name = ?').bind('Leche').first()).toEqual({ catalog_product_id: 'catalog-milk' });
 });
 
 it('renames and deletes lists with idempotent list operations', async () => {

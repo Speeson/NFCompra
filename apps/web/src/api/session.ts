@@ -9,6 +9,7 @@ export interface User {
   username: string | null;
   email: string;
   role?: string;
+  productEntryMode?: 'catalog' | 'quick';
   emailVerifiedAt: string | null;
   createdAt: string;
   updatedAt: string;

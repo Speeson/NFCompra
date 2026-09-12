@@ -2,7 +2,7 @@ import type { Env } from '../env';
 import type { AuthUser } from '../middleware/auth';
 import { isHouseholdMember } from '../households/repository';
 import { errorResponse } from '../shared/http';
-import { claimOperation, completeMissingItemOperation, completeOperation, createShoppingItem, createShoppingList, deleteCheckedShoppingItems, deleteShoppingItem, deleteShoppingList, findShoppingItem, findShoppingList, isListMember, listShoppingItems, listShoppingLists, replayOperation, updateShoppingItem, updateShoppingList, type ItemPatch } from './repository';
+import { claimOperation, completeMissingItemOperation, completeOperation, createShoppingItem, createShoppingList, deleteCheckedShoppingItems, deleteShoppingItem, deleteShoppingList, findShoppingItem, findShoppingList, isCatalogProductAvailableForList, isListMember, listShoppingItems, listShoppingLists, replayOperation, updateShoppingItem, updateShoppingList, type ItemPatch } from './repository';
 import { boundedText, jsonObject, normalizedName, operationId, optionalBoundedText } from './validation';
 
 const householdListsPattern = /^\/v1\/households\/([^/]+)\/lists$/;
@@ -181,14 +181,19 @@ async function handleItemsRoute(request: Request, env: Env, user: AuthUser, list
   const unit = optionalBoundedText(body?.unit, 50);
   const category = optionalBoundedText(body?.category, 100);
   const note = optionalBoundedText(body?.note, 500);
+  const catalogProductId = optionalBoundedText(body?.catalogProductId, 100);
   const position = body?.position === undefined ? 0 : body.position;
   const op = operationId(body?.operationId);
+  if (catalogProductId === undefined) return errorResponse('VALIDATION_ERROR', 'La solicitud no es válida.', 422);
+  if (catalogProductId && !(await isCatalogProductAvailableForList(env, listId, catalogProductId))) {
+    return errorResponse('CATALOG_PRODUCT_NOT_AVAILABLE', 'El producto de catálogo no está disponible para esta lista.', 422);
+  }
   if (!name || typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0 || unit === undefined || category === undefined || note === undefined || typeof position !== 'number' || !Number.isInteger(position) || !op) return errorResponse('VALIDATION_ERROR', 'La solicitud no es válida.', 422);
   const claimed = await claimOperation(env, op, user.id);
   const replay = operationResponse(claimed);
   if (replay) return replay;
   if (claimed.state !== 'claimed') return errorResponse('OPERATION_LOST', 'La operación ya no tiene un lease válido.', 409);
-  const item = await createShoppingItem(env, { listId, name, normalizedName: normalizedName(name), quantity, unit, category, note, isChecked: false, position, createdBy: user.id, updatedBy: user.id }, claimed.leaseToken);
+  const item = await createShoppingItem(env, { listId, name, normalizedName: normalizedName(name), quantity, unit, category, note, isChecked: false, position, createdBy: user.id, updatedBy: user.id, catalogProductId }, claimed.leaseToken);
   if (!item) return errorResponse('OPERATION_LOST', 'La operación ya no tiene un lease válido.', 409);
   const responseBody = JSON.stringify({ item });
   if (!(await completeOperation(env, op, user.id, claimed.leaseToken, 201, responseBody))) return errorResponse('OPERATION_LOST', 'La operación ya no tiene un lease válido.', 409);

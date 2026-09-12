@@ -479,6 +479,7 @@ fun ShoppingListApp(
             onThemePreferenceChange = onThemePreferenceChange,
             productResultsViewPreference = productResultsViewPreference,
             onProductResultsViewPreferenceChange = onProductResultsViewPreferenceChange,
+            onUpdateProductEntryMode = viewModel::updateProductEntryMode,
         )
     }
 }
@@ -522,6 +523,7 @@ internal fun ShoppingListContent(
     onThemePreferenceChange: (ThemePreference) -> Unit = {},
     productResultsViewPreference: ProductResultsViewPreference = ProductResultsViewPreference.Default,
     onProductResultsViewPreferenceChange: (ProductResultsViewPreference) -> Unit = {},
+    onUpdateProductEntryMode: suspend (ProductEntryMode) -> ProfileUiModel? = { null },
 ) {
     var selectedTab by remember { mutableStateOf(DashboardTab.Home) }
     var creatingHousehold by remember { mutableStateOf(false) }
@@ -732,6 +734,7 @@ internal fun ShoppingListContent(
                             canCreateProduct = data.selectedHouseholdId != null,
                             readOnly = openedListMode == ListOpenMode.View,
                             cardMode = cardMode,
+                            productEntryMode = data.profile?.productEntryMode ?: ProductEntryMode.Catalog,
                             onDelete = { deletingList = true },
                         )
                     } else {
@@ -816,6 +819,7 @@ internal fun ShoppingListContent(
                                 onThemePreferenceChange = onThemePreferenceChange,
                                 productResultsViewPreference = productResultsViewPreference,
                                 onProductResultsViewPreferenceChange = onProductResultsViewPreferenceChange,
+                                onUpdateProductEntryMode = onUpdateProductEntryMode,
                             )
                         }
                     }
@@ -2758,6 +2762,7 @@ private fun ProfilePanel(
     profile: ProfileUiModel?,
     displayName: String,
     onUpdateProfile: suspend (String?, String?, String?) -> ProfileUiModel?,
+    onUpdateProductEntryMode: suspend (ProductEntryMode) -> ProfileUiModel?,
     onChangePassword: suspend (String, String) -> Boolean,
     onDeleteAccount: suspend (String) -> Boolean,
     onRefreshProfile: () -> Unit,
@@ -2851,6 +2856,8 @@ private fun ProfilePanel(
                 onThemePreferenceChange = onThemePreferenceChange,
                 productResultsViewPreference = productResultsViewPreference,
                 onProductResultsViewPreferenceChange = onProductResultsViewPreferenceChange,
+                productEntryMode = profile?.productEntryMode ?: ProductEntryMode.Catalog,
+                onProductEntryModeChange = { mode -> scope.launch { onUpdateProductEntryMode(mode) } },
                 onDeleteAccount = { deletingAccount = true },
             )
         }
@@ -3207,6 +3214,8 @@ private fun SettingsInlineContent(
     onThemePreferenceChange: (ThemePreference) -> Unit = {},
     productResultsViewPreference: ProductResultsViewPreference = ProductResultsViewPreference.Default,
     onProductResultsViewPreferenceChange: (ProductResultsViewPreference) -> Unit = {},
+    productEntryMode: ProductEntryMode = ProductEntryMode.Catalog,
+    onProductEntryModeChange: (ProductEntryMode) -> Unit = {},
     onDeleteAccount: () -> Unit = {},
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -3256,6 +3265,26 @@ private fun SettingsInlineContent(
         }
 
         SettingsSubsection("Preferencias de compra") {
+            Text("Modo de entrada", color = WebText, fontWeight = FontWeight.Bold)
+            SegmentedPreferenceSelector(
+                options = listOf(
+                    SelectorOption(ProductEntryMode.Catalog, "Catálogo"),
+                    SelectorOption(ProductEntryMode.Quick, "Entrada rápida"),
+                ),
+                selected = productEntryMode,
+                onSelected = onProductEntryModeChange,
+            )
+            Text(
+                if (productEntryMode == ProductEntryMode.Catalog) "Busca productos existentes y muestra sugerencias mientras escribes."
+                else "Escribe o dicta cualquier producto para elegir la cantidad y añadirlo.",
+                color = WebMuted,
+                fontSize = 12.sp,
+            )
+            Text(
+                "Los productos añadidos mediante Entrada rápida solo se guardan en la lista y no se incorporan al catálogo.",
+                color = WebMuted,
+                fontSize = 12.sp,
+            )
             Text("Vista predeterminada de productos", color = WebText, fontWeight = FontWeight.Bold)
             Text(
                 "Elige c\u00f3mo quieres ver los resultados al abrir una lista.",
@@ -4377,10 +4406,11 @@ fun ShoppingListScreen(
     canCreateProduct: Boolean = true,
     readOnly: Boolean = false,
     cardMode: Boolean = true,
+    productEntryMode: ProductEntryMode = ProductEntryMode.Catalog,
     onDelete: () -> Unit = {},
 ) {
     var addName by remember { mutableStateOf("") }
-    var suggestions by remember { mutableStateOf(emptyList<ProductCatalogUiModel>()) }
+    var suggestions by remember { mutableStateOf(emptyList<ProductEntryCandidate>()) }
     var isProductSearchOpen by remember { mutableStateOf(false) }
     var cardQuantities by remember { mutableStateOf(emptyMap<String, Int>()) }
     var activeListProductId by remember { mutableStateOf<String?>(null) }
@@ -4395,20 +4425,21 @@ fun ShoppingListScreen(
             isProductSearchOpen = true
         },
     )
-    fun queueProduct(suggestion: ProductCatalogUiModel) {
-        val selectedQuantity = cardQuantities[suggestion.id] ?: 0
+    fun queueProduct(suggestion: ProductEntryCandidate) {
+        val selectedQuantity = cardQuantities[suggestion.key] ?: 0
         if (selectedQuantity <= 0) return
         val pending = PendingProductUiModel(
-            catalogProductId = suggestion.id,
+            key = suggestion.key,
+            catalogProductId = suggestion.catalogProductId,
             name = suggestion.name,
             quantity = selectedQuantity,
             categoryName = suggestion.categoryName,
             packageSize = suggestion.packageSize,
-            icon = productIcon(suggestion),
+            icon = suggestion.catalogProduct?.let(::productIcon) ?: productIconFromText(suggestion.name.normalizedUiSearch()),
         )
         waitlist = waitlist.upsert(pending)
-        recentlyAddedId = suggestion.id
-        cardQuantities = cardQuantities + (suggestion.id to 0)
+        recentlyAddedId = suggestion.key
+        cardQuantities = cardQuantities + (suggestion.key to 0)
         activeListProductId = null
         suggestions = emptyList()
         addName = ""
@@ -4416,34 +4447,43 @@ fun ShoppingListScreen(
     }
     suspend fun refreshSuggestions(query: String = addName, mode: Boolean = cardMode, createdProduct: ProductCatalogUiModel? = null) {
         val search = query.trim()
-        if (state.isOffline || search.length < 2) {
+        if (state.isOffline && productEntryMode == ProductEntryMode.Catalog) {
             suggestions = emptyList()
             return
         }
-        val loaded = onSearchProducts(search, if (mode) 12 else 8)
+        if (productEntryMode == ProductEntryMode.Quick) {
+            suggestions = productEntryCandidates(productEntryMode, search, emptyList())
+            return
+        }
+        if (search.length < 2) {
+            suggestions = emptyList()
+            return
+        }
+        val loaded = productEntryCandidates(productEntryMode, search, onSearchProducts(search, if (mode) 12 else 8))
         suggestions = if (createdProduct != null && createdProduct.matchesSearch(search)) {
-            (listOf(createdProduct) + loaded).distinctBy { it.id }
+            (listOf(ProductEntryCandidate.catalog(createdProduct)) + loaded).distinctBy { it.key }
         } else {
             loaded
         }
     }
-    val toggleFavorite: (ProductCatalogUiModel) -> Unit = { product ->
+    val toggleFavorite: (ProductEntryCandidate) -> Unit = toggleFavorite@{ product ->
+        val catalogProduct = product.catalogProduct ?: return@toggleFavorite
         val nextFavorite = !product.isFavorite
-        suggestions = suggestions.map { if (it.id == product.id) it.copy(isFavorite = nextFavorite) else it }
+        suggestions = suggestions.map { if (it.key == product.key) it.copy(catalogProduct = catalogProduct.copy(isFavorite = nextFavorite)) else it }
         searchScope.launch {
-            val updated = onSetProductFavorite(product.id, nextFavorite)
+            val updated = onSetProductFavorite(catalogProduct.id, nextFavorite)
             if (updated != null) {
-                val visibleProduct = if (updated.name.isBlank()) product.copy(isFavorite = updated.isFavorite) else updated
-                suggestions = suggestions.map { if (it.id == visibleProduct.id) visibleProduct else it }
+                val visibleProduct = if (updated.name.isBlank()) catalogProduct.copy(isFavorite = updated.isFavorite) else updated
+                suggestions = suggestions.map { if (it.key == product.key) ProductEntryCandidate.catalog(visibleProduct) else it }
             } else {
-                suggestions = suggestions.map { if (it.id == product.id) product else it }
+                suggestions = suggestions.map { if (it.key == product.key) product else it }
             }
         }
     }
 
-    LaunchedEffect(addName, cardMode, state.isOffline) {
+    LaunchedEffect(addName, cardMode, productEntryMode, state.isOffline) {
         val search = addName.trim()
-        if (state.isOffline || search.length < 2) {
+        if (productEntryMode == ProductEntryMode.Catalog && (state.isOffline || search.length < 2)) {
             suggestions = emptyList()
             return@LaunchedEffect
         }
@@ -4479,7 +4519,8 @@ fun ShoppingListScreen(
                     },
                     onProductFocus = { isProductSearchOpen = true },
                     onVoiceSearch = voiceSearch.start,
-                    canCreateProduct = canCreateProduct,
+                    canCreateProduct = canCreateProduct && productEntryMode == ProductEntryMode.Catalog,
+                    placeholder = if (productEntryMode == ProductEntryMode.Quick) "Escribe un producto..." else "Buscar producto...",
                     onCreateProduct = { createProductDialogOpen = true },
                 )
             }
@@ -4495,8 +4536,8 @@ fun ShoppingListScreen(
                         cardQuantities = cardQuantities + (productId to ((cardQuantities[productId] ?: 0) + delta).coerceAtLeast(0))
                     },
                     onSelect = { suggestion ->
-                        if (activeListProductId != suggestion.id) {
-                            activeListProductId = suggestion.id
+                        if (activeListProductId != suggestion.key) {
+                            activeListProductId = suggestion.key
                         } else {
                             queueProduct(suggestion)
                         }
@@ -4522,10 +4563,10 @@ fun ShoppingListScreen(
             item {
                 PendingProductWaitlist(
                     products = waitlist,
-                    onRemove = { productId -> waitlist = waitlist.filterNot { it.catalogProductId == productId } },
+                    onRemove = { productId -> waitlist = waitlist.filterNot { it.key == productId } },
                     onCommit = {
                         waitlist.forEach { product ->
-                            onAction(ShoppingListAction.AddItem(product.name, product.quantity.toDouble()))
+                            onAction(ShoppingListAction.AddItem(product.name, product.quantity.toDouble(), product.catalogProductId))
                         }
                         waitlist = emptyList()
                         suggestions = emptyList()
@@ -4712,6 +4753,7 @@ private fun ShoppingListWebHeader(
     onProductFocus: () -> Unit,
     onVoiceSearch: () -> Unit,
     canCreateProduct: Boolean,
+    placeholder: String,
     onCreateProduct: () -> Unit,
 ) {
     Card(colors = CardDefaults.cardColors(containerColor = WebSurface)) {
@@ -4721,7 +4763,7 @@ private fun ShoppingListWebHeader(
             }
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 CompactInputBlock(label = "Producto", modifier = Modifier.weight(1f)) {
-                    CompactProductField(productName, onProductNameChange, Modifier.fillMaxWidth(), onFocus = onProductFocus)
+                    CompactProductField(productName, onProductNameChange, Modifier.fillMaxWidth().semantics { contentDescription = "Producto" }, placeholder = placeholder, onFocus = onProductFocus)
                 }
                 SquareHeaderButton(
                     contentDescription = if (voiceSearchListening) "Escuchando" else "Buscar producto por voz",
@@ -4822,12 +4864,13 @@ private fun CompactInputBlock(label: String, modifier: Modifier = Modifier, cont
 }
 
 @Composable
-private fun CompactProductField(value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier, onFocus: () -> Unit = {}) {
+private fun CompactProductField(value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier, placeholder: String? = null, onFocus: () -> Unit = {}) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier.height(ProductEntryControlHeight).onFocusChanged { if (it.isFocused) onFocus() },
         singleLine = true,
+        placeholder = placeholder?.let { { Text(it) } },
         textStyle = TextStyle(fontSize = 16.sp, lineHeight = 20.sp),
         shape = MaterialTheme.shapes.medium,
         colors = OutlinedTextFieldDefaults.colors(
@@ -4880,8 +4923,39 @@ private fun QuantityStepper(
     }
 }
 
+internal data class ProductEntryCandidate(
+    val key: String,
+    val catalogProductId: String?,
+    val name: String,
+    val categoryName: String?,
+    val packageSize: String?,
+    val catalogProduct: ProductCatalogUiModel?,
+) {
+    val scope: String? get() = catalogProduct?.scope
+    val isFavorite: Boolean get() = catalogProduct?.isFavorite == true
+
+    companion object {
+        fun catalog(product: ProductCatalogUiModel) = ProductEntryCandidate(product.id, product.id, product.name, product.categoryName, product.packageSize, product)
+        fun quick(name: String) = ProductEntryCandidate("quick:$name", null, name, null, null, null)
+    }
+}
+
+internal fun productEntryCandidates(
+    mode: ProductEntryMode,
+    text: String,
+    catalogProducts: List<ProductCatalogUiModel>,
+): List<ProductEntryCandidate> {
+    val name = text.trim()
+    return if (mode == ProductEntryMode.Quick) {
+        if (name.isBlank()) emptyList() else listOf(ProductEntryCandidate.quick(name))
+    } else {
+        catalogProducts.map(ProductEntryCandidate::catalog)
+    }
+}
+
 private data class PendingProductUiModel(
-    val catalogProductId: String,
+    val key: String,
+    val catalogProductId: String?,
     val name: String,
     val quantity: Int,
     val categoryName: String?,
@@ -4890,21 +4964,21 @@ private data class PendingProductUiModel(
 )
 
 private fun List<PendingProductUiModel>.upsert(product: PendingProductUiModel): List<PendingProductUiModel> {
-    val existing = firstOrNull { it.catalogProductId == product.catalogProductId }
+    val existing = firstOrNull { it.key == product.key }
     if (existing == null) return this + product
     return map {
-        if (it.catalogProductId == product.catalogProductId) it.copy(quantity = it.quantity + product.quantity) else it
+        if (it.key == product.key) it.copy(quantity = it.quantity + product.quantity) else it
     }
 }
 
 @Composable
 private fun ProductSuggestionDropdown(
-    suggestions: List<ProductCatalogUiModel>,
+    suggestions: List<ProductEntryCandidate>,
     quantities: Map<String, Int>,
     activeProductId: String?,
-    onToggleFavorite: (ProductCatalogUiModel) -> Unit,
+    onToggleFavorite: (ProductEntryCandidate) -> Unit,
     onQuantityChange: (String, Int) -> Unit,
-    onSelect: (ProductCatalogUiModel) -> Unit,
+    onSelect: (ProductEntryCandidate) -> Unit,
 ) {
     val keyboardDismissScroll = keyboardDismissNestedScroll()
     LazyColumn(
@@ -4918,9 +4992,9 @@ private fun ProductSuggestionDropdown(
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        items(suggestions, key = { it.id }) { suggestion ->
-            val active = activeProductId == suggestion.id
-            val quantity = quantities[suggestion.id] ?: 0
+        items(suggestions, key = { it.key }) { suggestion ->
+            val active = activeProductId == suggestion.key
+            val quantity = quantities[suggestion.key] ?: 0
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -4937,7 +5011,7 @@ private fun ProductSuggestionDropdown(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                if (!active) {
+                if (!active && suggestion.catalogProduct != null) {
                     CompactFavoriteButton(
                         favorite = suggestion.isFavorite,
                         onClick = { onToggleFavorite(suggestion) },
@@ -4950,8 +5024,8 @@ private fun ProductSuggestionDropdown(
                 if (active) {
                     QuantityStepper(
                         quantity = quantity,
-                        onDecrease = { onQuantityChange(suggestion.id, -1) },
-                        onIncrease = { onQuantityChange(suggestion.id, 1) },
+                        onDecrease = { onQuantityChange(suggestion.key, -1) },
+                        onIncrease = { onQuantityChange(suggestion.key, 1) },
                         modifier = Modifier.width(132.dp).height(42.dp),
                     )
                 }
@@ -4962,12 +5036,12 @@ private fun ProductSuggestionDropdown(
 
 @Composable
 private fun ProductCardResults(
-    suggestions: List<ProductCatalogUiModel>,
+    suggestions: List<ProductEntryCandidate>,
     quantities: Map<String, Int>,
     recentlyAddedId: String?,
-    onToggleFavorite: (ProductCatalogUiModel) -> Unit,
+    onToggleFavorite: (ProductEntryCandidate) -> Unit,
     onQuantityChange: (String, Int) -> Unit,
-    onSelect: (ProductCatalogUiModel) -> Unit,
+    onSelect: (ProductEntryCandidate) -> Unit,
 ) {
     val keyboardDismissScroll = keyboardDismissNestedScroll()
     LazyColumn(
@@ -4982,10 +5056,10 @@ private fun ProductCardResults(
                 rowProducts.forEach { suggestion ->
                     ProductResultCard(
                         suggestion = suggestion,
-                        quantity = quantities[suggestion.id] ?: 0,
-                        recentlyAdded = recentlyAddedId == suggestion.id,
+                        quantity = quantities[suggestion.key] ?: 0,
+                        recentlyAdded = recentlyAddedId == suggestion.key,
                         onToggleFavorite = { onToggleFavorite(suggestion) },
-                        onQuantityChange = { delta -> onQuantityChange(suggestion.id, delta) },
+                        onQuantityChange = { delta -> onQuantityChange(suggestion.key, delta) },
                         onSelect = { onSelect(suggestion) },
                         modifier = Modifier.weight(1f),
                     )
@@ -5100,7 +5174,7 @@ private fun CatalogMiniActionButton(
 
 @Composable
 private fun ProductResultCard(
-    suggestion: ProductCatalogUiModel,
+    suggestion: ProductEntryCandidate,
     quantity: Int,
     recentlyAdded: Boolean,
     onToggleFavorite: () -> Unit,
@@ -5167,7 +5241,7 @@ private fun ProductResultCard(
                 ) {
                     Text("Añadir", maxLines = 1)
                 }
-                CompactFavoriteButton(
+                if (suggestion.catalogProduct != null) CompactFavoriteButton(
                     favorite = suggestion.isFavorite,
                     onClick = onToggleFavorite,
                 )
@@ -5198,16 +5272,16 @@ private fun PendingProductWaitlist(
             }
         }
         products.forEach { product ->
-            var dragAmount by remember(product.catalogProductId) { mutableStateOf(0f) }
+            var dragAmount by remember(product.key) { mutableStateOf(0f) }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(MaterialTheme.shapes.medium)
                     .background(Color(0xFFF8FCF9))
-                    .pointerInput(product.catalogProductId) {
+                    .pointerInput(product.key) {
                         detectHorizontalDragGestures(
                             onDragEnd = {
-                                if (dragAmount < -70f) onRemove(product.catalogProductId)
+                                if (dragAmount < -70f) onRemove(product.key)
                                 dragAmount = 0f
                             },
                         ) { _, dragDelta -> dragAmount += dragDelta }
@@ -5226,7 +5300,7 @@ private fun PendingProductWaitlist(
                     contentDescription = "Quitar ${product.name} de pendientes de añadir",
                     background = Color(0xFFFFECE8),
                     contentColor = Color(0xFFB42318),
-                    onClick = { onRemove(product.catalogProductId) },
+                    onClick = { onRemove(product.key) },
                 ) {
                     Icon(Icons.Outlined.Close, contentDescription = null, modifier = Modifier.size(18.dp))
                 }
@@ -5248,6 +5322,9 @@ private fun ProductCatalogUiModel.matchesSearch(search: String): Boolean {
         name.contains(query) ||
         categoryName.orEmpty().normalizedUiSearch().contains(query)
 }
+
+private fun ProductEntryCandidate.metaLabel(): String =
+    listOfNotNull(categoryName, packageSize).filter { it.isNotBlank() }.joinToString(" · ")
 
 private fun PendingProductUiModel.metaLabel(): String =
     listOfNotNull(categoryName, packageSize).filter { it.isNotBlank() }.joinToString(" · ")

@@ -73,15 +73,16 @@ export interface ShoppingItem {
   updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
+  catalogProductId: string | null;
 }
 
 interface ShoppingItemRow {
   id: string; list_id: string; name: string; normalized_name: string; quantity: number; unit: string | null; category: string | null; note: string | null;
-  is_checked: number; position: number; version: number; created_by: string | null; updated_by: string | null; created_at: string; updated_at: string;
+  is_checked: number; position: number; version: number; created_by: string | null; updated_by: string | null; created_at: string; updated_at: string; catalog_product_id: string | null;
 }
 
 function mapItem(row: ShoppingItemRow): ShoppingItem {
-  return { id: row.id, listId: row.list_id, name: row.name, normalizedName: row.normalized_name, quantity: row.quantity, unit: row.unit, category: row.category, note: row.note, isChecked: row.is_checked === 1, position: row.position, version: row.version, createdBy: row.created_by, updatedBy: row.updated_by, createdAt: row.created_at, updatedAt: row.updated_at };
+  return { id: row.id, listId: row.list_id, name: row.name, normalizedName: row.normalized_name, quantity: row.quantity, unit: row.unit, category: row.category, note: row.note, isChecked: row.is_checked === 1, position: row.position, version: row.version, createdBy: row.created_by, updatedBy: row.updated_by, createdAt: row.created_at, updatedAt: row.updated_at, catalogProductId: row.catalog_product_id };
 }
 
 export async function isListMember(env: Env, listId: string, userId: string): Promise<boolean> {
@@ -89,6 +90,15 @@ export async function isListMember(env: Env, listId: string, userId: string): Pr
     SELECT 1 FROM shopping_lists INNER JOIN household_members ON household_members.household_id = shopping_lists.household_id
     WHERE shopping_lists.id = ? AND household_members.user_id = ?
   `).bind(listId, userId).first());
+}
+
+export async function isCatalogProductAvailableForList(env: Env, listId: string, productId: string): Promise<boolean> {
+  return !!(await env.DB.prepare(`
+    SELECT 1 FROM product_catalog
+    INNER JOIN shopping_lists ON shopping_lists.id = ?
+    WHERE product_catalog.id = ? AND product_catalog.is_active = 1
+      AND (product_catalog.scope = 'system' OR product_catalog.household_id = shopping_lists.household_id)
+  `).bind(listId, productId).first());
 }
 
 export async function listShoppingItems(env: Env, listId: string, normalizedSearch: string | null): Promise<ShoppingItem[]> {
@@ -147,10 +157,10 @@ export async function createShoppingItem(env: Env, input: Omit<ShoppingItem, 'id
   const now = new Date().toISOString();
   const item: ShoppingItem = { id, ...input, version: 1, createdAt: now, updatedAt: now };
   const result = await env.DB.prepare(`
-    INSERT INTO shopping_items (id, list_id, name, normalized_name, quantity, unit, category, note, is_checked, position, version, created_by, updated_by, created_at, updated_at)
-    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?
+    INSERT INTO shopping_items (id, list_id, name, normalized_name, quantity, unit, category, note, is_checked, position, version, created_by, updated_by, created_at, updated_at, catalog_product_id)
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?
     WHERE EXISTS (SELECT 1 FROM sync_operations WHERE lease_token = ? AND response_body IS NULL)
-  `).bind(item.id, item.listId, item.name, item.normalizedName, item.quantity, item.unit, item.category, item.note, item.isChecked ? 1 : 0, item.position, item.createdBy, item.updatedBy, now, now, leaseToken).run();
+  `).bind(item.id, item.listId, item.name, item.normalizedName, item.quantity, item.unit, item.category, item.note, item.isChecked ? 1 : 0, item.position, item.createdBy, item.updatedBy, now, now, item.catalogProductId, leaseToken).run();
   return result.meta.changes >= 1 ? item : null;
 }
 

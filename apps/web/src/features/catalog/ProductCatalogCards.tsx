@@ -12,6 +12,7 @@ export function ProductCatalogCard({
   onAdd,
   onFavoriteChange,
   onOpenActions,
+  showFavorite = true,
 }: {
   product: ProductCatalogItem;
   quantity?: number;
@@ -22,6 +23,7 @@ export function ProductCatalogCard({
   onAdd?(product: ProductCatalogItem): void;
   onFavoriteChange?(product: ProductCatalogItem, favorite: boolean): void;
   onOpenActions?(product: ProductCatalogItem): void;
+  showFavorite?: boolean;
 }): JSX.Element {
   const selectedQuantity = quantity ?? 0;
   const hasQuantity = Boolean(onQuantityChange);
@@ -48,14 +50,14 @@ export function ProductCatalogCard({
       </div>
       <div className="product-result-card__footer">
         <button type="button" className="product-result-card__add" aria-label={`Seleccionar ${product.name}`} disabled={!canAdd} onClick={() => onAdd?.(product)}>A&ntilde;adir</button>
-        <button
+        {showFavorite ? <button
           type="button"
           className={product.isFavorite ? 'product-favorite-button is-favorite' : 'product-favorite-button'}
           aria-label={`${product.isFavorite ? 'Quitar' : 'A\u00f1adir'} ${product.name} de favoritos`}
           aria-pressed={Boolean(product.isFavorite)}
           disabled={disabled}
           onClick={() => onFavoriteChange?.(product, !product.isFavorite)}
-        >{product.isFavorite ? '\u2605' : '\u2606'}</button>
+        >{product.isFavorite ? '\u2605' : '\u2606'}</button> : null}
       </div>
     </article>;
   }

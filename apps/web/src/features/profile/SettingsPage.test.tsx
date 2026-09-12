@@ -54,6 +54,18 @@ describe('SettingsPage', () => {
     expect(localStorage.getItem('nfcompra.product-picker-mode')).toBe('cards');
   });
 
+  it('actualiza el modo de entrada sincronizado con la cuenta', async () => {
+    const onProductEntryModeChange = vi.fn().mockResolvedValue(undefined);
+    renderSettings(vi.fn(), vi.fn(), 'catalog', onProductEntryModeChange);
+    const group = screen.getByRole('group', { name: 'Modo de entrada' });
+    expect(within(group).getByRole('button', { name: 'Catálogo' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(within(group).getByRole('button', { name: 'Entrada rápida' }));
+
+    await waitFor(() => expect(onProductEntryModeChange).toHaveBeenCalledWith('quick'));
+    expect(within(group).getByRole('button', { name: 'Entrada rápida' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(/solo se guardan en la lista/)).toBeVisible();
+  });
+
   it('sincroniza la vista de productos con el selector de la lista de compra', () => {
     localStorage.setItem('nfcompra.product-picker-mode', 'cards');
     renderSettings();
@@ -159,7 +171,7 @@ describe('SettingsPage', () => {
   });
 });
 
-function renderSettings(deleteAccount = vi.fn(), onNavigate = vi.fn()) {
+function renderSettings(deleteAccount = vi.fn(), onNavigate = vi.fn(), productEntryMode: 'catalog' | 'quick' = 'catalog', onProductEntryModeChange = vi.fn().mockResolvedValue(undefined)) {
   return render(
     <SessionContext.Provider value={{
       status: 'authenticated',
@@ -175,7 +187,7 @@ function renderSettings(deleteAccount = vi.fn(), onNavigate = vi.fn()) {
       logout: vi.fn(),
       deleteAccount,
     }}>
-      <SettingsPage onNavigate={onNavigate} onDeleteAccount={deleteAccount} />
+      <SettingsPage onNavigate={onNavigate} onDeleteAccount={deleteAccount} productEntryMode={productEntryMode} onProductEntryModeChange={onProductEntryModeChange} />
     </SessionContext.Provider>,
   );
 }

@@ -5,6 +5,7 @@ export type ShoppingList = { id: string; householdId: string; name: string; isDe
 export type ApiShoppingItem = {
   id: string; listId: string; name: string; normalizedName: string; quantity: number; unit: string | null; category: string | null; note: string | null;
   isChecked: boolean; position: number; version: number; createdBy: string | null; updatedBy: string | null; createdAt: string; updatedAt: string;
+  catalogProductId?: string | null;
 };
 
 export const householdQueryKey = ['households'] as const;
@@ -51,7 +52,7 @@ export async function fetchItems(listId: string): Promise<ApiShoppingItem[]> {
   return (await apiClient.request<{ items: ApiShoppingItem[] }>(`/lists/${listId}/items`)).items;
 }
 
-export async function createItem(listId: string, input: { name: string; quantity: number; unit: string | null; operationId: string }): Promise<ApiShoppingItem> {
+export async function createItem(listId: string, input: { name: string; quantity: number; unit: string | null; catalogProductId: string | null; operationId: string }): Promise<ApiShoppingItem> {
   return (await apiClient.request<{ item: ApiShoppingItem }>(`/lists/${listId}/items`, { method: 'POST', body: input })).item;
 }
 

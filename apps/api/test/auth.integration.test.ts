@@ -28,7 +28,7 @@ const testEnv: WorkerEnv = { ...env, JWT_SECRET: 'test-jwt-secret', APP_BASE_URL
 
 beforeEach(async () => {
   await env.DB.exec(`
-    CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, first_name TEXT NULL, last_name TEXT NULL, birth_date TEXT NULL, username TEXT UNIQUE COLLATE NOCASE NULL, email TEXT NOT NULL UNIQUE COLLATE NOCASE, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'admin')), email_verified_at TEXT NULL, session_version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, first_name TEXT NULL, last_name TEXT NULL, birth_date TEXT NULL, username TEXT UNIQUE COLLATE NOCASE NULL, email TEXT NOT NULL UNIQUE COLLATE NOCASE, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'admin')), product_entry_mode TEXT NOT NULL DEFAULT 'catalog' CHECK(product_entry_mode IN ('catalog', 'quick')), email_verified_at TEXT NULL, session_version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS auth_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, type TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, otp_hash TEXT NULL UNIQUE, otp_attempts INTEGER NOT NULL DEFAULT 0, expires_at TEXT NOT NULL, used_at TEXT NULL, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS refresh_tokens (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, device_name TEXT NULL, session_version INTEGER NOT NULL DEFAULT 0, expires_at TEXT NOT NULL, revoked_at TEXT NULL, created_at TEXT NOT NULL);
     DELETE FROM refresh_tokens;
@@ -88,6 +88,21 @@ it('updates authenticated profile fields partially', async () => {
   const usernameResponse = await dispatch('/v1/me', { username: 'esteban.gp' }, { authorization: `Bearer ${accessToken}` }, 'PATCH');
   expect(usernameResponse.status).toBe(200);
   expect(await usernameResponse.json()).toMatchObject({ user: { username: 'esteban.gp', firstName: 'Esteban' } });
+});
+
+it('stores product entry mode per user and defaults accounts to catalog', async () => {
+  const firstEmail = `entry-first-${crypto.randomUUID()}@example.test`;
+  const secondEmail = `entry-second-${crypto.randomUUID()}@example.test`;
+  await registerAndVerify(firstEmail);
+  await registerAndVerify(secondEmail);
+  const firstHeaders = await authHeaders(firstEmail);
+  const secondHeaders = await authHeaders(secondEmail);
+
+  expect(await (await dispatch('/v1/me', undefined, firstHeaders, 'GET')).json()).toMatchObject({ user: { productEntryMode: 'catalog' } });
+  const updated = await dispatch('/v1/me', { productEntryMode: 'quick' }, firstHeaders, 'PATCH');
+  expect(updated.status).toBe(200);
+  expect(await updated.json()).toMatchObject({ user: { productEntryMode: 'quick' } });
+  expect(await (await dispatch('/v1/me', undefined, secondHeaders, 'GET')).json()).toMatchObject({ user: { productEntryMode: 'catalog' } });
 });
 
 it('rejects profile username conflicts and invalid input', async () => {

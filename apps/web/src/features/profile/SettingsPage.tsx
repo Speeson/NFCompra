@@ -6,13 +6,27 @@ import { clearPersistedActiveHouseholdId } from '../households/active-household'
 import { readProductView, readRememberHousehold, writeProductView, writeRememberHousehold, type ProductView } from '../preferences/preferences';
 import { AccountPageHeader } from './AccountPageHeader';
 
-export function SettingsPage({ onNavigate, onDeleteAccount }: { onNavigate(path: string): void; onDeleteAccount(currentPassword: string): Promise<void> }): JSX.Element {
+export function SettingsPage({ onNavigate, onDeleteAccount, productEntryMode = 'catalog', onProductEntryModeChange = async () => undefined }: { onNavigate(path: string): void; onDeleteAccount(currentPassword: string): Promise<void>; productEntryMode?: 'catalog' | 'quick'; onProductEntryModeChange?(mode: 'catalog' | 'quick'): Promise<void> }): JSX.Element {
   const [open, setOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [productView, setProductView] = useState<ProductView>(readProductView);
   const [rememberHousehold, setRememberHousehold] = useState<boolean>(readRememberHousehold);
+  const [entryMode, setEntryMode] = useState(productEntryMode);
+  const [entryModeError, setEntryModeError] = useState<string | null>(null);
+
+  async function changeEntryMode(mode: 'catalog' | 'quick'): Promise<void> {
+    const previous = entryMode;
+    setEntryMode(mode);
+    setEntryModeError(null);
+    try {
+      await onProductEntryModeChange(mode);
+    } catch {
+      setEntryMode(previous);
+      setEntryModeError('No se pudo guardar el modo de entrada.');
+    }
+  }
 
   function changeProductView(view: ProductView): void {
     setProductView(view);
@@ -47,6 +61,14 @@ export function SettingsPage({ onNavigate, onDeleteAccount }: { onNavigate(path:
     <AccountPageHeader title="Ajustes" subtitle="Preferencias y configuración" avatarLabel="A" onBack={() => onNavigate('/')} />
 
     <SettingsSection title="Preferencias de compra">
+      <SettingsRow label="Modo de entrada" description={entryMode === 'catalog' ? 'Busca productos existentes y muestra sugerencias mientras escribes.' : 'Escribe o dicta cualquier producto para elegir la cantidad y añadirlo.'}>
+        <div className="settings-segmented" role="group" aria-label="Modo de entrada">
+          <button type="button" aria-pressed={entryMode === 'catalog'} onClick={() => void changeEntryMode('catalog')}>Catálogo</button>
+          <button type="button" aria-pressed={entryMode === 'quick'} onClick={() => void changeEntryMode('quick')}>Entrada rápida</button>
+        </div>
+      </SettingsRow>
+      <p className="settings-row__note">Los productos añadidos mediante Entrada rápida solo se guardan en la lista y no se incorporan al catálogo.</p>
+      {entryModeError ? <p role="alert">{entryModeError}</p> : null}
       <SettingsRow label="Vista de productos" description="Cómo se muestran los resultados al buscar productos.">
         <div className="settings-segmented" role="group" aria-label="Vista de productos">
           <button type="button" aria-pressed={productView === 'list'} onClick={() => changeProductView('list')}>Lista</button>

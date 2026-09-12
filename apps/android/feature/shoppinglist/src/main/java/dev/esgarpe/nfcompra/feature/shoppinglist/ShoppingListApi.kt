@@ -15,7 +15,7 @@ data class ShoppingItemDto(
     val id: String, val listId: String, val name: String, val normalizedName: String,
     val quantity: Double, val unit: String?, val category: String?, val note: String?,
     val isChecked: Boolean, val position: Int, val version: Int, val createdBy: String?,
-    val updatedBy: String?, val createdAt: String, val updatedAt: String,
+    val updatedBy: String?, val createdAt: String, val updatedAt: String, val catalogProductId: String? = null,
 )
 
 data class HouseholdsResponse(val households: List<HouseholdDto>)
@@ -34,7 +34,7 @@ data class CreateListRequest(val name: String)
 data class UpdateListRequest(val name: String, val expectedVersion: Int, val operationId: String)
 data class DeleteListRequest(val expectedVersion: Int, val operationId: String)
 data class DeleteCheckedItemsRequest(val operationId: String)
-data class CreateItemRequest(val name: String, val quantity: Double = 1.0, val unit: String? = null, val operationId: String)
+data class CreateItemRequest(val name: String, val quantity: Double = 1.0, val unit: String? = null, val catalogProductId: String? = null, val operationId: String)
 data class UpdateItemRequest(val name: String? = null, val quantity: Double? = null, val unit: String? = null, val isChecked: Boolean? = null, val expectedVersion: Int, val operationId: String)
 data class DeleteItemRequest(val expectedVersion: Int, val operationId: String)
 data class CatalogPermissionsDto(
@@ -95,9 +95,11 @@ data class MeUserDto(
     val lastName: String? = null,
     val username: String? = null,
     val role: String? = null,
+    val productEntryMode: String? = null,
 )
 data class MeResponse(val user: MeUserDto)
 data class UpdateProfileRequest(val firstName: String? = null, val lastName: String? = null, val username: String? = null)
+data class UpdateProductEntryModeRequest(val productEntryMode: String)
 data class ChangePasswordRequest(val currentPassword: String, val newPassword: String)
 data class PasswordChangedResponse(val status: String)
 data class DeleteAccountRequest(val currentPassword: String)
@@ -146,6 +148,7 @@ interface ShoppingListApi {
     suspend fun removeProductFavorite(@Path("productId") productId: String): Response<ProductFavoriteResponse>
     @GET("v1/me") suspend fun me(): Response<MeResponse>
     @PATCH("v1/me") suspend fun updateProfile(@Body request: UpdateProfileRequest): Response<MeResponse>
+    @PATCH("v1/me") suspend fun updateProductEntryMode(@Body request: UpdateProductEntryModeRequest): Response<MeResponse>
     @POST("v1/me/change-password") suspend fun changePassword(@Body request: ChangePasswordRequest): Response<PasswordChangedResponse>
     @HTTP(method = "DELETE", path = "v1/me", hasBody = true)
     suspend fun deleteAccount(@Body request: DeleteAccountRequest): Response<DeleteAccountResponse>

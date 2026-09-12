@@ -70,6 +70,7 @@ data class ProfileUiModel(
     val lastName: String?,
     val username: String?,
     val role: String? = null,
+    val productEntryMode: ProductEntryMode = ProductEntryMode.Catalog,
 ) {
     val displayName: String = name.takeIf { it.isNotBlank() }
         ?: listOfNotNull(firstName, lastName).joinToString(" ").takeIf { it.isNotBlank() }
@@ -102,6 +103,7 @@ interface ShoppingRepository {
     suspend fun deleteList(list: ShoppingListSummaryUiModel): Unit = error("No se usa en este repositorio.")
     suspend fun deleteCheckedItems(listId: String): Int = error("No se usa en este repositorio.")
     suspend fun createItem(listId: String, name: String, quantity: Double = 1.0)
+    suspend fun createItem(listId: String, name: String, quantity: Double, catalogProductId: String?) = createItem(listId, name, quantity)
     suspend fun updateItem(item: ShoppingListItemUiModel, name: String? = null, checked: Boolean? = null, quantity: Double? = null)
     suspend fun deleteItem(item: ShoppingListItemUiModel)
     suspend fun searchProductCatalog(householdId: String?, search: String, limit: Int): List<ProductCatalogUiModel> = emptyList()
@@ -116,6 +118,7 @@ interface ShoppingRepository {
     suspend fun deleteProductCatalogItem(product: ProductCatalogUiModel) = Unit
     suspend fun profile(): ProfileUiModel? = null
     suspend fun updateProfile(firstName: String?, lastName: String?, username: String?): ProfileUiModel? = null
+    suspend fun updateProductEntryMode(productEntryMode: ProductEntryMode): ProfileUiModel? = null
     suspend fun changePassword(currentPassword: String, newPassword: String) = Unit
     suspend fun deleteAccount(currentPassword: String) = Unit
     suspend fun profileDisplayName(): String? = null
@@ -168,8 +171,10 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
     override suspend fun deleteCheckedItems(listId: String): Int =
         api.deleteCheckedItems(listId, DeleteCheckedItemsRequest(operationId = UUID.randomUUID().toString())).bodyOrThrow().removed
 
-    override suspend fun createItem(listId: String, name: String, quantity: Double) {
-        api.createItem(listId, CreateItemRequest(name = name, quantity = quantity, operationId = UUID.randomUUID().toString())).bodyOrThrow()
+    override suspend fun createItem(listId: String, name: String, quantity: Double) = createItem(listId, name, quantity, null)
+
+    override suspend fun createItem(listId: String, name: String, quantity: Double, catalogProductId: String?) {
+        api.createItem(listId, CreateItemRequest(name = name, quantity = quantity, catalogProductId = catalogProductId, operationId = UUID.randomUUID().toString())).bodyOrThrow()
     }
 
     override suspend fun updateItem(item: ShoppingListItemUiModel, name: String?, checked: Boolean?, quantity: Double?) {
@@ -274,6 +279,9 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
     override suspend fun updateProfile(firstName: String?, lastName: String?, username: String?): ProfileUiModel =
         api.updateProfile(UpdateProfileRequest(firstName, lastName, username)).bodyOrThrow().user.toUiModel()
 
+    override suspend fun updateProductEntryMode(productEntryMode: ProductEntryMode): ProfileUiModel =
+        api.updateProductEntryMode(UpdateProductEntryModeRequest(productEntryMode.apiValue)).bodyOrThrow().user.toUiModel()
+
     override suspend fun changePassword(currentPassword: String, newPassword: String) {
         api.changePassword(ChangePasswordRequest(currentPassword, newPassword)).bodyOrThrow()
     }
@@ -286,7 +294,7 @@ class ShoppingListRepository(private val api: ShoppingListApi) : ShoppingReposit
         profile().displayName
 
     private fun ShoppingListDto.toUiModel() = ShoppingListSummaryUiModel(id, householdId, name, version)
-    private fun MeUserDto.toUiModel() = ProfileUiModel(id, email, name, firstName, lastName, username, role)
+    private fun MeUserDto.toUiModel() = ProfileUiModel(id, email, name, firstName, lastName, username, role, ProductEntryMode.fromApi(productEntryMode))
 
     private fun invalidateCatalogSnapshot() {
         catalogSnapshots.clear()
@@ -518,7 +526,9 @@ class OfflineShoppingRepository(
         removed
     }
 
-    override suspend fun createItem(listId: String, name: String, quantity: Double) = accountOperation {
+    override suspend fun createItem(listId: String, name: String, quantity: Double) = createItem(listId, name, quantity, null)
+
+    override suspend fun createItem(listId: String, name: String, quantity: Double, catalogProductId: String?) = accountOperation {
         databaseMutex.withLock {
             val operationId = operationId()
             val now = clock()
@@ -539,7 +549,7 @@ class OfflineShoppingRepository(
                 createdAt = now.toString(),
                 updatedAt = now.toString(),
             )
-            val request = CreateItemRequest(name = name, quantity = quantity, operationId = operationId)
+            val request = CreateItemRequest(name = name, quantity = quantity, catalogProductId = catalogProductId, operationId = operationId)
             dao.upsertItemAndEnqueue(
                 item,
                 PendingOperation(
@@ -708,6 +718,10 @@ class OfflineShoppingRepository(
 
     override suspend fun updateProfile(firstName: String?, lastName: String?, username: String?): ProfileUiModel = accountOperation {
         api.updateProfile(UpdateProfileRequest(firstName, lastName, username)).also { isOffline = false }.bodyOrThrow().user.toProfileUiModel()
+    }
+
+    override suspend fun updateProductEntryMode(productEntryMode: ProductEntryMode): ProfileUiModel = accountOperation {
+        api.updateProductEntryMode(UpdateProductEntryModeRequest(productEntryMode.apiValue)).also { isOffline = false }.bodyOrThrow().user.toProfileUiModel()
     }
 
     override suspend fun changePassword(currentPassword: String, newPassword: String) = accountOperation {
@@ -1009,7 +1023,7 @@ private fun PendingOperation.expectedVersion(): Int? = runCatching {
     }
 }.getOrNull()
 
-private fun MeUserDto.toProfileUiModel() = ProfileUiModel(id, email, name, firstName, lastName, username, role)
+private fun MeUserDto.toProfileUiModel() = ProfileUiModel(id, email, name, firstName, lastName, username, role, ProductEntryMode.fromApi(productEntryMode))
 
 private fun <T> Response<T>.bodyOrThrow(): T {
     body()?.let { return it }

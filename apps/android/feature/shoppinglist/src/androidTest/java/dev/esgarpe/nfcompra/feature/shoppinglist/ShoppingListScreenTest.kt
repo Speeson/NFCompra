@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,6 +21,53 @@ import org.junit.Test
 class ShoppingListScreenTest {
     @get:Rule
     val composeTestRule = createComposeRule()
+
+    @Test
+    fun quickEntryShowsOneLiteralCandidateInListViewWithoutCatalogSearch() {
+        var searches = 0
+        composeTestRule.setContent {
+            NFCompraTheme {
+                ShoppingListScreen(
+                    state = ShoppingListUiState("Compra", emptyList(), emptyList(), false),
+                    onAction = {},
+                    onSearchProducts = { _, _ -> searches++; listOf(ProductCatalogUiModel("catalog", "Otro", "otro", null, "cart", null)) },
+                    productEntryMode = ProductEntryMode.Quick,
+                    cardMode = false,
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Escribe un producto...").assertExists()
+        composeTestRule.onNodeWithContentDescription("Producto").performTextInput("Tomate frito")
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onAllNodesWithText("Tomate frito").assertCountEquals(2)
+        composeTestRule.onNodeWithText("Otro").assertDoesNotExist()
+        composeTestRule.onNodeWithContentDescription("Crear producto").assertDoesNotExist()
+        assertEquals(0, searches)
+    }
+
+    @Test
+    fun quickEntryShowsOneLiteralCandidateInGridViewWithoutCatalogSearch() {
+        var searches = 0
+        composeTestRule.setContent {
+            NFCompraTheme {
+                ShoppingListScreen(
+                    state = ShoppingListUiState("Compra", emptyList(), emptyList(), false),
+                    onAction = {},
+                    onSearchProducts = { _, _ -> searches++; emptyList() },
+                    productEntryMode = ProductEntryMode.Quick,
+                    cardMode = true,
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithContentDescription("Producto").performTextInput("Pan para mañana")
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onAllNodesWithText("Pan para mañana").assertCountEquals(2)
+        assertEquals(0, searches)
+    }
 
     @Test
     fun authenticatedDashboardShowsMainNavigationAndCurrentContext() {

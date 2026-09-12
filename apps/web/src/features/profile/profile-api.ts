@@ -19,6 +19,14 @@ export async function updateProfile(input: UpdateProfileInput): Promise<User> {
   return response.user;
 }
 
+export async function updateProductEntryMode(productEntryMode: 'catalog' | 'quick'): Promise<User> {
+  const response = await apiClient.request<{ user: User }>('/me', {
+    method: 'PATCH',
+    body: { productEntryMode },
+  });
+  return response.user;
+}
+
 export async function changePassword(input: ChangePasswordInput): Promise<void> {
   await apiClient.request('/me/change-password', {
     method: 'POST',

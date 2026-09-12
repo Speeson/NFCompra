@@ -29,6 +29,7 @@ Los errores siguen esta envoltura:
     "username": "ana",
     "email": "ana@example.test",
     "role": "user",
+    "productEntryMode": "catalog",
     "emailVerifiedAt": "2026-07-27T12:00:00.000Z",
     "createdAt": "2026-07-27T12:00:00.000Z",
     "updatedAt": "2026-07-27T12:00:00.000Z"
@@ -43,6 +44,22 @@ Los errores siguen esta envoltura:
 ```json
 { "firstName": "Ana", "lastName": "Garcia", "username": "ana" }
 ```
+
+La preferencia de cuenta `productEntryMode` admite `"catalog"` y `"quick"`; su valor por defecto es `"catalog"`. Se actualiza de forma independiente con:
+
+```json
+{ "productEntryMode": "quick" }
+```
+
+## Productos de una lista
+
+`POST /v1/lists/{listId}/items` admite `catalogProductId` nullable. Una entrada rápida envía `null` y solo crea el `shopping_item`; no crea categorías, aliases, favoritos ni filas en `product_catalog`.
+
+```json
+{ "name": "Tomate frito", "quantity": 2, "catalogProductId": null, "operationId": "<uuid>" }
+```
+
+Una selección de catálogo envía el id real accesible desde el hogar de la lista. La respuesta del item incluye `catalogProductId`; un id inexistente, inactivo o perteneciente a otro hogar responde `422 CATALOG_PRODUCT_NOT_AVAILABLE`.
 
 `POST /v1/me/change-password` cambia la contrasena de la cuenta autenticada:
 

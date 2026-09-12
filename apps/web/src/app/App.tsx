@@ -16,6 +16,7 @@ import { CatalogPage } from '../features/catalog/CatalogPage';
 import { ProfilePage } from '../features/profile/ProfilePage';
 import { SettingsPage } from '../features/profile/SettingsPage';
 import type { User } from '../api/session';
+import { updateProductEntryMode } from '../features/profile/profile-api';
 
 export function App(): JSX.Element {
   const { user } = useSession();
@@ -34,7 +35,7 @@ function AppRoute(): JSX.Element {
   const [notificationActionError, setNotificationActionError] = useState<string>();
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const authTriggerRef = useRef<HTMLElement | null>(null);
-  const { status, user, logout, deleteAccount } = useSession();
+  const { status, user, logout, deleteAccount, refreshUser } = useSession();
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -104,7 +105,7 @@ function AppRoute(): JSX.Element {
 
   return <AppShell user={user!} pathname={location.pathname} onNavigate={navigate} onLogout={handleLogout} onNotificationActionError={setNotificationActionError}>
     {notificationActionAlert}
-    <AuthenticatedRoute pathname={location.pathname} search={location.searchParams} user={user!} onNavigate={navigate} onDeleteAccount={deleteAccount} />
+    <AuthenticatedRoute pathname={location.pathname} search={location.searchParams} user={user!} onNavigate={navigate} onDeleteAccount={deleteAccount} onProductEntryModeChange={async (mode) => { await updateProductEntryMode(mode); await refreshUser(); }} />
   </AppShell>;
 }
 
@@ -115,7 +116,7 @@ export function androidIntentUrlForHouseholdLink(pathname: string, href: string,
   return `intent://household/${householdListsMatch[1]}/lists#Intent;scheme=nfcompra;package=dev.esgarpe.nfcompra;S.browser_fallback_url=${encodeURIComponent(href)};end`;
 }
 
-export function AuthenticatedRoute({ pathname, search, user, onNavigate, onDeleteAccount = async () => undefined }: { pathname: string; search: URLSearchParams; user: User; onNavigate(path: string): void; onDeleteAccount?(currentPassword: string): Promise<void> }): JSX.Element {
+export function AuthenticatedRoute({ pathname, search, user, onNavigate, onDeleteAccount = async () => undefined, onProductEntryModeChange = async () => undefined }: { pathname: string; search: URLSearchParams; user: User; onNavigate(path: string): void; onDeleteAccount?(currentPassword: string): Promise<void>; onProductEntryModeChange?(mode: 'catalog' | 'quick'): Promise<void> }): JSX.Element {
   const userId = user.id;
   const householdMatch = pathname.match(/^\/households\/([^/]+)$/);
   const householdListsMatch = pathname.match(/^\/household\/([^/]+)\/lists$/);
@@ -125,11 +126,11 @@ export function AuthenticatedRoute({ pathname, search, user, onNavigate, onDelet
   if (householdMatch) return <ListsPage onNavigate={onNavigate} selectedHouseholdId={decodeURIComponent(householdMatch[1])} />;
   if (householdListsMatch) return <ListsPage onNavigate={onNavigate} selectedHouseholdId={decodeURIComponent(householdListsMatch[1])} />;
   if (pathname === '/lists') return <ListsPage onNavigate={onNavigate} startCreating={search.get('create') === '1'} selectedHouseholdId={search.get('household')} />;
-  if (listMatch) return <ShoppingListRoute currentUserId={userId} requestedListId={decodeURIComponent(listMatch[1])} onNavigate={onNavigate} />;
+  if (listMatch) return <ShoppingListRoute currentUserId={userId} productEntryMode={user.productEntryMode ?? 'catalog'} requestedListId={decodeURIComponent(listMatch[1])} onNavigate={onNavigate} />;
   if (pathname === '/catalog') return <CatalogPage isAdmin={user.role === 'admin'} />;
   if (pathname === '/profile') return <ProfilePage user={user} onNavigate={onNavigate} />;
-  if (pathname === '/settings') return <SettingsPage onNavigate={onNavigate} onDeleteAccount={onDeleteAccount} />;
-  return <ShoppingListRoute currentUserId={userId} requestedHouseholdId={search.get('household')} requestedListId={search.get('list')} onNavigate={onNavigate} />;
+  if (pathname === '/settings') return <SettingsPage onNavigate={onNavigate} onDeleteAccount={onDeleteAccount} productEntryMode={user.productEntryMode ?? 'catalog'} onProductEntryModeChange={onProductEntryModeChange} />;
+  return <ShoppingListRoute currentUserId={userId} productEntryMode={user.productEntryMode ?? 'catalog'} requestedHouseholdId={search.get('household')} requestedListId={search.get('list')} onNavigate={onNavigate} />;
 }
 
 function PlaceholderPage({ title, text }: { title: string; text: string }): JSX.Element { return <section className="route-page"><p className="eyebrow">Cuenta</p><h1>{title}</h1><p className="route-page__empty">{text}</p></section>; }

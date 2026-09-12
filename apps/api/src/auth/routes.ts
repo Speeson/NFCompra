@@ -1,5 +1,5 @@
 import { AccountDeletionService } from '../account-deletion/service';
-import { createAuthToken, createRefreshToken, createUser, consumeAuthToken, consumePasswordResetOtp, consumeRefreshToken, findUserByEmail, findUserByUsername, findUserWithPasswordById, invalidateSessions, revokeRefreshToken, updatePassword, updateUserName, updateUserProfile, verifyEmail, verifyPasswordResetOtp, type AuthUser } from './auth-repository';
+import { createAuthToken, createRefreshToken, createUser, consumeAuthToken, consumePasswordResetOtp, consumeRefreshToken, findUserByEmail, findUserByUsername, findUserWithPasswordById, invalidateSessions, revokeRefreshToken, updatePassword, updateProductEntryMode, updateUserName, updateUserProfile, verifyEmail, verifyPasswordResetOtp, type AuthUser } from './auth-repository';
 import { hashPassword, verifyPassword } from './password-hasher';
 import { createAccessToken, createRandomToken, hashToken } from './token-service';
 import type { EmailSender } from '../email/email-sender';
@@ -288,6 +288,11 @@ export async function handleMeRoute(request: Request, env: Env, user: AuthUser):
     if (request.method !== 'PATCH') return null;
     const body = await json(request);
     if (!body) return invalidInput();
+    if ('productEntryMode' in body) {
+      if (body.productEntryMode !== 'catalog' && body.productEntryMode !== 'quick') return invalidInput();
+      if (Object.keys(body).some((key) => key !== 'productEntryMode')) return invalidInput();
+      return Response.json({ user: await updateProductEntryMode(env, user.id, body.productEntryMode) });
+    }
     if ('name' in body && !('firstName' in body) && !('lastName' in body) && !('username' in body)) {
       const name = boundedText(body.name, NAME_MAX_LENGTH);
       if (!name) return invalidInput();

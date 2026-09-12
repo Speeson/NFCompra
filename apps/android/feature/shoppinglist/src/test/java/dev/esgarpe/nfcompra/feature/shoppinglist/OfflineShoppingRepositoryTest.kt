@@ -723,6 +723,18 @@ class OfflineShoppingRepositoryTest {
     }
 
     @Test
+    fun `local create keeps nullable catalog identity in the queued payload`() = runTest {
+        seedList()
+
+        repository.createItem("list-1", "Leche", 2.0, "catalog-milk")
+
+        val operation = database.shoppingDao().pendingOperations().single()
+        assertTrue(operation.payloadJson.contains("\"catalogProductId\":\"catalog-milk\""))
+        assertTrue(operation.payloadJson.contains("\"quantity\":2.0"))
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
     fun `creating a catalog product updates warmed snapshot before the next search`() = runTest {
         server.enqueue(catalogSnapshotResponse())
         repository.warmProductCatalog(null)
