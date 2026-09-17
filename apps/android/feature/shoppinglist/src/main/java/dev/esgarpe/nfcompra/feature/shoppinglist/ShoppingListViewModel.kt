@@ -15,7 +15,15 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewModel() {
+interface HouseholdSelectionStore {
+    fun get(): String?
+    fun set(householdId: String?)
+}
+
+class ShoppingListViewModel(
+    private val repository: ShoppingRepository,
+    private val householdSelectionStore: HouseholdSelectionStore? = null,
+) : ViewModel() {
     private val mutableState = MutableStateFlow<ShoppingListViewState>(ShoppingListViewState.Loading)
     val state: StateFlow<ShoppingListViewState> = mutableState.asStateFlow()
     private var pendingContext: ShoppingContext? = null
@@ -187,10 +195,12 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
     private fun loadForCurrentIntent() {
         val generation = ++loadGeneration
         val context = pendingContext
+        val selectedHouseholdId = (mutableState.value as? ShoppingListViewState.Data)?.selectedHouseholdId
+            ?: householdSelectionStore?.get()
         itemObservation?.cancel()
         viewModelScope.launch {
             try {
-                cachedSelection(context)?.let { cached ->
+                cachedSelection(context, selectedHouseholdId)?.let { cached ->
                     if (generation != loadGeneration) return@launch
                     publishSelection(
                         cached.households,
@@ -209,7 +219,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
                 val household = context?.let { requested ->
                     households.firstOrNull { it.id == requested.householdId }
                         ?: throw ShoppingListApiException(404, "HOUSEHOLD_NOT_ACCESSIBLE", "No se pudo abrir este hogar.")
-                } ?: households.first()
+                } ?: households.firstOrNull { it.id == selectedHouseholdId } ?: households.first()
                 val lists = repository.lists(household.id)
                 val list = context?.listId?.let { requested -> lists.firstOrNull { it.id == requested } }
                     ?: lists.firstOrNull()
@@ -243,9 +253,10 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         val list: ShoppingListSummaryUiModel?,
     )
 
-    private suspend fun cachedSelection(context: ShoppingContext?): CachedSelection? {
+    private suspend fun cachedSelection(context: ShoppingContext?, selectedHouseholdId: String?): CachedSelection? {
         val households = repository.cachedHouseholds() ?: return null
         val household = context?.let { requested -> households.firstOrNull { it.id == requested.householdId } }
+            ?: households.firstOrNull { it.id == selectedHouseholdId }
             ?: households.firstOrNull() ?: return null
         val lists = repository.cachedLists(household.id) ?: return null
         val list = context?.listId?.let { requested -> lists.firstOrNull { it.id == requested } }
@@ -254,6 +265,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
     }
 
     private suspend fun selectHousehold(data: ShoppingListViewState.Data, householdId: String) {
+        loadGeneration++
         val lists = repository.lists(householdId)
         publishSelection(data.households, lists, householdId, lists.firstOrNull()?.id)
     }
@@ -398,7 +410,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         expectedGeneration: Int? = null,
     ) {
         if (listId == null) {
-            publishNoList(households, lists, householdId, expectedGeneration)
+            publishNoList(households, lists, householdId, expectedGeneration, persistSelection = refreshFromServer)
             return
         }
         if (refreshFromServer) repository.refreshItems(listId)
@@ -432,6 +444,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
             profile = profile,
             displayName = displayName,
         )
+        if (refreshFromServer) householdSelectionStore?.set(householdId)
         observeSelectedList(listId)
     }
 
@@ -440,6 +453,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
         lists: List<ShoppingListSummaryUiModel>,
         householdId: String,
         expectedGeneration: Int? = null,
+        persistSelection: Boolean = true,
     ) {
         if (expectedGeneration != null && expectedGeneration != loadGeneration) return
         itemObservation?.cancel()
@@ -464,6 +478,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
             profile = profile,
             displayName = displayName,
         )
+        if (persistSelection) householdSelectionStore?.set(householdId)
     }
 
     private suspend fun publishNoHouseholds(expectedGeneration: Int? = null) {
@@ -487,6 +502,7 @@ class ShoppingListViewModel(private val repository: ShoppingRepository) : ViewMo
             profile = profile,
             displayName = displayName,
         )
+        householdSelectionStore?.set(null)
     }
 
     private suspend fun loadHouseholdMetrics(lists: List<ShoppingListSummaryUiModel>): Map<String, ShoppingListMetricsUiModel> {

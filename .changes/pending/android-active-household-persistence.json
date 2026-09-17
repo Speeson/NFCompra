@@ -1,0 +1,10 @@
+{
+  "components": ["android"],
+  "type": "patch",
+  "category": "fixed",
+  "summary": "Conservar el último hogar abierto en Android para cada usuario.",
+  "details": [
+    "Al volver a abrir la aplicación, se restaura el hogar activo de la cuenta.",
+    "Si el usuario ya no pertenece a ese hogar, se selecciona uno disponible."
+  ]
+}

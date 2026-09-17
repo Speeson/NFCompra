@@ -48,6 +48,24 @@ class AccountShoppingSessionTest {
     private lateinit var databaseA: NfCompraDatabase
     private lateinit var databaseB: NfCompraDatabase
 
+    @Test
+    fun `active household preference is isolated by account`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val accountA = "account-${UUID.randomUUID()}"
+        val accountB = "account-${UUID.randomUUID()}"
+        val first = SharedPreferencesHouseholdSelectionStore(context, accountA)
+        val second = SharedPreferencesHouseholdSelectionStore(context, accountB)
+
+        first.set("home-a")
+        second.set("home-b")
+
+        assertEquals("home-a", SharedPreferencesHouseholdSelectionStore(context, accountA).get())
+        assertEquals("home-b", SharedPreferencesHouseholdSelectionStore(context, accountB).get())
+        first.set(null)
+        assertEquals(null, first.get())
+        assertEquals("home-b", second.get())
+    }
+
     @Before
     fun setUp() {
         Dispatchers.setMain(UnconfinedTestDispatcher())

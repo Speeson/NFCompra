@@ -105,6 +105,33 @@ class ShoppingListViewModelTest {
         assertEquals("Compra A", homeA.content.title)
     }
 
+    @Test fun `last opened household is restored after recreating the view model`() = runTest {
+        val selection = object : HouseholdSelectionStore {
+            var householdId: String? = null
+            override fun get() = householdId
+            override fun set(householdId: String?) { this.householdId = householdId }
+        }
+        val first = ShoppingListViewModel(TwoHouseholdSelectionRepository(), selection)
+        first.load()
+        advanceUntilIdle()
+        first.onAction(ShoppingListAction.SelectHousehold("home-b"))
+        advanceUntilIdle()
+        assertEquals("home-b", selection.get())
+
+        val reopened = ShoppingListViewModel(TwoHouseholdSelectionRepository(), selection)
+        reopened.load()
+        advanceUntilIdle()
+        assertEquals("home-b", (reopened.state.value as ShoppingListViewState.Data).selectedHouseholdId)
+        assertEquals("list-b", (reopened.state.value as ShoppingListViewState.Data).selectedListId)
+
+        selection.set("home-removed")
+        val afterRemoval = ShoppingListViewModel(TwoHouseholdSelectionRepository(), selection)
+        afterRemoval.load()
+        advanceUntilIdle()
+        assertEquals("home-a", (afterRemoval.state.value as ShoppingListViewState.Data).selectedHouseholdId)
+        assertEquals("home-a", selection.get())
+    }
+
     @Test fun `loads shared household where current user is member but not owner`() = runTest {
         server.enqueue(json("{\"households\":[{\"id\":\"home-shared\",\"name\":\"Casa compartida\",\"ownerId\":\"owner-user\",\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}"))
         server.enqueue(json("{\"lists\":[{\"id\":\"list-shared\",\"householdId\":\"home-shared\",\"name\":\"Mercadona\",\"isDefault\":false,\"version\":1,\"createdAt\":\"2026-07-27T00:00:00Z\",\"updatedAt\":\"2026-07-27T00:00:00Z\"}]}"))

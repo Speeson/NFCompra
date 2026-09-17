@@ -35,8 +35,10 @@ class AccountShoppingSession(
                 tokenStore,
                 ShoppingListApi::class.java,
             )
+            val repository = OfflineShoppingRepository.create(context, api, accountId, baseUrl)
             return AccountShoppingSession(
-                OfflineShoppingRepository.create(context, api, accountId, baseUrl),
+                repository,
+                ShoppingListViewModel(repository, SharedPreferencesHouseholdSelectionStore(context, accountId)),
                 revokeSync = { revokeShoppingAccount(context, accountId) },
             )
         }
@@ -44,5 +46,18 @@ class AccountShoppingSession(
         fun revoke(context: Context, accountId: String) {
             revokeShoppingAccount(context, accountId)
         }
+    }
+}
+
+internal class SharedPreferencesHouseholdSelectionStore(context: Context, accountId: String) : HouseholdSelectionStore {
+    private val preferences = context.applicationContext.getSharedPreferences("nfcompra.active_household", Context.MODE_PRIVATE)
+    private val key = accountId
+
+    override fun get(): String? = preferences.getString(key, null)
+
+    override fun set(householdId: String?) {
+        preferences.edit().apply {
+            if (householdId == null) remove(key) else putString(key, householdId)
+        }.apply()
     }
 }
