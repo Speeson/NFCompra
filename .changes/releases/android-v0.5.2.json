@@ -1,0 +1,21 @@
+{
+  "component": "android",
+  "versionName": "0.5.2",
+  "versionCode": 27,
+  "releasedAt": null,
+  "changesets": [
+    {
+      "file": "android-active-household-persistence.json",
+      "components": [
+        "android"
+      ],
+      "type": "patch",
+      "category": "fixed",
+      "summary": "Conservar el último hogar abierto en Android para cada usuario.",
+      "details": [
+        "Al volver a abrir la aplicación, se restaura el hogar activo de la cuenta.",
+        "Si el usuario ya no pertenece a ese hogar, se selecciona uno disponible."
+      ]
+    }
+  ]
+}
