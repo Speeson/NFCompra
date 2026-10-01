@@ -30,8 +30,8 @@ android {
         applicationId = "dev.esgarpe.nfcompra"
         minSdk = 24
         targetSdk = 35
-        versionCode = 27
-        versionName = "0.5.2"
+        versionCode = 28
+        versionName = "0.5.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
