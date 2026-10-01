@@ -5284,12 +5284,15 @@ private fun PendingProductWaitlist(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Pendientes de añadir", color = WebText, fontWeight = FontWeight.Bold)
-            Button(onClick = onCommit, shape = MaterialTheme.shapes.medium, colors = webPrimaryButtonColors()) {
-                Text("Añadir ${products.size} ${if (products.size == 1) "producto" else "productos"}")
-            }
+        Button(
+            onClick = onCommit,
+            shape = MaterialTheme.shapes.medium,
+            colors = webPrimaryButtonColors(),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Añadir ${products.size} ${if (products.size == 1) "producto" else "productos"}")
         }
+        Text("Pendientes de añadir", color = WebText, fontWeight = FontWeight.Bold)
         products.forEach { product ->
             var dragAmount by remember(product.key) { mutableStateOf(0f) }
             Row(
